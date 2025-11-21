@@ -81,10 +81,10 @@ console.log(result.text)
 npm install bedrock-agentcore
 
 # Install AI SDK v6 (required)
-npm install ai@6.0.0-beta.99 @ai-sdk/amazon-bedrock@4.0.0-beta.58
+npm install ai@beta @ai-sdk/amazon-bedrock@beta
 
 # Install Playwright (optional, only for Browser tools)
-npm install playwright@^1.56.0
+npm install playwright
 ```
 
 **Prerequisites:**
