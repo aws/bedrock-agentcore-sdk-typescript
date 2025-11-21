@@ -51,15 +51,91 @@ Amazon Bedrock AgentCore enables you to deploy and operate highly effective agen
 - 📊 **Observability** - OpenTelemetry tracing: **[Observability Quick Start](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability-get-started.html)**
 - 🔐 **Identity** - AWS & third-party auth: **[Identity Quick Start](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/identity-getting-started-cognito.html)**
 
-## 🏗️ Deployment
+## AgentCore Tools Quick Example
 
-**Quick Start:** Use the [Bedrock AgentCore Starter Toolkit](https://github.com/aws/bedrock-agentcore-starter-toolkit) for rapid prototyping.
+```typescript
+import { bedrock } from '@ai-sdk/amazon-bedrock'
+import { ToolLoopAgent } from 'ai'
+import { CodeInterpreterTools } from 'bedrock-agentcore/code-interpreter/vercel-ai'
 
-**Production:** [AWS CDK](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_bedrockagentcore-readme.html).
+const codeInterpreter = new CodeInterpreterTools()
 
+const agent = new ToolLoopAgent({
+  model: bedrock('global.anthropic.claude-sonnet-4-20250514-v1:0'),
+  tools: codeInterpreter.tools,
+})
+
+const result = await agent.run({
+  prompt: 'Calculate the first 100 fibonacci numbers and plot them',
+})
+
+console.log(result.text)
+```
+
+**Output:** The agent writes Python code, executes it in a secure AWS sandbox, generates a visualization, and returns the analysis.
+
+## Installation
+
+```bash
+# Install the SDK
+npm install bedrock-agentcore
+
+# Install AI SDK v6 (required)
+npm install ai@6.0.0-beta.99 @ai-sdk/amazon-bedrock@4.0.0-beta.58
+
+# Install Playwright (optional, only for Browser tools)
+npm install playwright@^1.56.0
+```
+
+**Prerequisites:**
+- Node.js >= 20.0.0
+- AWS credentials with Bedrock AgentCore access
+- AWS Bedrock model access enabled
+
+## Available Tools
+
+### 💻 Code Interpreter
+Execute Python, JavaScript, or TypeScript in a secure AWS-managed sandbox:
+
+```typescript
+import { CodeInterpreterTools } from 'bedrock-agentcore/code-interpreter/vercel-ai'
+// Provides: executeCode, fileOperations, executeCommand
+```
+
+### 🌐 Browser
+Automate web browsing with cloud-based Playwright:
+
+```typescript
+import { BrowserTools } from 'bedrock-agentcore/browser/vercel-ai'
+// Provides: navigate, click, type, getText, getHtml, screenshot, evaluate
+```
+
+### Combine Both Tools
+
+```typescript
+const codeInterpreter = new CodeInterpreterTools()
+const browser = new BrowserTools()
+
+const agent = new ToolLoopAgent({
+  model: bedrock('global.anthropic.claude-sonnet-4-20250514-v1:0'),
+  tools: {
+    ...codeInterpreter.tools,
+    ...browser.tools,
+  },
+})
+
+// Now your agent can browse the web AND execute code
+const result = await agent.run({
+  prompt: 'Visit news.ycombinator.com, scrape the top 5 stories, and analyze sentiment',
+})
+```
+
+## Try It
+
+See [examples/](examples/) for complete working examples including a Next.js app with streaming UI.
 
 ## 📝 License & Contributing
 
-- **License:** Apache 2.0 - see [LICENSE.txt](LICENSE.txt)
+- **License:** Apache 2.0 - see [LICENSE](LICENSE)
 - **Contributing:** See [CONTRIBUTING.md](CONTRIBUTING.md)
-- **Security:** Report vulnerabilities via [SECURITY.md](SECURITY.md)
+- **Security:** See [SECURITY.md](SECURITY.md)
