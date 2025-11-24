@@ -6,7 +6,7 @@
  */
 
 import { PlaywrightBrowser } from '../playwright/client.js'
-import type { BrowserClientConfig, SessionInfo } from '../../types.js'
+import type { BrowserClientConfig, SessionInfo, StartSessionParams } from '../../types.js'
 import { createNavigateTool } from './navigate-tool.js'
 import { createClickTool } from './click-tool.js'
 import { createTypeTool } from './type-tool.js'
@@ -135,10 +135,14 @@ export class BrowserTools {
    * call this explicitly to start the session upfront.
    *
    * @param sessionName - Optional session name for AWS
+   * @param timeout - Optional session timeout in seconds (default: 3600, max: 28800)
    * @returns Session information
    */
-  async startSession(sessionName?: string): Promise<SessionInfo> {
-    return this.client.startSession(sessionName ? { sessionName } : undefined)
+  async startSession(sessionName?: string, timeout?: number): Promise<SessionInfo> {
+    const params: StartSessionParams = {}
+    if (sessionName !== undefined) params.sessionName = sessionName
+    if (timeout !== undefined) params.timeout = timeout
+    return this.client.startSession(Object.keys(params).length > 0 ? params : undefined)
   }
 
   /**

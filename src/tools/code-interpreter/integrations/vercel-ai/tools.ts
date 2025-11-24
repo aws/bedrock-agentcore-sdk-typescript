@@ -5,7 +5,7 @@
  */
 
 import { CodeInterpreter } from '../../client.js'
-import type { CodeInterpreterConfig, SessionInfo } from '../../types.js'
+import type { CodeInterpreterConfig, SessionInfo, StartSessionParams } from '../../types.js'
 import { createExecuteCodeTool } from './execute-code-tool.js'
 import { createFileOperationsTool } from './file-operations-tool.js'
 import { createExecuteCommandTool } from './execute-command-tool.js'
@@ -94,10 +94,14 @@ export class CodeInterpreterTools {
    * call this explicitly to start the session upfront.
    *
    * @param sessionName - Optional session name for AWS
+   * @param timeout - Optional session timeout in seconds (default: 900, max: 28800)
    * @returns Session information
    */
-  async startSession(sessionName?: string): Promise<SessionInfo> {
-    return this.interpreter.startSession(sessionName ? { sessionName } : undefined)
+  async startSession(sessionName?: string, timeout?: number): Promise<SessionInfo> {
+    const params: StartSessionParams = {}
+    if (sessionName !== undefined) params.sessionName = sessionName
+    if (timeout !== undefined) params.timeout = timeout
+    return this.interpreter.startSession(Object.keys(params).length > 0 ? params : undefined)
   }
 
   /**
