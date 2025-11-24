@@ -308,4 +308,59 @@ describe('PlaywrightBrowser Wikipedia Integration', () => {
     expect(pageData.title).toContain('TypeScript')
     expect(pageData.hasContent).toBe(true)
   })
+
+  describe('Session Query Methods', () => {
+    it('gets current session details', async () => {
+      // Use the shared browser instance that was started in beforeAll
+      const session = await browser.getSession()
+
+      expect(session).toBeDefined()
+      expect(session.sessionId).toBeDefined()
+      expect(session.browserIdentifier).toBe('aws.browser.v1')
+      expect(session.name).toBe('wikipedia-test')
+      expect(session.status).toBe('READY')
+      expect(session.createdAt).toBeInstanceOf(Date)
+      expect(session.lastUpdatedAt).toBeInstanceOf(Date)
+      expect(session.sessionTimeoutSeconds).toBeGreaterThan(0)
+    }, 30000)
+
+    it('lists sessions with default parameters', async () => {
+      const response = await browser.listSessions()
+
+      expect(response).toBeDefined()
+      expect(response.items).toBeInstanceOf(Array)
+      expect(response.items.length).toBeGreaterThan(0)
+
+      const session = response.items[0]
+      expect(session.sessionId).toBeDefined()
+      expect(session.name).toBeDefined()
+      expect(session.status).toMatch(/READY|TERMINATED/)
+      expect(session.createdAt).toBeInstanceOf(Date)
+      expect(session.lastUpdatedAt).toBeInstanceOf(Date)
+    }, 30000)
+
+    it('filters sessions by status', async () => {
+      const response = await browser.listSessions({ status: 'READY' })
+
+      expect(response).toBeDefined()
+      expect(response.items).toBeInstanceOf(Array)
+      // All returned sessions should have READY status
+      expect(response.items.every((item) => item.status === 'READY')).toBe(true)
+    }, 30000)
+
+    it('respects maxResults parameter', async () => {
+      const response = await browser.listSessions({ maxResults: 1 })
+
+      expect(response).toBeDefined()
+      expect(response.items.length).toBeLessThanOrEqual(1)
+    }, 30000)
+
+    it('throws error when no session is active for getSession on new instance', async () => {
+      const newBrowser = new PlaywrightBrowser({
+        region: process.env.AWS_REGION || 'us-west-2',
+      })
+
+      await expect(newBrowser.getSession()).rejects.toThrow(/must be provided/)
+    }, 30000)
+  })
 })

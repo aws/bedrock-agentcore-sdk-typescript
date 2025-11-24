@@ -56,22 +56,43 @@ vi.mock('@aws-sdk/client-bedrock-agentcore', () => {
 
     // Mock response for GetBrowserSessionCommand
     if (command._commandName === 'GetBrowserSessionCommand') {
-      const sessionId = command.input.sessionId
-      const session = Array.from(mockSessionState.values()).find((s) => s.sessionId === sessionId)
+      return Promise.resolve({
+        sessionId: command.input.sessionId,
+        browserIdentifier: command.input.browserIdentifier,
+        name: 'test-session',
+        status: 'READY',
+        createdAt: new Date('2024-01-01T00:00:00Z'),
+        lastUpdatedAt: new Date('2024-01-01T00:00:00Z'),
+        sessionTimeoutSeconds: 3600,
+      })
+    }
 
-      if (!session) {
-        const error = new Error('Session not found')
-        error.name = 'ResourceNotFoundException'
-        throw error
-      }
+    // Mock response for ListBrowserSessionsCommand
+    if (command._commandName === 'ListBrowserSessionsCommand') {
+      const mockSessions = [
+        {
+          sessionId: 'session-1',
+          name: 'session-1',
+          status: 'READY',
+          createdAt: new Date('2024-01-01T00:00:00Z'),
+          lastUpdatedAt: new Date('2024-01-01T00:01:00Z'),
+        },
+        {
+          sessionId: 'session-2',
+          name: 'session-2',
+          status: 'TERMINATED',
+          createdAt: new Date('2024-01-01T00:00:00Z'),
+          lastUpdatedAt: new Date('2024-01-01T00:02:00Z'),
+        },
+      ]
+
+      let filtered = command.input.status ? mockSessions.filter((s: any) => s.status === command.input.status) : mockSessions
+      const maxResults = command.input.maxResults || 10
+      filtered = filtered.slice(0, maxResults)
 
       return Promise.resolve({
-        browserIdentifier: session.identifier,
-        sessionId: session.sessionId,
-        name: session.sessionName,
-        status: session.status,
-        createdAt: session.createdAt,
-        lastUpdatedAt: new Date(),
+        items: filtered,
+        nextToken: filtered.length >= maxResults ? 'next-token' : undefined,
       })
     }
 
@@ -98,7 +119,11 @@ vi.mock('@aws-sdk/client-bedrock-agentcore', () => {
       this.input = input
       return this
     }),
-    ListBrowserSessionsCommand: vi.fn(),
+    ListBrowserSessionsCommand: vi.fn(function (this: any, input: any) {
+      this._commandName = 'ListBrowserSessionsCommand'
+      this.input = input
+      return this
+    }),
     UpdateBrowserStreamCommand: vi.fn(),
   }
 })
@@ -234,16 +259,93 @@ describe('Browser', () => {
       client = new Browser({ region: 'us-east-1' })
     })
 
-    it('retrieves active session info', async () => {
-      const started = await client.startSession()
+    it('gets current session details', async () => {
+      await client.startSession({ sessionName: 'test-session' })
+
       const session = await client.getSession()
 
-      expect(session.sessionId).toBe(started.sessionId)
-      expect(session.sessionName).toBe('default')
+      expect(session).toBeDefined()
+      expect(session.sessionId).toBeDefined()
+      expect(session.browserIdentifier).toBe('aws.browser.v1')
+      expect(session.name).toBe('test-session')
+      expect(session.status).toBe('READY')
+      expect(session.createdAt).toBeInstanceOf(Date)
+      expect(session.lastUpdatedAt).toBeInstanceOf(Date)
+      expect(session.sessionTimeoutSeconds).toBe(3600)
     })
 
-    it('throws error when no active session', async () => {
-      await expect(client.getSession()).rejects.toThrow(/No active session/)
+    it('throws error when no session is active', async () => {
+      await expect(client.getSession()).rejects.toThrow(
+        'Browser ID and Session ID must be provided or available from current session'
+      )
+    })
+
+    it('gets specific session by ID', async () => {
+      const session = await client.getSession({
+        browserId: 'aws.browser.v1',
+        sessionId: 'specific-session-id',
+      })
+
+      expect(session).toBeDefined()
+      expect(session.sessionId).toBe('specific-session-id')
+      expect(session.status).toBe('READY')
+    })
+  })
+
+  describe('listSessions', () => {
+    let client: Browser
+
+    beforeEach(() => {
+      client = new Browser({ region: 'us-east-1' })
+    })
+
+    it('lists all sessions', async () => {
+      const response = await client.listSessions()
+
+      expect(response).toBeDefined()
+      expect(response.items).toBeInstanceOf(Array)
+      expect(response.items.length).toBeGreaterThan(0)
+      expect(response.items[0].sessionId).toBeDefined()
+      expect(response.items[0].name).toBeDefined()
+      expect(response.items[0].status).toBeDefined()
+    })
+
+    it('filters sessions by status', async () => {
+      const response = await client.listSessions({ status: 'READY' })
+
+      expect(response).toBeDefined()
+      expect(response.items).toBeInstanceOf(Array)
+      expect(response.items.every((item) => item.status === 'READY')).toBe(true)
+    })
+
+    it('respects maxResults parameter', async () => {
+      const response = await client.listSessions({ maxResults: 1 })
+
+      expect(response).toBeDefined()
+      expect(response.items.length).toBe(1)
+      expect(response.nextToken).toBeDefined()
+    })
+
+    it('supports pagination', async () => {
+      const firstPage = await client.listSessions({ maxResults: 1 })
+      expect(firstPage.nextToken).toBeDefined()
+
+      const secondPage = await client.listSessions({
+        maxResults: 1,
+        nextToken: firstPage.nextToken,
+      })
+
+      expect(secondPage).toBeDefined()
+      expect(secondPage.items).toBeInstanceOf(Array)
+    })
+
+    it('can specify different browser ID', async () => {
+      const response = await client.listSessions({
+        browserId: 'custom.browser.v1',
+      })
+
+      expect(response).toBeDefined()
+      expect(response.items).toBeInstanceOf(Array)
     })
   })
 

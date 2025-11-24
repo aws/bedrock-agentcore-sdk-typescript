@@ -325,6 +325,86 @@ with open('output.txt', 'w') as f:
     }, 30000)
   })
 
+  describe('Session Query Methods', () => {
+    it('gets current session details', async () => {
+      const testInterpreter = new CodeInterpreter({ region: testRegion })
+      const startedSession = await testInterpreter.startSession({
+        sessionName: 'query-test-session',
+      })
+
+      const session = await testInterpreter.getSession()
+
+      expect(session).toBeDefined()
+      expect(session.sessionId).toBe(startedSession.sessionId)
+      expect(session.codeInterpreterIdentifier).toBe('aws.codeinterpreter.v1')
+      expect(session.name).toBe('query-test-session')
+      expect(session.status).toBe('READY')
+      expect(session.createdAt).toBeInstanceOf(Date)
+      expect(session.lastUpdatedAt).toBeInstanceOf(Date)
+      expect(session.sessionTimeoutSeconds).toBeGreaterThan(0)
+
+      await testInterpreter.stopSession()
+    }, 30000)
+
+    it('throws error when no session is active', async () => {
+      const testInterpreter = new CodeInterpreter({ region: testRegion })
+
+      await expect(testInterpreter.getSession()).rejects.toThrow(/must be provided/)
+    }, 30000)
+
+    it('lists sessions with default parameters', async () => {
+      const testInterpreter = new CodeInterpreter({ region: testRegion })
+      // Create a session to ensure at least one exists
+      await testInterpreter.startSession({ sessionName: 'list-test-1' })
+
+      const response = await testInterpreter.listSessions()
+
+      expect(response).toBeDefined()
+      expect(response.items).toBeInstanceOf(Array)
+      expect(response.items.length).toBeGreaterThan(0)
+
+      const session = response.items[0]
+      expect(session.sessionId).toBeDefined()
+      // Name field may not always be present in list responses
+      if (session.name) {
+        expect(session.name).toBeDefined()
+      }
+      expect(session.status).toMatch(/READY|TERMINATED/)
+      expect(session.createdAt).toBeInstanceOf(Date)
+      expect(session.lastUpdatedAt).toBeInstanceOf(Date)
+
+      await testInterpreter.stopSession()
+    }, 30000)
+
+    it('filters sessions by status', async () => {
+      const testInterpreter = new CodeInterpreter({ region: testRegion })
+      // Create an active session
+      await testInterpreter.startSession({ sessionName: 'filter-test' })
+
+      const response = await testInterpreter.listSessions({ status: 'READY' })
+
+      expect(response).toBeDefined()
+      expect(response.items).toBeInstanceOf(Array)
+      // All returned sessions should have READY status
+      expect(response.items.every((item) => item.status === 'READY')).toBe(true)
+
+      await testInterpreter.stopSession()
+    }, 30000)
+
+    it('respects maxResults parameter', async () => {
+      const testInterpreter = new CodeInterpreter({ region: testRegion })
+      // Create a session to ensure at least one exists
+      await testInterpreter.startSession({ sessionName: 'pagination-test' })
+
+      const response = await testInterpreter.listSessions({ maxResults: 1 })
+
+      expect(response).toBeDefined()
+      expect(response.items.length).toBeLessThanOrEqual(1)
+
+      await testInterpreter.stopSession()
+    }, 30000)
+  })
+
   describe('Real-World Workflows', () => {
     it('performs data analysis workflow', async () => {
       const testInterpreter = new CodeInterpreter({ region: testRegion })

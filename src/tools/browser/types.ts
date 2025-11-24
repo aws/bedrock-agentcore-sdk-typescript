@@ -118,6 +118,136 @@ export interface SessionInfo {
 }
 
 /**
+ * Parameters for getting browser session details.
+ */
+export interface GetSessionParams {
+  /**
+   * Browser identifier.
+   * Uses current instance identifier if not provided.
+   */
+  browserId?: string
+
+  /**
+   * Session ID to query.
+   * Uses current active session ID if not provided.
+   */
+  sessionId?: string
+}
+
+/**
+ * Detailed session information returned by getSession.
+ */
+export interface GetSessionResponse {
+  /**
+   * AWS-assigned session identifier.
+   */
+  sessionId: string
+
+  /**
+   * Browser identifier.
+   */
+  browserIdentifier: string
+
+  /**
+   * Session name.
+   */
+  name: string
+
+  /**
+   * Session status.
+   */
+  status: 'READY' | 'TERMINATED'
+
+  /**
+   * Timestamp when session was created.
+   */
+  createdAt: Date
+
+  /**
+   * Timestamp when session was last updated.
+   */
+  lastUpdatedAt: Date
+
+  /**
+   * Session timeout in seconds.
+   */
+  sessionTimeoutSeconds: number
+}
+
+/**
+ * Parameters for listing browser sessions.
+ */
+export interface ListSessionsParams {
+  /**
+   * Browser identifier.
+   * Uses current instance identifier if not provided.
+   */
+  browserId?: string
+
+  /**
+   * Filter by session status.
+   */
+  status?: 'READY' | 'TERMINATED'
+
+  /**
+   * Maximum number of results to return (1-100).
+   * Defaults to 10
+   */
+  maxResults?: number
+
+  /**
+   * Pagination token for fetching next page of results.
+   */
+  nextToken?: string
+}
+
+/**
+ * Summary information for a browser session in list results.
+ */
+export interface SessionSummary {
+  /**
+   * AWS-assigned session identifier.
+   */
+  sessionId: string
+
+  /**
+   * Session name.
+   */
+  name: string
+
+  /**
+   * Session status.
+   */
+  status: 'READY' | 'TERMINATED'
+
+  /**
+   * Timestamp when session was created.
+   */
+  createdAt: Date
+
+  /**
+   * Timestamp when session was last updated.
+   */
+  lastUpdatedAt: Date
+}
+
+/**
+ * Response from listing browser sessions.
+ */
+export interface ListSessionsResponse {
+  /**
+   * List of session summaries.
+   */
+  items: SessionSummary[]
+
+  /**
+   * Token for fetching next page of results.
+   * Present if there are more results available.
+   */
+  nextToken?: string
+}
+
+/**
  * WebSocket connection details for browser automation.
  */
 export interface WebSocketConnection {

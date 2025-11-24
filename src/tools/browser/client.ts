@@ -4,13 +4,24 @@ import {
   type StartBrowserSessionCommandInput,
   StopBrowserSessionCommand,
   GetBrowserSessionCommand,
+  ListBrowserSessionsCommand,
 } from '@aws-sdk/client-bedrock-agentcore'
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers'
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
 import { HttpRequest } from '@smithy/protocol-http'
 import { SignatureV4 } from '@smithy/signature-v4'
 import { Sha256 } from '@aws-crypto/sha256-js'
-import type { BrowserClientConfig, SessionInfo, StartSessionParams, WebSocketConnection } from './types.js'
+import type {
+  BrowserClientConfig,
+  SessionInfo,
+  StartSessionParams,
+  WebSocketConnection,
+  GetSessionParams,
+  GetSessionResponse,
+  ListSessionsParams,
+  ListSessionsResponse,
+  SessionSummary,
+} from './types.js'
 import { DEFAULT_IDENTIFIER, DEFAULT_SESSION_NAME, DEFAULT_TIMEOUT, DEFAULT_REGION } from './types.js'
 
 /**
@@ -131,26 +142,105 @@ export class Browser {
   }
 
   /**
-   * Retrieves information about the active session.
+   * Get detailed information about a browser session.
    *
-   * @returns Session information
+   * @param params - Optional parameters specifying which session to query
+   * @returns Detailed session information
    *
-   * @throws Error if no session is active
+   * @example
+   * ```typescript
+   * // Get current active session details
+   * const sessionInfo = await browser.getSession()
+   * console.log(`Session status: ${sessionInfo.status}`)
+   *
+   * // Get details for a specific session
+   * const sessionInfo = await browser.getSession({
+   *   sessionId: 'specific-session-id'
+   * })
+   * ```
    */
-  async getSession(): Promise<SessionInfo> {
-    if (!this._session) {
-      throw new Error('No active session. Call startSession() first.')
+  async getSession(params?: GetSessionParams): Promise<GetSessionResponse> {
+    const browserId = params?.browserId ?? this.identifier
+    const sessionId = params?.sessionId ?? this._session?.sessionId
+
+    if (!browserId || !sessionId) {
+      throw new Error(
+        'Browser ID and Session ID must be provided or available from current session. ' +
+          'Start a session first or provide explicit IDs.'
+      )
     }
 
-    // Verify session still exists on the server
     const command = new GetBrowserSessionCommand({
-      browserIdentifier: this.identifier,
-      sessionId: this._session.sessionId,
+      browserIdentifier: browserId,
+      sessionId,
     })
 
-    await this._client.send(command)
+    const response = await this._client.send(command)
 
-    return this._session
+    return {
+      sessionId: response.sessionId!,
+      browserIdentifier: response.browserIdentifier!,
+      name: response.name!,
+      status: response.status as 'READY' | 'TERMINATED',
+      createdAt: response.createdAt!,
+      lastUpdatedAt: (response as any).lastUpdatedAt ?? response.createdAt!,
+      sessionTimeoutSeconds: response.sessionTimeoutSeconds!,
+    }
+  }
+
+  /**
+   * List browser sessions for this browser.
+   *
+   * @param params - Optional filtering and pagination parameters
+   * @returns List of session summaries with optional pagination token
+   *
+   * @example
+   * ```typescript
+   * // List all active sessions
+   * const response = await browser.listSessions({ status: 'READY' })
+   * for (const session of response.items) {
+   *   console.log(`Session ${session.sessionId}: ${session.status}`)
+   * }
+   *
+   * // Paginate through results
+   * let response = await browser.listSessions({ maxResults: 10 })
+   * while (response.nextToken) {
+   *   response = await browser.listSessions({
+   *     maxResults: 10,
+   *     nextToken: response.nextToken
+   *   })
+   * }
+   * ```
+   */
+  async listSessions(params?: ListSessionsParams): Promise<ListSessionsResponse> {
+    const browserId = params?.browserId ?? this.identifier
+
+    if (!browserId) {
+      throw new Error('Browser ID must be provided or available from configuration')
+    }
+
+    const command = new ListBrowserSessionsCommand({
+      browserIdentifier: browserId,
+      ...(params?.status && { status: params.status }),
+      ...(params?.maxResults && { maxResults: params.maxResults }),
+      ...(params?.nextToken && { nextToken: params.nextToken }),
+    })
+
+    const response = await this._client.send(command)
+
+    const items: SessionSummary[] =
+      response.items?.map((item) => ({
+        sessionId: item.sessionId!,
+        name: item.name!,
+        status: item.status as 'READY' | 'TERMINATED',
+        createdAt: item.createdAt!,
+        lastUpdatedAt: item.lastUpdatedAt!,
+      })) ?? []
+
+    return {
+      items,
+      ...(response.nextToken && { nextToken: response.nextToken }),
+    }
   }
 
   /**

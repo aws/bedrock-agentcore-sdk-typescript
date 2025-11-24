@@ -3,6 +3,8 @@ import {
   StartCodeInterpreterSessionCommand,
   StopCodeInterpreterSessionCommand,
   InvokeCodeInterpreterCommand,
+  GetCodeInterpreterSessionCommand,
+  ListCodeInterpreterSessionsCommand,
 } from '@aws-sdk/client-bedrock-agentcore'
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
 import type {
@@ -15,6 +17,11 @@ import type {
   WriteFilesParams,
   ListFilesParams,
   RemoveFilesParams,
+  GetSessionParams,
+  GetSessionResponse,
+  ListSessionsParams,
+  ListSessionsResponse,
+  SessionSummary,
 } from './types.js'
 import { DEFAULT_IDENTIFIER, DEFAULT_SESSION_NAME, DEFAULT_TIMEOUT, DEFAULT_REGION } from './types.js'
 
@@ -135,6 +142,108 @@ export class CodeInterpreter {
     await this._client.send(command)
 
     this._session = null
+  }
+
+  /**
+   * Get detailed information about a code interpreter session.
+   *
+   * @param params - Optional parameters specifying which session to query
+   * @returns Detailed session information
+   *
+   * @example
+   * ```typescript
+   * // Get current active session details
+   * const sessionInfo = await interpreter.getSession()
+   * console.log(`Session status: ${sessionInfo.status}`)
+   *
+   * // Get details for a specific session
+   * const sessionInfo = await interpreter.getSession({
+   *   sessionId: 'specific-session-id'
+   * })
+   * ```
+   */
+  async getSession(params?: GetSessionParams): Promise<GetSessionResponse> {
+    const interpreterId = params?.interpreterId ?? this.identifier
+    const sessionId = params?.sessionId ?? this._session?.sessionId
+
+    if (!interpreterId || !sessionId) {
+      throw new Error(
+        'Interpreter ID and Session ID must be provided or available from current session. ' +
+          'Start a session first or provide explicit IDs.'
+      )
+    }
+
+    const command = new GetCodeInterpreterSessionCommand({
+      codeInterpreterIdentifier: interpreterId,
+      sessionId,
+    })
+
+    const response = await this._client.send(command)
+
+    return {
+      sessionId: response.sessionId!,
+      codeInterpreterIdentifier: response.codeInterpreterIdentifier!,
+      name: response.name!,
+      status: response.status as 'READY' | 'TERMINATED',
+      createdAt: response.createdAt!,
+      lastUpdatedAt: (response as any).lastUpdatedAt ?? response.createdAt!,
+      sessionTimeoutSeconds: response.sessionTimeoutSeconds!,
+    }
+  }
+
+  /**
+   * List code interpreter sessions for this interpreter.
+   *
+   * @param params - Optional filtering and pagination parameters
+   * @returns List of session summaries with optional pagination token
+   *
+   * @example
+   * ```typescript
+   * // List all active sessions
+   * const response = await interpreter.listSessions({ status: 'READY' })
+   * for (const session of response.items) {
+   *   console.log(`Session ${session.sessionId}: ${session.status}`)
+   * }
+   *
+   * // Paginate through results
+   * let response = await interpreter.listSessions({ maxResults: 10 })
+   * while (response.nextToken) {
+   *   response = await interpreter.listSessions({
+   *     maxResults: 10,
+   *     nextToken: response.nextToken
+   *   })
+   * }
+   * ```
+   */
+  async listSessions(params?: ListSessionsParams): Promise<ListSessionsResponse> {
+    const interpreterId = params?.interpreterId ?? this.identifier
+
+    if (!interpreterId) {
+      throw new Error('Interpreter ID must be provided or available from configuration')
+    }
+
+    const command = new ListCodeInterpreterSessionsCommand({
+      codeInterpreterIdentifier: interpreterId,
+      ...(params?.status && { status: params.status }),
+      ...(params?.maxResults && { maxResults: params.maxResults }),
+      ...(params?.nextToken && { nextToken: params.nextToken }),
+    })
+
+    const response = await this._client.send(command)
+
+    const items: SessionSummary[] =
+      response.items?.map((item) => ({
+        sessionId: item.sessionId!,
+        name: item.name!,
+        status: item.status as 'READY' | 'TERMINATED',
+        createdAt: item.createdAt!,
+        lastUpdatedAt: item.lastUpdatedAt!,
+      })) ?? []
+
+    return {
+      items,
+      ...(response.nextToken && { nextToken: response.nextToken }),
+    }
   }
 
   // ===========================
