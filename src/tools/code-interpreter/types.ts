@@ -138,8 +138,9 @@ export interface GetSessionResponse {
 
   /**
    * Session status.
+   * Common values: 'READY', 'TERMINATED'
    */
-  status: 'READY' | 'TERMINATED'
+  status: string
 
   /**
    * Timestamp when session was created.
@@ -169,8 +170,9 @@ export interface ListSessionsParams {
 
   /**
    * Filter by session status.
+   * Common values: 'READY', 'TERMINATED'
    */
-  status?: 'READY' | 'TERMINATED'
+  status?: string
 
   /**
    * Maximum number of results to return (1-100).
@@ -200,8 +202,9 @@ export interface SessionSummary {
 
   /**
    * Session status.
+   * Common values: 'READY', 'TERMINATED'
    */
-  status: 'READY' | 'TERMINATED'
+  status: string
 
   /**
    * Timestamp when session was created.

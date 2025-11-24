@@ -184,7 +184,7 @@ export class CodeInterpreter {
       sessionId: response.sessionId!,
       codeInterpreterIdentifier: response.codeInterpreterIdentifier!,
       name: response.name!,
-      status: response.status as 'READY' | 'TERMINATED',
+      status: response.status ?? 'UNKNOWN',
       createdAt: response.createdAt!,
       lastUpdatedAt: (response as any).lastUpdatedAt ?? response.createdAt!,
       sessionTimeoutSeconds: response.sessionTimeoutSeconds!,
@@ -224,7 +224,7 @@ export class CodeInterpreter {
 
     const command = new ListCodeInterpreterSessionsCommand({
       codeInterpreterIdentifier: interpreterId,
-      ...(params?.status && { status: params.status }),
+      ...(params?.status && { status: params.status as any }),
       ...(params?.maxResults && { maxResults: params.maxResults }),
       ...(params?.nextToken && { nextToken: params.nextToken }),
     })
@@ -235,7 +235,7 @@ export class CodeInterpreter {
       response.items?.map((item) => ({
         sessionId: item.sessionId!,
         name: item.name!,
-        status: item.status as 'READY' | 'TERMINATED',
+        status: item.status ?? 'UNKNOWN',
         createdAt: item.createdAt!,
         lastUpdatedAt: item.lastUpdatedAt!,
       })) ?? []

@@ -177,15 +177,38 @@ export class Browser {
 
     const response = await this._client.send(command)
 
-    return {
+    // Parse streams if present
+    const responseData: GetSessionResponse = {
       sessionId: response.sessionId!,
       browserIdentifier: response.browserIdentifier!,
       name: response.name!,
-      status: response.status as 'READY' | 'TERMINATED',
+      status: response.status ?? 'UNKNOWN',
       createdAt: response.createdAt!,
       lastUpdatedAt: (response as any).lastUpdatedAt ?? response.createdAt!,
       sessionTimeoutSeconds: response.sessionTimeoutSeconds!,
     }
+
+    // Add streams if present
+    if ((response as any).streams) {
+      const streams: any = {}
+
+      if ((response as any).streams.automationStream) {
+        streams.automationStream = {
+          streamEndpoint: (response as any).streams.automationStream.streamEndpoint,
+          streamStatus: (response as any).streams.automationStream.streamStatus,
+        }
+      }
+
+      if ((response as any).streams.liveViewStream) {
+        streams.liveViewStream = {
+          streamEndpoint: (response as any).streams.liveViewStream.streamEndpoint,
+        }
+      }
+
+      responseData.streams = streams
+    }
+
+    return responseData
   }
 
   /**
@@ -221,7 +244,7 @@ export class Browser {
 
     const command = new ListBrowserSessionsCommand({
       browserIdentifier: browserId,
-      ...(params?.status && { status: params.status }),
+      ...(params?.status && { status: params.status as any }),
       ...(params?.maxResults && { maxResults: params.maxResults }),
       ...(params?.nextToken && { nextToken: params.nextToken }),
     })
@@ -232,7 +255,7 @@ export class Browser {
       response.items?.map((item) => ({
         sessionId: item.sessionId!,
         name: item.name!,
-        status: item.status as 'READY' | 'TERMINATED',
+        status: item.status ?? 'UNKNOWN',
         createdAt: item.createdAt!,
         lastUpdatedAt: item.lastUpdatedAt!,
       })) ?? []

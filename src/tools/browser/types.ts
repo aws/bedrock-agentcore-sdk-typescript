@@ -135,6 +135,46 @@ export interface GetSessionParams {
 }
 
 /**
+ * Stream endpoint information for browser sessions.
+ */
+export interface StreamInfo {
+  /**
+   * WebSocket endpoint URL for the stream.
+   */
+  streamEndpoint?: string
+
+  /**
+   * Status of the stream.
+   */
+  streamStatus?: string
+}
+
+/**
+ * Live view stream information for browser sessions.
+ */
+export interface LiveViewStreamInfo {
+  /**
+   * WebSocket endpoint URL for the live view stream.
+   */
+  streamEndpoint?: string
+}
+
+/**
+ * Browser session streams for automation and live viewing.
+ */
+export interface BrowserSessionStreams {
+  /**
+   * Automation stream for browser control.
+   */
+  automationStream?: StreamInfo
+
+  /**
+   * Live view stream for viewing browser state.
+   */
+  liveViewStream?: LiveViewStreamInfo
+}
+
+/**
  * Detailed session information returned by getSession.
  */
 export interface GetSessionResponse {
@@ -155,8 +195,9 @@ export interface GetSessionResponse {
 
   /**
    * Session status.
+   * Common values: 'READY', 'TERMINATED'
    */
-  status: 'READY' | 'TERMINATED'
+  status: string
 
   /**
    * Timestamp when session was created.
@@ -172,6 +213,11 @@ export interface GetSessionResponse {
    * Session timeout in seconds.
    */
   sessionTimeoutSeconds: number
+
+  /**
+   * Stream endpoints for browser automation and live viewing.
+   */
+  streams?: BrowserSessionStreams
 }
 
 /**
@@ -186,8 +232,9 @@ export interface ListSessionsParams {
 
   /**
    * Filter by session status.
+   * Common values: 'READY', 'TERMINATED'
    */
-  status?: 'READY' | 'TERMINATED'
+  status?: string
 
   /**
    * Maximum number of results to return (1-100).
@@ -217,8 +264,9 @@ export interface SessionSummary {
 
   /**
    * Session status.
+   * Common values: 'READY', 'TERMINATED'
    */
-  status: 'READY' | 'TERMINATED'
+  status: string
 
   /**
    * Timestamp when session was created.
