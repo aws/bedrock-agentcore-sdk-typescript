@@ -1,44 +1,60 @@
 # Auto-labeling configuration for PRs
+# Format for actions/labeler@v5
 
 # Runtime-related changes
 'area: runtime':
-  - 'src/runtime/**/*'
-  - 'tests_integ/runtime.test.ts'
+  - changed-files:
+    - any-glob-to-any-file: 'src/runtime/**/*'
+  - changed-files:
+    - any-glob-to-any-file: 'tests_integ/runtime.test.ts'
 
 # Browser tool changes
 'area: browser':
-  - 'src/tools/browser/**/*'
-  - 'tests_integ/browser.test.ts'
+  - changed-files:
+    - any-glob-to-any-file: 'src/tools/browser/**/*'
+  - changed-files:
+    - any-glob-to-any-file: 'tests_integ/browser.test.ts'
 
 # Code interpreter changes
 'area: code-interpreter':
-  - 'src/tools/code-interpreter/**/*'
-  - 'tests_integ/code-interpreter.test.ts'
+  - changed-files:
+    - any-glob-to-any-file: 'src/tools/code-interpreter/**/*'
+  - changed-files:
+    - any-glob-to-any-file: 'tests_integ/code-interpreter.test.ts'
 
 # Documentation changes
 'type: docs':
-  - '**/*.md'
-  - 'docs/**/*'
+  - changed-files:
+    - any-glob-to-any-file: '**/*.md'
+  - changed-files:
+    - any-glob-to-any-file: 'docs/**/*'
 
 # Test changes
 'type: test':
-  - '**/*.test.ts'
-  - 'tests_integ/**/*'
+  - changed-files:
+    - any-glob-to-any-file: '**/*.test.ts'
+  - changed-files:
+    - any-glob-to-any-file: 'tests_integ/**/*'
 
 # Build/CI changes
 'type: build':
-  - 'package.json'
-  - 'package-lock.json'
-  - 'tsconfig.json'
-  - 'vite.config.ts'
-  - 'vitest.config.ts'
-  - '.github/**/*'
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'vite.config.ts'
+      - 'vitest.config.ts'
+      - '.github/**/*'
 
 # Example changes
 'type: examples':
-  - 'examples/**/*'
+  - changed-files:
+    - any-glob-to-any-file: 'examples/**/*'
 
 # Dependencies
 'dependencies':
-  - 'package.json'
-  - 'package-lock.json'
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'package.json'
+      - 'package-lock.json'

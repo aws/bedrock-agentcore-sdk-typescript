@@ -1,0 +1,183 @@
+name: Secure Integration Tests
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+# Global permissions - most restrictive by default
+permissions:
+  contents: read
+
+jobs:
+  authorization-check:
+    permissions: read-all
+    runs-on: ubuntu-latest
+    outputs:
+      approval-env: ${{ steps.collab-check.outputs.result }}
+      should-run: ${{ steps.safety-check.outputs.result }}
+
+    steps:
+      - name: Checkout base branch for safety check
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Safety Check - Prevent Workflow Modification Attacks
+        id: safety-check
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            if (!context.payload.pull_request) {
+              console.log('Not a pull request, proceeding');
+              return 'true';
+            }
+
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+            });
+
+            // Files that could be used to exfiltrate secrets or manipulate tests
+            const dangerousPatterns = [
+              /^\.github\/workflows\//,
+              /^\.github\/actions\//,
+              /vitest\.config\.(ts|js)$/,
+              /jest\.config\.(ts|js)$/,
+              /\.env/,
+            ];
+
+            const dangerousFiles = files.filter(file =>
+              dangerousPatterns.some(pattern => pattern.test(file.filename))
+            );
+
+            if (dangerousFiles.length > 0) {
+              console.log('⚠️ SECURITY: PR modifies sensitive files:');
+              dangerousFiles.forEach(f => console.log(`  - ${f.filename}`));
+              console.log('Manual review required before running integration tests');
+              return 'false';
+            }
+
+            console.log('✓ Safety check passed - no sensitive files modified');
+            return 'true';
+
+      - name: Collaborator Check
+        uses: actions/github-script@v7
+        id: collab-check
+        with:
+          result-encoding: string
+          script: |
+            try {
+              let username;
+              if (context.payload.pull_request) {
+                username = context.payload.pull_request.user.login;
+              } else {
+                username = context.actor;
+                console.log(`No pull request context found, checking permissions for actor: ${username}`);
+              }
+
+              const permissionResponse = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: username,
+              });
+              const permission = permissionResponse.data.permission;
+              const hasWriteAccess = ['write', 'admin'].includes(permission);
+
+              if (!hasWriteAccess) {
+                console.log(`User ${username} does not have write access (permission: ${permission})`);
+                return 'manual-approval';
+              } else {
+                console.log(`Verified ${username} has write access. Auto-approving integration tests.`);
+                return 'auto-approve';
+              }
+            } catch (error) {
+              console.log(`Error checking permissions: ${error.message}`);
+              console.log('Requiring manual approval for integration tests.');
+              return 'manual-approval';
+            }
+
+  run-integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: authorization-check
+    if: needs.authorization-check.outputs.should-run == 'true'
+    environment: ${{ needs.authorization-check.outputs.approval-env }}
+    permissions:
+      id-token: write # Required for AWS OIDC
+      pull-requests: read # Required to read PR info
+      contents: read # Required to checkout code
+
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AGENTCORE_INTEG_TEST_ROLE }}
+          aws-region: us-west-2
+          mask-aws-account-id: true
+
+      - name: Checkout PR head commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: npm run build
+
+      - name: Run integration tests - Browser
+        env:
+          AWS_REGION: us-west-2
+        timeout-minutes: 10
+        run: |
+          npm run test:integ -- --reporter=verbose tests_integ/browser.test.ts
+
+      - name: Run integration tests - Code Interpreter
+        env:
+          AWS_REGION: us-west-2
+        timeout-minutes: 10
+        run: |
+          npm run test:integ -- --reporter=verbose tests_integ/code-interpreter.test.ts
+
+  safety-gate:
+    name: Security Block
+    runs-on: ubuntu-latest
+    needs: authorization-check
+    if: needs.authorization-check.outputs.should-run == 'false'
+    permissions: {}
+
+    steps:
+      - name: Security Block Notice
+        run: |
+          echo "🚨 SECURITY BLOCK: This PR modifies sensitive files"
+          echo ""
+          echo "The following types of files trigger manual review:"
+          echo "  - Workflow files (.github/workflows/)"
+          echo "  - Action files (.github/actions/)"
+          echo "  - Test config files (vitest.config.ts, jest.config.ts)"
+          echo "  - Environment files (.env*)"
+          echo ""
+          echo "⚠️  Integration tests will NOT run automatically"
+          echo "👀 A maintainer must review the changes and manually trigger tests"
+          echo ""
+          echo "This is a security measure to prevent:"
+          echo "  - Workflow modification attacks"
+          echo "  - Secret exfiltration"
+          echo "  - Test manipulation"
+          exit 1
