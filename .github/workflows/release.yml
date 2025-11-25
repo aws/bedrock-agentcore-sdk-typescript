@@ -17,10 +17,15 @@ on:
         required: false
         type: string
       prerelease_tag:
-        description: 'Prerelease tag (e.g., alpha, beta, rc) - only used with prerelease bump'
+        description: 'Prerelease tag (e.g., alpha, beta, rc) - only used with "prerelease" bump type'
         required: false
         type: string
-        default: 'beta'
+        default: ''
+      dry_run:
+        description: '🧪 DRY RUN MODE - Test without publishing to npm'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -81,12 +86,26 @@ jobs:
             echo "💡 Tip: Provide a meaningful changelog message for better release notes"
           fi
 
-          # Run version bump script
+          # Build version bump command
+          BUMP_CMD="npx tsx scripts/bump-version.ts $BUMP_TYPE"
+          
+          # Add changelog if provided
           if [ -n "$CHANGELOG_INPUT" ]; then
-            npx tsx scripts/bump-version.ts "$BUMP_TYPE" --changelog "$CHANGELOG_INPUT" --prerelease-tag "$PRERELEASE_TAG"
-          else
-            npx tsx scripts/bump-version.ts "$BUMP_TYPE" --prerelease-tag "$PRERELEASE_TAG"
+            BUMP_CMD="$BUMP_CMD --changelog \"$CHANGELOG_INPUT\""
           fi
+          
+          # Add prerelease-tag if provided and bump_type is prerelease
+          if [ "$BUMP_TYPE" = "prerelease" ]; then
+            if [ -n "$PRERELEASE_TAG" ]; then
+              BUMP_CMD="$BUMP_CMD --prerelease-tag \"$PRERELEASE_TAG\""
+            else
+              # Default to beta if prerelease but no tag specified
+              BUMP_CMD="$BUMP_CMD --prerelease-tag \"beta\""
+            fi
+          fi
+          
+          # Run the bump command
+          eval $BUMP_CMD
 
           NEW_VERSION=$(node -p "require('./package.json').version")
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
@@ -133,27 +152,41 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
         run: |
           BRANCH_NAME="release/v$NEW_VERSION"
-
+          
           WARNING_TEXT=""
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then
             WARNING_TEXT="**WARNING**: Not running from main branch!"
           else
             WARNING_TEXT="✅ Running from main branch"
           fi
+          
+          DRY_RUN_TEXT=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            DRY_RUN_TEXT='## 🧪 DRY RUN MODE - NO PUBLISHING
 
+          **This is a TEST release. npm publish will be SKIPPED.**
+
+          After merging this PR, the workflow will NOT publish to npm.
+          To do a real release, run the workflow again with dry-run UNCHECKED.
+
+          ---
+
+          '
+          fi
+          
           gh pr create \
             --base main \
             --head "$BRANCH_NAME" \
-            --title "Release v$NEW_VERSION" \
-            --body "## 🚀 Release v$NEW_VERSION
-
+            --title "Release v$NEW_VERSION$( [ "${{ github.event.inputs.dry_run }}" = "true" ] && echo " [DRY RUN]" || echo "" )" \
+            --body "$DRY_RUN_TEXT## 🚀 Release v$NEW_VERSION
+          
           This PR was automatically created by the release workflow.
-
+          
           ### ⚠️  Pre-merge Checklist
           - [ ] Review CHANGELOG.md - ensure it has meaningful release notes
           - [ ] Verify version numbers are correct in all files
           - [ ] All CI checks are passing
-
+          
           ### 📝 How to improve changelog
           If the auto-generated changelog isn't good enough:
           1. Edit CHANGELOG.md in this PR
@@ -253,18 +286,48 @@ jobs:
           echo ""
           echo "🚨 Only approve if everything is correct!"
 
+  dry-run-mode:
+    name: 🧪 Dry Run Mode - No Publishing
+    needs: [prepare-release, release-approval]
+    runs-on: ubuntu-latest
+    if: github.event.inputs.dry_run == 'true'
+    steps:
+      - name: Dry Run Notice
+        run: |
+          echo "🧪 ==============================================="
+          echo "🧪 DRY RUN MODE - NO PUBLISHING TO NPM"
+          echo "🧪 ==============================================="
+          echo ""
+          echo "✅ This is a TEST RUN. No actual publishing will occur."
+          echo ""
+          echo "What would have happened:"
+          echo "  • Version bump has been prepared in PR"
+          echo "  • Package would be built and tested"
+          echo "  • Package would be published to npm"
+          echo "  • Git tag would be created"
+          echo "  • GitHub release would be created"
+          echo ""
+          echo "🎯 To do a REAL RELEASE:"
+          echo "  1. Review and merge the release PR"
+          echo "  2. Run this workflow again"
+          echo "  3. UNCHECK the 'DRY RUN MODE' box"
+          echo "  4. Approve when prompted"
+          echo ""
+          echo "🧪 DRY RUN COMPLETE - Nothing was published!"
+          echo "🧪 ==============================================="
+
   publish-npm:
     name: Publish to npm
     needs: [prepare-release, release-approval]
     runs-on: ubuntu-latest
-    # CRITICAL: Only run from main branch
-    if: github.ref == 'refs/heads/main'
+    # CRITICAL: Only run from main branch AND not in dry-run mode
+    if: github.ref == 'refs/heads/main' && github.event.inputs.dry_run != 'true'
     environment:
       name: npm
       url: https://www.npmjs.com/package/bedrock-agentcore
     permissions:
       id-token: write # Required for OIDC trusted publishing
-      contents: read
+      contents: write # Required to push git tags
 
     steps:
       - uses: actions/checkout@v6
