@@ -1,7 +1,7 @@
 /**
  * Integration tests for ToolLoopAgent with CodeInterpreter and Browser tools
  *
- * These tests validate end-to-end agent functionality with real AWS services.
+ * These tests validate end-to-end agent functionality.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
@@ -9,6 +9,7 @@ import { ToolLoopAgent } from 'ai'
 import { bedrock } from '@ai-sdk/amazon-bedrock'
 import { CodeInterpreterTools } from '../src/tools/code-interpreter/integrations/vercel-ai/index.js'
 import { BrowserTools } from '../src/tools/browser/integrations/vercel-ai/index.js'
+
 
 const testRegion = process.env.AWS_REGION || 'us-west-2'
 
