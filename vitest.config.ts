@@ -18,6 +18,7 @@ export default defineConfig({
           include: ['tests_integ/**/*.test.ts'],
           name: { label: 'integ', color: 'magenta' },
           testTimeout: 30000,
+          setupFiles: ['./tests_integ/setup.ts'],
           sequence: {
             concurrent: true,
           },
