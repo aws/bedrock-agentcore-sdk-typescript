@@ -126,9 +126,3 @@ Make sure you've built the SDK:
 ```bash
 npm run build
 ```
-
-## Related Documentation
-
-- [Vercel AI SDK v6 Documentation](https://ai-sdk.dev/docs)
-- [AWS Bedrock AgentCore Documentation](https://docs.aws.amazon.com/bedrock-agentcore/)
-- [SDK README](../README.md)
