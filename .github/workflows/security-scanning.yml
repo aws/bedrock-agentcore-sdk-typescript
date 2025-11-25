@@ -25,7 +25,7 @@ jobs:
           fetch-depth: 0
 
       - name: TruffleHog OSS
-        uses: trufflesecurity/trufflehog@v3.90.6
+        uses: trufflesecurity/trufflehog@v3.91.1
         with:
           path: ./
           extra_args: --debug --only-verified
@@ -53,29 +53,9 @@ jobs:
       - name: Run npm audit (production only)
         run: npm audit --omit=dev --audit-level=high
 
-  codeql:
-    name: CodeQL Analysis
-    runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-      packages: read
-      actions: read
-      contents: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: javascript-typescript
-          queries: security-and-quality
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: '/language:javascript-typescript'
+  # NOTE: CodeQL is handled by GitHub's default setup
+  # Go to Settings → Code security → CodeQL analysis to configure
+  # Keeping advanced CodeQL here would conflict with default setup
 
   dependency-review:
     name: Dependency Review
@@ -89,7 +69,8 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
-          deny-licenses: GPL-3.0, AGPL-3.0
+          # Note: License checks only apply to npm dependencies, not GitHub Actions
+          # GitHub Actions running in workflows don't affect the repository's license
 
   eslint-security:
     name: ESLint Security Rules

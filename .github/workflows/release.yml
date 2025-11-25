@@ -262,6 +262,9 @@ jobs:
     environment:
       name: npm
       url: https://www.npmjs.com/package/bedrock-agentcore
+    permissions:
+      id-token: write # Required for OIDC trusted publishing
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -281,16 +284,11 @@ jobs:
           name: dist
           path: .
 
-      - name: Verify npm token exists
-        env:
-          NPM_TOKEN_SET: ${{ secrets.NPM_TOKEN != '' }}
+      - name: Ensure npm 11.5.1+ for trusted publishing
         run: |
-          if [ "$NPM_TOKEN_SET" != "true" ]; then
-            echo "❌ ERROR: NPM_TOKEN not configured!"
-            echo "Please add your npm token to GitHub Secrets"
-            exit 1
-          fi
-          echo "✓ npm token is configured"
+          echo "Current npm version: $(npm --version)"
+          npm install -g npm@latest
+          echo "Updated npm version: $(npm --version)"
 
       - name: Get version
         id: version
@@ -318,11 +316,12 @@ jobs:
       - name: Build package
         run: npm run build
 
-      - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish to npm (using OIDC trusted publishing)
         run: |
+          echo "📦 Publishing with OIDC trusted publishing..."
+          echo "ℹ️  No NPM_TOKEN needed - using GitHub OIDC"
           npm publish --access public
+          echo "✅ Successfully published using trusted publishing"
 
       - name: Wait for npm availability
         env:

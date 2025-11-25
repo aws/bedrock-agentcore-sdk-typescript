@@ -4,10 +4,17 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   validate:
     name: Validate PR
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
