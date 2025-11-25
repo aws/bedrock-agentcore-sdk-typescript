@@ -14,20 +14,21 @@
   </h2>
 
   <div align="center">
-    <a href="https://github.com/aws/bedrock-agentcore-sdk-python/graphs/commit-activity"><img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/aws/bedrock-agentcore-sdk-python"/></a>
-    <a href="https://github.com/aws/bedrock-agentcore-sdk-python/issues"><img alt="GitHub open issues" src="https://img.shields.io/github/issues/aws/bedrock-agentcore-sdk-python"/></a>
-    <a href="https://github.com/aws/bedrock-agentcore-sdk-python/pulls"><img alt="GitHub open pull requests" src="https://img.shields.io/github/issues-pr/aws/bedrock-agentcore-sdk-python"/></a>
-    <a href="https://github.com/aws/bedrock-agentcore-sdk-python/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/aws/bedrock-agentcore-sdk-python"/></a>
-    <a href="https://pypi.org/project/bedrock-agentcore"><img alt="PyPI version" src="https://img.shields.io/pypi/v/bedrock-agentcore"/></a>
-    <a href="https://python.org"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/bedrock-agentcore"/></a>
+    <a href="https://github.com/aws/bedrock-agentcore-sdk-typescript/graphs/commit-activity"><img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/aws/bedrock-agentcore-sdk-typescript"/></a>
+    <a href="https://github.com/aws/bedrock-agentcore-sdk-typescript/issues"><img alt="GitHub open issues" src="https://img.shields.io/github/issues/aws/bedrock-agentcore-sdk-typescript"/></a>
+    <a href="https://github.com/aws/bedrock-agentcore-sdk-typescript/pulls"><img alt="GitHub open pull requests" src="https://img.shields.io/github/issues-pr/aws/bedrock-agentcore-sdk-typescript"/></a>
+    <a href="https://github.com/aws/bedrock-agentcore-sdk-typescript/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/aws/bedrock-agentcore-sdk-typescript"/></a>
+    <a href="https://www.npmjs.com/package/bedrock-agentcore"><img alt="npm version" src="https://img.shields.io/npm/v/bedrock-agentcore"/></a>
+    <a href="https://nodejs.org"><img alt="Node.js versions" src="https://img.shields.io/node/v/bedrock-agentcore"/></a>
   </div>
 
   <p>
   <a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html">Documentation</a>
     ◆ <a href="https://github.com/awslabs/amazon-bedrock-agentcore-samples">Samples</a>
     ◆ <a href="https://discord.gg/bedrockagentcore-preview">Discord</a>
-    ◆ <a href="https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/bedrock-agentcore-control.html">Boto3 Python SDK</a>
-    ◆ <a href="https://github.com/aws/bedrock-agentcore-sdk-python">Runtime Python SDK</a>
+    ◆ <a href="https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/bedrock-agentcore-control.html">AWS Boto3 SDK</a>
+    ◆ <a href="https://github.com/aws/bedrock-agentcore-sdk-python">Python SDK</a>
+    ◆ <a href="https://github.com/aws/bedrock-agentcore-sdk-typescript">TypeScript SDK</a>
     ◆ <a href="https://github.com/aws/bedrock-agentcore-starter-toolkit">Starter Toolkit</a>
 
   </p>
