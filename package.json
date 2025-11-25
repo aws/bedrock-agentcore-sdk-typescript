@@ -91,13 +91,13 @@
   "homepage": "https://github.com/aws/bedrock-agentcore-sdk-typescript#readme",
   "dependencies": {
     "@aws-crypto/sha256-js": "^5.2.0",
-    "@aws-sdk/client-bedrock-agent-runtime": "^3.911.0",
-    "@aws-sdk/client-bedrock-agentcore": "^3.931.0",
-    "@aws-sdk/credential-providers": "^3.931.0",
+    "@aws-sdk/client-bedrock-agent-runtime": "^3.939.0",
+    "@aws-sdk/client-bedrock-agentcore": "^3.939.0",
+    "@aws-sdk/credential-providers": "^3.939.0",
     "@smithy/protocol-http": "^5.3.5",
     "@smithy/signature-v4": "^5.3.5",
     "@smithy/util-utf8": "^4.2.0",
-    "zod": "^4.1.12"
+    "zod": "^4.1.13"
   },
   "peerDependencies": {
     "ai": ">=6.0.0-beta",
