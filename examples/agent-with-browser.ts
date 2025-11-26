@@ -4,11 +4,6 @@
  * This example demonstrates how to use the AI SDK v6 beta's new Agent API
  * with the AWS Bedrock AgentCore Browser tool for web automation.
  *
- * Features demonstrated:
- * - ToolLoopAgent with browser automation tools
- * - Web navigation, content extraction, and interaction
- * - Error handling and session management
- *
  * Prerequisites:
  * - AWS credentials configured (for Bedrock and Browser)
  * - Access to Claude Sonnet 4 on AWS Bedrock
@@ -20,11 +15,12 @@
 /// <reference types="node" />
 
 import './setup.js'
+
 import { ToolLoopAgent } from 'ai'
 import { bedrock } from '@ai-sdk/amazon-bedrock'
 import { BrowserTools } from '../src/tools/browser/integrations/vercel-ai/index.js'
 
-// Initialize Browser tools - provides all browser automation and session management
+// Initialize Browser tools
 const browser = new BrowserTools({
   region: process.env.AWS_REGION || 'us-west-2',
 })
@@ -32,154 +28,156 @@ const browser = new BrowserTools({
 /**
  * Example 1: Basic Web Scraping Agent
  *
- * Creates an agent that can navigate to websites and extract information.
+ * Navigates to a simple page and extracts content.
  */
 async function basicWebScrapingExample() {
-  console.log('\n=== Example 1: Basic Web Scraping Agent ===\n')
+  console.log('\n=== Example 1: Basic Web Scraping ===\n')
 
   const agent = new ToolLoopAgent({
     model: bedrock('us.anthropic.claude-sonnet-4-20250514-v1:0'),
-    instructions: `You are a web research assistant with access to a browser.
-    You can navigate to websites and extract information from them.
-    Always describe what you find in a clear and organized way.`,
+    instructions: 'Browse websites and extract information. Be concise.',
     tools: {
       navigate: browser.navigate,
       getText: browser.getText,
-      getHtml: browser.getHtml,
     },
+    maxSteps: 4,
   })
 
   try {
     const result = await agent.generate({
-      prompt: `Go to https://en.wikipedia.org/wiki/TypeScript and extract:
-      1. The main title of the article
-      2. The first paragraph describing what TypeScript is
-      Provide a brief summary of what you found.`,
+      prompt: 'Go to https://example.com and tell me the main heading.',
     })
 
-    console.log('Agent Response:')
-    console.log(result.text)
-    console.log('\nCompleted in', result.steps.length, 'steps')
+    console.log('Response:', result.text)
+    console.log('\n✅ Example 1 completed')
+  } catch (error) {
+    handleError(error, 'Example 1')
   } finally {
     await browser.stopSession()
   }
 }
 
 /**
- * Example 2: Interactive Web Agent
+ * Example 2: Extract Page Details
  *
- * Demonstrates an agent that can interact with web pages (click, type).
+ * Gets more detailed information from a page.
  */
-async function interactiveWebExample() {
-  console.log('\n=== Example 2: Interactive Web Agent ===\n')
+async function extractPageDetailsExample() {
+  console.log('\n=== Example 2: Extract Page Details ===\n')
 
   const agent = new ToolLoopAgent({
     model: bedrock('us.anthropic.claude-sonnet-4-20250514-v1:0'),
-    instructions: `You are a web automation assistant that can navigate websites,
-    click on elements, type into forms, and extract information.
-    Describe each action you take.`,
-    tools: browser.tools,
+    instructions: 'Extract information from web pages. Be brief.',
+    tools: {
+      navigate: browser.navigate,
+      getText: browser.getText,
+      evaluate: browser.evaluate,
+    },
+    maxSteps: 4,
   })
 
   try {
     const result = await agent.generate({
-      prompt: `Go to Wikipedia's main page (https://www.wikipedia.org).
-      Find and use the search functionality to look up "Rust programming language".
-      Then extract the first paragraph from the search result article.`,
+      prompt: 'Go to https://example.com, get the page title using JavaScript, and summarize in one sentence.',
     })
 
-    console.log('Agent Response:')
-    console.log(result.text)
-    console.log('\nCompleted in', result.steps.length, 'steps')
+    console.log('Response:', result.text)
+    console.log('\n✅ Example 2 completed')
+  } catch (error) {
+    handleError(error, 'Example 2')
   } finally {
     await browser.stopSession()
   }
 }
 
 /**
- * Example 3: Streaming Web Research
+ * Example 3: Streaming Response
  *
- * Demonstrates streaming output while the agent browses the web.
+ * Demonstrates streaming output while browsing.
  */
-async function streamingWebResearchExample() {
-  console.log('\n=== Example 3: Streaming Web Research ===\n')
+async function streamingExample() {
+  console.log('\n=== Example 3: Streaming Browser Response ===\n')
 
   const agent = new ToolLoopAgent({
     model: bedrock('us.anthropic.claude-sonnet-4-20250514-v1:0'),
-    instructions: `You are a research assistant that browses the web to gather information.
-    Explain your research process as you go.`,
-    tools: browser.tools,
+    instructions: 'Browse and describe pages briefly.',
+    tools: {
+      navigate: browser.navigate,
+      getText: browser.getText,
+    },
+    maxSteps: 3,
   })
 
   try {
     const result = await agent.stream({
-      prompt: `Research the Node.js runtime by visiting its Wikipedia page
-      (https://en.wikipedia.org/wiki/Node.js).
-      Extract key information about:
-      1. What Node.js is
-      2. When it was created
-      3. Who created it
-      Summarize your findings.`,
+      prompt: 'Visit https://example.com and describe what you see in 2-3 sentences.',
     })
 
-    console.log('Streaming Response:')
-    console.log('-'.repeat(50))
-
-    for await (const textPart of result.textStream) {
-      process.stdout.write(textPart)
+    process.stdout.write('Response: ')
+    for await (const text of result.textStream) {
+      process.stdout.write(text)
     }
-
-    console.log('\n' + '-'.repeat(50))
-
-    const finalResult = await result
-    console.log('\n📊 Completed in', finalResult.steps.length, 'steps')
+    console.log('\n\n✅ Example 3 completed')
+  } catch (error) {
+    handleError(error, 'Example 3')
   } finally {
     await browser.stopSession()
   }
 }
 
-/**
- * Main function to run all examples
- */
+function handleError(error: unknown, exampleName: string) {
+  if (error instanceof Error) {
+    if (error.message.includes('Too many tokens') || error.message.includes('rate limit')) {
+      console.error(`\n⚠️  ${exampleName}: Rate limit hit. Try running a single example:`)
+      console.error('   npx tsx examples/agent-with-browser.ts basic')
+    } else {
+      console.error(`\n❌ ${exampleName} error:`, error.message.slice(0, 150))
+    }
+  } else {
+    console.error(`\n❌ ${exampleName} error:`, error)
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, ms))
+}
+
 async function main() {
   console.log('🌐 AI SDK v6 Agent + Browser Examples')
-  console.log('='.repeat(60))
+  console.log('='.repeat(50))
+  console.log('\n💡 Run single example: npx tsx examples/agent-with-browser.ts basic\n')
 
   const examples = [
-    { name: 'Basic Scraping', fn: basicWebScrapingExample },
-    { name: 'Interactive', fn: interactiveWebExample },
-    { name: 'Streaming', fn: streamingWebResearchExample },
+    { name: 'basic', desc: 'Basic Web Scraping', fn: basicWebScrapingExample },
+    { name: 'details', desc: 'Extract Page Details', fn: extractPageDetailsExample },
+    { name: 'stream', desc: 'Streaming Response', fn: streamingExample },
   ]
 
-  // Run all examples or a specific one
-  const exampleToRun = process.argv[2]
+  const arg = process.argv[2]?.toLowerCase()
 
-  if (exampleToRun) {
-    const example = examples.find((ex) => ex.name.toLowerCase().includes(exampleToRun.toLowerCase()))
+  if (arg) {
+    const example = examples.find((ex) => ex.name.includes(arg))
     if (example) {
       await example.fn()
     } else {
-      console.error(`Example "${exampleToRun}" not found`)
-      console.log('Available examples:', examples.map((ex) => ex.name).join(', '))
-      process.exit(1)
+      console.log('Available examples: basic, details, stream')
     }
   } else {
-    // Run all examples
-    for (const example of examples) {
-      try {
-        await example.fn()
-      } catch (error) {
-        console.error(`\n❌ Error in ${example.name}:`, error)
+    // Run all with delays
+    for (let i = 0; i < examples.length; i++) {
+      await examples[i].fn()
+      if (i < examples.length - 1) {
+        console.log('\n⏳ Waiting 10 seconds...\n')
+        await delay(10000)
       }
     }
   }
 
-  console.log('\n✅ All examples completed!')
+  console.log('\n✅ Done!')
 }
 
-// Run examples if this file is executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch(console.error)
 }
 
-export { basicWebScrapingExample, interactiveWebExample, streamingWebResearchExample }
+export { basicWebScrapingExample, extractPageDetailsExample, streamingExample }

@@ -18,6 +18,7 @@
  */
 
 /// <reference types="node" />
+import './setup.js'
 
 import { ToolLoopAgent } from 'ai'
 import { bedrock } from '@ai-sdk/amazon-bedrock'
