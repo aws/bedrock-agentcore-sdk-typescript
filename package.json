@@ -92,7 +92,6 @@
   "homepage": "https://github.com/aws/bedrock-agentcore-sdk-typescript#readme",
   "dependencies": {
     "@aws-crypto/sha256-js": "^5.2.0",
-    "@aws-sdk/client-bedrock-agent-runtime": "^3.939.0",
     "@aws-sdk/client-bedrock-agentcore": "^3.939.0",
     "@aws-sdk/credential-providers": "^3.939.0",
     "@smithy/protocol-http": "^5.3.5",
