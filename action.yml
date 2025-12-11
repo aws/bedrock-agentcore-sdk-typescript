@@ -162,5 +162,5 @@ runs:
         if [ -f "${{ github.action_path }}/custom_agent_runner.py" ]; then
           "${{ github.action_path }}/.venv/bin/python" "${{ github.action_path }}/custom_agent_runner.py"
         else
-          "${{ github.action_path }}/.venv/bin/python" "${{ github.action_path }}/strands_action/agent_runner.py"
+          "${{ github.action_path }}/.venv/bin/python" "${{ github.action_path }}/tools/agent_runner.py"
         fi
