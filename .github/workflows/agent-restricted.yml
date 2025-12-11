@@ -38,7 +38,7 @@ on:
       tools:
         description: 'Tool config (e.g., strands_tools:shell;strands_action:use_github)'
         required: false
-        default: 'strands_tools:shell;strands_action:use_github,create_subagent,system_prompt'
+        default: 'strands_tools:shell;tools:use_github'
         type: string
       agent_runner:
         description: 'Custom agent runner URL'
