@@ -26,7 +26,7 @@
     "verbatimModuleSyntax": true,
     "sourceMap": true,
     "removeComments": false,
-    "types": ["vitest/importMeta"]
+    "types": ["vitest/importMeta", "node"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "src/**/__tests__/**"]
