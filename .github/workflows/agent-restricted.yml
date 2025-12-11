@@ -79,3 +79,5 @@ jobs:
           aws_role_arn: ${{ secrets.AWS_ROLE_ARN }}
           aws_region: 'us-west-2'
           pat_token: ${{ secrets.PAT_TOKEN }}
+        env:
+          STRANDS_TOOLS_DIRECTORY: "true"
