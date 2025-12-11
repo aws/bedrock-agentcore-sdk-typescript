@@ -127,7 +127,7 @@ runs:
       run: |
         uv venv
         echo "📦 Installing strands-action"
-        uv pip install .
+        uv pip install strands-agents[all] strands-agents-tools colorama requests
         if [ -n "${{ inputs.dependencies }}" ]; then
           echo "📦 Installing custom dependencies: ${{ inputs.dependencies }}"
           uv pip install ${{ inputs.dependencies }}
