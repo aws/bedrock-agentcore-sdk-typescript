@@ -46,6 +46,31 @@ def setup_otel() -> None:
             print(f"⚠ OTEL setup failed: {e}")
 
 
+def load_github_tools() -> list:
+    """Load GitHub tools from github_tools.py"""
+    try:
+        import github_tools
+        github_tool_functions = [
+            github_tools.create_issue,
+            github_tools.update_issue,
+            github_tools.add_issue_comment,
+            github_tools.create_pull_request,
+            github_tools.update_pull_request,
+            github_tools.reply_to_review_comment,
+            github_tools.get_issue,
+            github_tools.list_issues,
+            github_tools.get_issue_comments,
+            github_tools.get_pull_request,
+            github_tools.list_pull_requests,
+            github_tools.get_pr_review_and_comments,
+        ]
+        print(f"✓ Loaded {len(github_tool_functions)} GitHub tools")
+        return github_tool_functions
+    except ImportError as e:
+        print(f"✗ Failed to import github_tools: {e}")
+        return []
+
+
 def load_tools(config: str) -> list:
     """
     Load tools from config string.
@@ -185,6 +210,10 @@ def run_agent(prompt: str) -> None:
 
         print(f"Loading tools: {tools_config}")
         tools = load_tools(tools_config)
+
+        # Add GitHub tools
+        github_tools = load_github_tools()
+        tools.extend(github_tools)
 
         # MCP servers
         if os.getenv("STRANDS_LOAD_MCP_SERVERS", "true").lower() == "true":
@@ -355,4 +384,3 @@ For more info: https://github.com/strands-agents/sdk-python
 
 if __name__ == "__main__":
     main()
-
