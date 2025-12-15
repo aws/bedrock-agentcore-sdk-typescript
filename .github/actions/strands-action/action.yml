@@ -149,6 +149,7 @@ runs:
         PAT_TOKEN: ${{ inputs.pat_token }}
         GITHUB_TOKEN: ${{ inputs.pat_token || github.token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_WRITE: "true"
         GITHUB_CONTEXT: ${{ toJSON(github) }}
         STRANDS_PROVIDER: ${{ inputs.provider }}
         STRANDS_MODEL_ID: ${{ inputs.model }}
