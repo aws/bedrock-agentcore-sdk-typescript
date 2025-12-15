@@ -99,7 +99,7 @@ jobs:
           system_prompt: ${{ steps.process-inputs.outputs.system_prompt }}
           provider: 'bedrock'
           model: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
-          tools: 'strands_tools:shell,retrieve,editor'
+          tools: 'strands_tools:shell,retrieve'
           aws_role_arn: ${{ secrets.AWS_ROLE_ARN }}
           aws_region: 'us-west-2'
           pat_token: ${{ secrets.GITHUB_TOKEN }}
