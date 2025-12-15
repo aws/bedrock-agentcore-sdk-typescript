@@ -3,12 +3,13 @@ import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
 import { HttpRequest } from '@smithy/protocol-http'
 import { SignatureV4 } from '@smithy/signature-v4'
 import { Sha256 } from '@aws-crypto/sha256-js'
-import { randomUUID } from 'crypto'
+import { randomUUID, randomBytes } from 'crypto'
 import { getDataPlaneEndpoint } from '../_utils/endpoints.js'
 import type {
   RuntimeClientConfig,
   GenerateWsConnectionParams,
   GeneratePresignedUrlParams,
+  GenerateWsConnectionOAuthParams,
   WebSocketConnection,
   ParsedRuntimeArn,
 } from './types.js'
@@ -329,5 +330,74 @@ export class RuntimeClient {
     const presignedWsUrl = signedUrl.replace('https://', 'wss://')
 
     return presignedWsUrl
+  }
+
+  /**
+   * Generates WebSocket URL and OAuth headers for runtime connection.
+   *
+   * This method uses OAuth bearer token authentication instead of AWS SigV4.
+   * Suitable for scenarios where OAuth tokens are used for authentication.
+   * Does NOT require AWS credentials.
+   *
+   * @param params - Parameters for generating the connection
+   * @returns WebSocket URL and OAuth authentication headers
+   *
+   * @throws Error if bearer token is empty
+   * @throws Error if runtime ARN format is invalid
+   *
+   * @example
+   * ```typescript
+   * const client = new RuntimeClient({ region: 'us-west-2' })
+   *
+   * // With OAuth bearer token
+   * const { url, headers } = await client.generateWsConnectionOAuth({
+   *   runtimeArn: 'arn:aws:bedrock-agentcore:us-west-2:123:runtime/my-runtime',
+   *   bearerToken: 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...',
+   *   endpointName: 'DEFAULT'
+   * })
+   *
+   * // Use with WebSocket client
+   * const ws = new WebSocket(url, { headers })
+   * ```
+   */
+  async generateWsConnectionOAuth(params: GenerateWsConnectionOAuthParams): Promise<WebSocketConnection> {
+    // Validate bearer token
+    if (!params.bearerToken) {
+      throw new Error('Bearer token cannot be empty')
+    }
+
+    // Validate ARN
+    this.parseRuntimeArn(params.runtimeArn)
+
+    // Auto-generate session ID if not provided
+    const sessionId = params.sessionId ?? randomUUID()
+
+    // Build WebSocket URL
+    const wsUrl = this.buildWebSocketUrl(params.runtimeArn, params.endpointName)
+
+    // Convert wss:// to https:// to get host
+    const httpsUrl = wsUrl.replace('wss://', 'https://')
+    // eslint-disable-next-line no-undef
+    const url = new URL(httpsUrl)
+
+    // Generate WebSocket key (required for OAuth connections)
+    const wsKey = randomBytes(16).toString('base64')
+
+    // Build OAuth headers
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${params.bearerToken}`,
+      'X-Amzn-Bedrock-AgentCore-Runtime-Session-Id': sessionId,
+      Host: url.hostname,
+      Connection: 'Upgrade',
+      Upgrade: 'websocket',
+      'Sec-WebSocket-Key': wsKey,
+      'Sec-WebSocket-Version': '13',
+      'User-Agent': 'OAuth-WebSocket-Client/1.0',
+    }
+
+    return {
+      url: wsUrl,
+      headers,
+    }
   }
 }

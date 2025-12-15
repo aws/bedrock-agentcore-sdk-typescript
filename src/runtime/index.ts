@@ -10,6 +10,7 @@ export type {
   RuntimeClientConfig,
   GenerateWsConnectionParams,
   GeneratePresignedUrlParams,
+  GenerateWsConnectionOAuthParams,
   WebSocketConnection,
   ParsedRuntimeArn,
 } from './types.js'
