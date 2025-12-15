@@ -1,4 +1,4 @@
-# Testing Guidelines - Strands TypeScript SDK
+# Testing Guidelines - AWS Bedrock AgentCore TypeScript SDK
 
 > **IMPORTANT**: When writing tests, you **MUST** follow the guidelines in this document. These patterns ensure consistency, maintainability, and proper test coverage across the SDK.
 
@@ -357,9 +357,11 @@ Create reusable mock providers for testing:
 
 ```typescript
 // __tests__/mocks/aws-sdk.ts
+import { vi } from 'vitest'
+
 export function createMockBedrockClient() {
   return {
-    send: jest.fn().mockImplementation((command) => {
+    send: vi.fn().mockImplementation((command) => {
       if (command instanceof StartBrowserSessionCommand) {
         return Promise.resolve({ sessionId: 'mock-session-id' })
       }
