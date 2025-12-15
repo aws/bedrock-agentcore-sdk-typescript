@@ -147,6 +147,8 @@ runs:
       working-directory: ${{ github.workspace }}
       env:
         PAT_TOKEN: ${{ inputs.pat_token }}
+        GITHUB_TOKEN: ${{ inputs.pat_token || github.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_CONTEXT: ${{ toJSON(github) }}
         STRANDS_PROVIDER: ${{ inputs.provider }}
         STRANDS_MODEL_ID: ${{ inputs.model }}
@@ -156,11 +158,11 @@ runs:
         SYSTEM_PROMPT: ${{ inputs.system_prompt }}
         MCP_SERVERS: ${{ inputs.mcp_servers }}
         STRANDS_PROMPT: ${{ inputs.prompt }}
-        PYTHONPATH: ${{ github.action_path }}
+        PYTHONPATH: ${{ github.action_path }}:${{ github.workspace }}/.github/scripts/python
         VIRTUAL_ENV: ${{ github.action_path }}/.venv
       run: |
         if [ -f "${{ github.action_path }}/custom_agent_runner.py" ]; then
           "${{ github.action_path }}/.venv/bin/python" "${{ github.action_path }}/custom_agent_runner.py"
         else
-          "${{ github.action_path }}/.venv/bin/python" "${{ github.action_path }}/tools/agent_runner.py"
+          "${{ github.action_path }}/.venv/bin/python" "${{ github.workspace }}/.github/scripts/python/agent_runner.py"
         fi
