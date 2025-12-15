@@ -182,6 +182,49 @@ describe('BedrockAgentCoreApp', () => {
       expect(mockReply.send).toHaveBeenCalledWith({ result: 'success' })
     })
 
+    it('extracts workloadAccessToken from header when present', async () => {
+      const mockHandler = vi.fn(async (request, context) => ({ token: context.workloadAccessToken }))
+      const app = new BedrockAgentCoreApp(mockHandler)
+      const mockApp = (app as any)._app
+      const postCall = (mockApp.post as any).mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[1]
+      const mockReq = {
+        body: {},
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123',
+          workloadaccesstoken: 'workload-token-abc123',
+        },
+      }
+      const mockRes = { json: vi.fn(), status: vi.fn().mockReturnThis() }
+      await invocationHandler(mockReq, mockRes)
+      expect(mockHandler).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({
+          workloadAccessToken: 'workload-token-abc123',
+        })
+      )
+    })
+
+    it('sets workloadAccessToken to undefined when header not present', async () => {
+      const mockHandler = vi.fn(async (request, context) => ({ hasToken: !!context.workloadAccessToken }))
+      const app = new BedrockAgentCoreApp(mockHandler)
+      const mockApp = (app as any)._app
+      const postCall = (mockApp.post as any).mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[1]
+      const mockReq = {
+        body: {},
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
+      }
+      const mockRes = { json: vi.fn(), status: vi.fn().mockReturnThis() }
+      await invocationHandler(mockReq, mockRes)
+      expect(mockHandler).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({
+          workloadAccessToken: undefined,
+        })
+      )
+    })
+
     it('handles streaming response', async () => {
       const mockHandler = vi.fn(async function* () {
         yield { chunk: 1 }

@@ -1,0 +1,165 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { withAccessToken, withApiKey } from '../wrappers'
+import { IdentityClient } from '../client'
+
+vi.mock('../client')
+
+describe('withAccessToken', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should inject OAuth2 token as last parameter', async () => {
+    const mockGetOAuth2Token = vi.fn().mockResolvedValue('oauth2-token-123')
+    vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockImplementation(mockGetOAuth2Token)
+
+    const wrappedFn = withAccessToken({
+      workloadIdentityToken: 'workload-token',
+      providerName: 'github',
+      scopes: ['repo'],
+      authFlow: 'M2M',
+    })(async (input: string, token: string) => {
+      return { input, token }
+    })
+
+    const result = await wrappedFn('test-input')
+
+    expect(result.input).toBe('test-input')
+    expect(result.token).toBe('oauth2-token-123')
+    expect(mockGetOAuth2Token).toHaveBeenCalledWith({
+      providerName: 'github',
+      scopes: ['repo'],
+      authFlow: 'M2M',
+      workloadIdentityToken: 'workload-token',
+      onAuthUrl: undefined,
+      forceAuthentication: undefined,
+      callbackUrl: undefined,
+      customState: undefined,
+      customParameters: undefined,
+    })
+  })
+
+  it('should throw error if workload token not provided', async () => {
+    const wrappedFn = withAccessToken({
+      workloadIdentityToken: '', // Empty token
+      providerName: 'github',
+      scopes: ['repo'],
+      authFlow: 'M2M',
+    })(async (input: string, token: string) => {
+      return { input, token }
+    })
+
+    // Should fail when trying to call API with empty token
+    vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockRejectedValue(new Error('Invalid token'))
+    await expect(wrappedFn('test')).rejects.toThrow('Invalid token')
+  })
+
+  it('should pass all configuration options to getOAuth2Token', async () => {
+    const mockGetOAuth2Token = vi.fn().mockResolvedValue('oauth2-token')
+    vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockImplementation(mockGetOAuth2Token)
+
+    const onAuthUrl = vi.fn()
+    const wrappedFn = withAccessToken({
+      workloadIdentityToken: 'workload-token',
+      providerName: 'github',
+      scopes: ['repo', 'user'],
+      authFlow: 'USER_FEDERATION',
+      onAuthUrl,
+      forceAuthentication: true,
+      callbackUrl: 'https://callback.example.com',
+      customState: 'state-123',
+      customParameters: { param1: 'value1' },
+    })(async (input: string, token: string) => {
+      return token
+    })
+
+    await wrappedFn('test')
+
+    expect(mockGetOAuth2Token).toHaveBeenCalledWith({
+      providerName: 'github',
+      scopes: ['repo', 'user'],
+      authFlow: 'USER_FEDERATION',
+      workloadIdentityToken: 'workload-token',
+      onAuthUrl,
+      forceAuthentication: true,
+      callbackUrl: 'https://callback.example.com',
+      customState: 'state-123',
+      customParameters: { param1: 'value1' },
+    })
+  })
+
+  it('should preserve function parameter types', async () => {
+    vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockResolvedValue('token')
+
+    const wrappedFn = withAccessToken({
+      workloadIdentityToken: 'workload-token',
+      providerName: 'test',
+      scopes: ['read'],
+      authFlow: 'M2M',
+    })(async (num: number, str: string, token: string) => {
+      return { num, str, token }
+    })
+
+    const result = await wrappedFn(42, 'hello')
+
+    expect(result.num).toBe(42)
+    expect(result.str).toBe('hello')
+    expect(result.token).toBe('token')
+  })
+})
+
+describe('withApiKey', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should inject API key as last parameter', async () => {
+    const mockGetApiKey = vi.fn().mockResolvedValue('api-key-123')
+    vi.spyOn(IdentityClient.prototype, 'getApiKey').mockImplementation(mockGetApiKey)
+
+    const wrappedFn = withApiKey({
+      workloadIdentityToken: 'workload-token',
+      providerName: 'openai',
+    })(async (input: string, apiKey: string) => {
+      return { input, apiKey }
+    })
+
+    const result = await wrappedFn('test-input')
+
+    expect(result.input).toBe('test-input')
+    expect(result.apiKey).toBe('api-key-123')
+    expect(mockGetApiKey).toHaveBeenCalledWith({
+      providerName: 'openai',
+      workloadIdentityToken: 'workload-token',
+    })
+  })
+
+  it('should throw error if workload token not provided', async () => {
+    const wrappedFn = withApiKey({
+      workloadIdentityToken: '',
+      providerName: 'openai',
+    })(async (input: string, apiKey: string) => {
+      return { input, apiKey }
+    })
+
+    vi.spyOn(IdentityClient.prototype, 'getApiKey').mockRejectedValue(new Error('Invalid token'))
+    await expect(wrappedFn('test')).rejects.toThrow('Invalid token')
+  })
+
+  it('should preserve function parameter types', async () => {
+    vi.spyOn(IdentityClient.prototype, 'getApiKey').mockResolvedValue('api-key')
+
+    const wrappedFn = withApiKey({
+      workloadIdentityToken: 'workload-token',
+      providerName: 'openai',
+    })(async (num: number, str: string, apiKey: string) => {
+      return { num, str, apiKey }
+    })
+
+    const result = await wrappedFn(42, 'hello')
+
+    expect(result.num).toBe(42)
+    expect(result.str).toBe('hello')
+    expect(result.apiKey).toBe('api-key')
+  })
+})
