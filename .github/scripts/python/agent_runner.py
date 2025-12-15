@@ -71,6 +71,40 @@ def load_github_tools() -> list:
         return []
 
 
+def load_additional_tools() -> list:
+    """Load additional tools: handoff_to_user, notebook, str_replace_based_edit_tool"""
+    tools = []
+    
+    # Load handoff_to_user
+    try:
+        import handoff_to_user
+        tools.append(handoff_to_user.handoff_to_user)
+        print("✓ Loaded handoff_to_user tool")
+    except ImportError as e:
+        print(f"✗ Failed to import handoff_to_user: {e}")
+    
+    # Load notebook
+    try:
+        import notebook
+        tools.append(notebook.notebook)
+        print("✓ Loaded notebook tool")
+    except ImportError as e:
+        print(f"✗ Failed to import notebook: {e}")
+    
+    # Load str_replace_based_edit_tool
+    try:
+        import str_replace_based_edit_tool
+        tools.append(str_replace_based_edit_tool.str_replace_based_edit_tool)
+        print("✓ Loaded str_replace_based_edit_tool")
+    except ImportError as e:
+        print(f"✗ Failed to import str_replace_based_edit_tool: {e}")
+    
+    if tools:
+        print(f"✓ Loaded {len(tools)} additional tools")
+    
+    return tools
+
+
 def load_tools(config: str) -> list:
     """
     Load tools from config string.
@@ -214,6 +248,10 @@ def run_agent(prompt: str) -> None:
         # Add GitHub tools
         github_tools = load_github_tools()
         tools.extend(github_tools)
+
+        # Add additional tools
+        additional_tools = load_additional_tools()
+        tools.extend(additional_tools)
 
         # MCP servers
         if os.getenv("STRANDS_LOAD_MCP_SERVERS", "true").lower() == "true":
