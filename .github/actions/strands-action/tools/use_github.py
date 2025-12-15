@@ -420,5 +420,3 @@ def use_github(
             "status": "error",
             "content": [{"text": f"GitHub GraphQL call threw exception: {ex!s}"}],
         }
-
-
