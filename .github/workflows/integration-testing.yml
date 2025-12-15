@@ -141,19 +141,13 @@ jobs:
       - name: Build package
         run: npm run build
 
-      - name: Run integration tests - Browser
+      - name: Run integration tests
         env:
           AWS_REGION: us-west-2
         timeout-minutes: 10
         run: |
-          npm run test:integ -- --reporter=verbose tests_integ/browser.test.ts
+          npm run test:integ --reporter=verbose
 
-      - name: Run integration tests - Code Interpreter
-        env:
-          AWS_REGION: us-west-2
-        timeout-minutes: 10
-        run: |
-          npm run test:integ -- --reporter=verbose tests_integ/code-interpreter.test.ts
 
   safety-gate:
     name: Security Block
