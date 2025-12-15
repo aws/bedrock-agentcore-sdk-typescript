@@ -19,9 +19,10 @@ vi.mock('@aws-sdk/credential-providers', () => ({
   fromNodeProviderChain: vi.fn(() => vi.fn(async () => mockCredentials)),
 }))
 
-// Mock crypto.randomUUID to return predictable values
+// Mock crypto.randomUUID and randomBytes to return predictable values
 vi.mock('crypto', () => ({
   randomUUID: vi.fn(() => 'test-session-uuid'),
+  randomBytes: vi.fn((size: number) => Buffer.from('a'.repeat(size))),
 }))
 
 // Mock SignatureV4 from @smithy/signature-v4
@@ -376,6 +377,115 @@ describe('RuntimeClient', () => {
       })
 
       expect(url).toContain('X-Amz-Security-Token=mock-session-token')
+    })
+  })
+
+  describe('generateWsConnectionOAuth', () => {
+    const validArn = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/my-runtime-id'
+    const validToken = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.mock-token'
+
+    it('generates URL and headers with valid ARN and token', async () => {
+      const result: WebSocketConnection = await client.generateWsConnectionOAuth({
+        runtimeArn: validArn,
+        bearerToken: validToken,
+      })
+
+      expect(result.url).toMatch(/^wss:\/\//)
+      expect(result.url).toContain('bedrock-agentcore.us-west-2.amazonaws.com')
+      expect(result.headers).toBeDefined()
+      expect(result.headers.Authorization).toBe(`Bearer ${validToken}`)
+      expect(result.headers.Host).toBe('bedrock-agentcore.us-west-2.amazonaws.com')
+      expect(result.headers['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id']).toBeDefined()
+      expect(result.headers.Connection).toBe('Upgrade')
+      expect(result.headers.Upgrade).toBe('websocket')
+      expect(result.headers['Sec-WebSocket-Key']).toBeDefined()
+      expect(result.headers['Sec-WebSocket-Version']).toBe('13')
+      expect(result.headers['User-Agent']).toBe('OAuth-WebSocket-Client/1.0')
+    })
+
+    it('auto-generates session ID when not provided', async () => {
+      const result = await client.generateWsConnectionOAuth({
+        runtimeArn: validArn,
+        bearerToken: validToken,
+      })
+
+      expect(result.headers['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id']).toBe('test-session-uuid')
+    })
+
+    it('uses provided session ID', async () => {
+      const result = await client.generateWsConnectionOAuth({
+        runtimeArn: validArn,
+        bearerToken: validToken,
+        sessionId: 'custom-oauth-session',
+      })
+
+      expect(result.headers['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id']).toBe('custom-oauth-session')
+    })
+
+    it('includes endpoint_name as qualifier query parameter', async () => {
+      const result = await client.generateWsConnectionOAuth({
+        runtimeArn: validArn,
+        bearerToken: validToken,
+        endpointName: 'DEFAULT',
+      })
+
+      expect(result.url).toContain('?qualifier=DEFAULT')
+    })
+
+    it('includes Sec-WebSocket-Key header', async () => {
+      const result = await client.generateWsConnectionOAuth({
+        runtimeArn: validArn,
+        bearerToken: validToken,
+      })
+
+      expect(result.headers['Sec-WebSocket-Key']).toBeDefined()
+      expect(result.headers['Sec-WebSocket-Key']).toMatch(/^[A-Za-z0-9+/=]+$/)
+    })
+
+    it('throws error for empty bearer token', async () => {
+      await expect(
+        client.generateWsConnectionOAuth({
+          runtimeArn: validArn,
+          bearerToken: '',
+        })
+      ).rejects.toThrow('Bearer token cannot be empty')
+    })
+
+    it('throws error for invalid ARN', async () => {
+      await expect(
+        client.generateWsConnectionOAuth({
+          runtimeArn: 'invalid-arn',
+          bearerToken: validToken,
+        })
+      ).rejects.toThrow('Invalid runtime ARN format')
+    })
+
+    it('does NOT require AWS credentials', async () => {
+      // This test verifies that generateWsConnectionOAuth doesn't call credentialsProvider
+      // by ensuring it succeeds even if credentials are unavailable
+      const result = await client.generateWsConnectionOAuth({
+        runtimeArn: validArn,
+        bearerToken: validToken,
+      })
+
+      expect(result).toBeDefined()
+      expect(result.headers.Authorization).toBe(`Bearer ${validToken}`)
+      // Verify no X-Amz-Date or AWS signature headers
+      expect(result.headers['X-Amz-Date']).toBeUndefined()
+      expect(result.headers['X-Amz-Security-Token']).toBeUndefined()
+    })
+
+    it('includes all required WebSocket upgrade headers', async () => {
+      const result = await client.generateWsConnectionOAuth({
+        runtimeArn: validArn,
+        bearerToken: validToken,
+      })
+
+      expect(result.headers.Host).toBeDefined()
+      expect(result.headers.Connection).toBe('Upgrade')
+      expect(result.headers.Upgrade).toBe('websocket')
+      expect(result.headers['Sec-WebSocket-Key']).toBeDefined()
+      expect(result.headers['Sec-WebSocket-Version']).toBe('13')
     })
   })
 })

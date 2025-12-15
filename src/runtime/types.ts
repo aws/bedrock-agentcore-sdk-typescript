@@ -211,6 +211,36 @@ export interface GeneratePresignedUrlParams {
 }
 
 /**
+ * Parameters for generating WebSocket connection with OAuth authentication.
+ */
+export interface GenerateWsConnectionOAuthParams {
+  /**
+   * Full runtime ARN.
+   *
+   * Example: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/my-runtime-abc'
+   */
+  runtimeArn: string
+
+  /**
+   * OAuth bearer token for authentication.
+   * Must not be empty.
+   */
+  bearerToken: string
+
+  /**
+   * Optional session ID to use.
+   * If not provided, a UUID will be auto-generated.
+   */
+  sessionId?: string
+
+  /**
+   * Optional endpoint name to use as 'qualifier' query parameter.
+   * If provided, adds ?qualifier=\{endpointName\} to the URL.
+   */
+  endpointName?: string
+}
+
+/**
  * WebSocket connection details with URL and authentication headers.
  */
 export interface WebSocketConnection {
