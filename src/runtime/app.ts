@@ -152,21 +152,43 @@ export class BedrockAgentCoreApp {
     res.setHeader('Cache-Control', 'no-cache')
     res.setHeader('Connection', 'keep-alive')
 
+    // Track client disconnect
+    let clientDisconnected = false
+    const onClose = (): void => {
+      clientDisconnected = true
+    }
+    res.on('close', onClose)
+
     try {
       // Stream data chunks
       for await (const chunk of generator) {
+        // Stop if client disconnected
+        if (clientDisconnected) {
+          break
+        }
+
         const data = JSON.stringify(chunk)
         res.write(`data: ${data}\n\n`)
       }
 
-      // Send done event
-      res.write('event: done\ndata: {}\n\n')
-      res.end()
+      // Send done event if still connected
+      if (!clientDisconnected) {
+        res.write('event: done\ndata: {}\n\n')
+      }
     } catch (error) {
-      // Send error event
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      res.write(`event: error\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`)
-      res.end()
+      // Send error event if still connected
+      if (!clientDisconnected) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        res.write(`event: error\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`)
+      }
+    } finally {
+      // Clean up event listener
+      res.off('close', onClose)
+
+      // End response if not already closed
+      if (!res.writableEnded) {
+        res.end()
+      }
     }
   }
 
