@@ -73,54 +73,70 @@ export class BedrockAgentCoreApp {
    */
   private _setupRoutes(): void {
     // Health check endpoint
-    this._app.get('/ping', (req: Request, res: Response) => {
-      const response: HealthCheckResponse = {
-        status: 'Healthy',
-        time_of_last_update: new Date().toISOString(),
-      }
-      res.json(response)
-    })
+    this._app.get('/ping', this._handlePing.bind(this))
 
     // Invocation endpoint
-    this._app.post('/invocations', async (req: Request, res: Response) => {
-      try {
-        // Validate handler is set
-        if (!this._handler) {
-          res.status(500).json({
-            error: 'No handler configured. Call setEntrypoint() before starting the server.',
-          })
-          return
-        }
+    this._app.post('/invocations', this._handleInvocation.bind(this))
+  }
 
-        // Extract context
-        const context = this._extractContext(req)
+  /**
+   * Handles health check requests.
+   *
+   * @param req - Express request object
+   * @param res - Express response object
+   */
+  private _handlePing(req: Request, res: Response): void {
+    const response: HealthCheckResponse = {
+      status: 'Healthy',
+      time_of_last_update: new Date().toISOString(),
+    }
+    res.json(response)
+  }
 
-        // Validate sessionId
-        if (!context.sessionId) {
-          res.status(400).json({
-            error: 'Missing sessionId. Provide via x-amzn-bedrock-agentcore-runtime-session-id header or request body.',
-          })
-          return
-        }
-
-        // Invoke handler
-        const result = await this._handler(req.body, context)
-
-        // Check if result is an async generator (streaming response)
-        if (this._isAsyncGenerator(result)) {
-          await this._handleStreamingResponse(res, result)
-        } else {
-          // Return JSON response
-          res.json(result)
-        }
-      } catch (error) {
-        // Handle errors
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+  /**
+   * Handles agent invocation requests.
+   *
+   * @param req - Express request object
+   * @param res - Express response object
+   */
+  private async _handleInvocation(req: Request, res: Response): Promise<void> {
+    try {
+      // Validate handler is set
+      if (!this._handler) {
         res.status(500).json({
-          error: errorMessage,
+          error: 'No handler configured. Call setEntrypoint() before starting the server.',
         })
+        return
       }
-    })
+
+      // Extract context
+      const context = this._extractContext(req)
+
+      // Validate sessionId
+      if (!context.sessionId) {
+        res.status(400).json({
+          error: 'Missing sessionId. Provide via x-amzn-bedrock-agentcore-runtime-session-id header or request body.',
+        })
+        return
+      }
+
+      // Invoke handler
+      const result = await this._handler(req.body, context)
+
+      // Check if result is an async generator (streaming response)
+      if (this._isAsyncGenerator(result)) {
+        await this._handleStreamingResponse(res, result)
+      } else {
+        // Return JSON response
+        res.json(result)
+      }
+    } catch (error) {
+      // Handle errors
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({
+        error: errorMessage,
+      })
+    }
   }
 
   /**
@@ -159,6 +175,15 @@ export class BedrockAgentCoreApp {
     }
     res.on('close', onClose)
 
+    // Helper to write only if client still connected
+    const writeIfConnected = (data: string): boolean => {
+      if (!clientDisconnected) {
+        res.write(data)
+        return true
+      }
+      return false
+    }
+
     try {
       // Stream data chunks
       for await (const chunk of generator) {
@@ -168,19 +193,15 @@ export class BedrockAgentCoreApp {
         }
 
         const data = JSON.stringify(chunk)
-        res.write(`data: ${data}\n\n`)
+        writeIfConnected(`data: ${data}\n\n`)
       }
 
       // Send done event if still connected
-      if (!clientDisconnected) {
-        res.write('event: done\ndata: {}\n\n')
-      }
+      writeIfConnected('event: done\ndata: {}\n\n')
     } catch (error) {
       // Send error event if still connected
-      if (!clientDisconnected) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        res.write(`event: error\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`)
-      }
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      writeIfConnected(`event: error\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`)
     } finally {
       // Clean up event listener
       res.off('close', onClose)
