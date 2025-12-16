@@ -38,6 +38,11 @@ bedrock-agentcore-sdk-typescript/
 │   └── TESTING.md                # Comprehensive testing guidelines
 │
 ├── src/                          # Source code (all production code)
+│   ├── runtime/                  # Runtime server for hosting agents
+│   │   ├── __tests__/            # Unit tests for runtime
+│   │   ├── app.ts                # BedrockAgentCoreApp implementation
+│   │   ├── index.ts              # Runtime exports
+│   │   └── types.ts              # Runtime type definitions
 │   └── tools/                    # Tool definitions and types
 │       ├── browser/              # Browser automation tool
 │       │   ├── __tests__/        # Unit tests for browser tool
@@ -90,6 +95,7 @@ bedrock-agentcore-sdk-typescript/
 ├── tests_integ/                  # Integration tests
 │   ├── browser.test.ts           # Browser integration tests
 │   ├── code-interpreter.test.ts  # Code interpreter integration tests
+│   ├── runtime.test.ts           # Runtime server integration tests
 │   ├── setup.ts                  # Test setup utilities and helpers
 │   └── vercel-ai-agent.test.ts   # Vercel AI integration tests
 │
@@ -122,6 +128,7 @@ bedrock-agentcore-sdk-typescript/
 - **`.husky/`**: Git hooks for pre-commit quality checks and validation
 - **`docs/`**: Comprehensive documentation for development processes and guidelines
 - **`src/`**: All production source code for the SDK
+- **`src/runtime/`**: HTTP server for hosting agents on AWS Bedrock AgentCore Runtime
 - **`src/tools/`**: Tool definitions and implementations for browser automation and code interpretation
 - **`src/tools/browser/`**: Browser automation client with AWS Bedrock integration
 - **`src/tools/code-interpreter/`**: Code execution client with sandboxed environment support
