@@ -449,6 +449,57 @@ export class Example {
 - Public fields MUST NOT use underscore prefix
 - This convention improves code readability and makes the distinction between public and private members immediately visible
 
+### 
+
+**Use camelCase for variables, functions, and object properties**:
+
+```typescript
+// ✅ Good: camelCase for variables and functions
+const sessionName = params?.sessionName ?? DEFAULT_SESSION_NAME
+const interpreterId = params?.interpreterId ?? this.identifier
+let contentStr = ''
+
+async function executeCode(params: ExecuteCodeParams): Promise<string> {
+  const command = new InvokeCodeInterpreterCommand({
+    codeInterpreterIdentifier: this.identifier,
+    sessionId: this._session!.sessionId,
+  })
+  return result
+}
+
+// Object properties
+const sessionInfo: SessionInfo = {
+  sessionName,
+  sessionId: response.sessionId!,
+  createdAt: response.createdAt!,
+}
+```
+
+**Use SCREAMING_SNAKE_CASE for constants**:
+
+```typescript
+// ✅ Good: Constants in SCREAMING_SNAKE_CASE
+export const DEFAULT_IDENTIFIER = 'aws.browser.v1'
+export const DEFAULT_SESSION_NAME = 'default'
+export const DEFAULT_TIMEOUT = 3600
+export const DEFAULT_REGION = 'us-west-2'
+```
+
+**Use PascalCase for classes, interfaces, and types**:
+
+```typescript
+// ✅ Good: PascalCase for types
+export class CodeInterpreter { }
+interface SessionInfo { }
+type ExecuteCodeParams = { }
+```
+
+**Rules**:
+- Variables, functions, and object properties MUST use camelCase
+- Constants MUST use SCREAMING_SNAKE_CASE
+- Classes, interfaces, and types MUST use PascalCase
+- Private methods MUST use underscore prefix with camelCase (e.g., `_handleInvocation`)
+
 ### Documentation Requirements
 
 **TSDoc format** (required for all exported functions):
