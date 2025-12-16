@@ -180,7 +180,10 @@ describe('BedrockAgentCoreApp', () => {
 
       const mockReq = {
         body: { test: 'data' },
-        headers: { 'x-session-id': 'session-123', 'content-type': 'application/json' },
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123',
+          'content-type': 'application/json',
+        },
       }
       const mockRes = { json: vi.fn(), status: vi.fn().mockReturnThis() }
 
@@ -191,14 +194,14 @@ describe('BedrockAgentCoreApp', () => {
         {
           sessionId: 'session-123',
           headers: expect.objectContaining({
-            'x-session-id': 'session-123',
+            'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123',
             'content-type': 'application/json',
           }),
         }
       )
     })
 
-    it('extracts sessionId from x-session-id header', async () => {
+    it('extracts sessionId from x-amzn-bedrock-agentcore-runtime-session-id header', async () => {
       const app = new BedrockAgentCoreApp()
       const mockApp = (app as any)._app
 
@@ -210,7 +213,7 @@ describe('BedrockAgentCoreApp', () => {
 
       const mockReq = {
         body: {},
-        headers: { 'x-session-id': 'session-from-header' },
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-from-header' },
       }
       const mockRes = { json: vi.fn(), status: vi.fn().mockReturnThis() }
 
@@ -254,7 +257,7 @@ describe('BedrockAgentCoreApp', () => {
 
       const mockReq = {
         body: {},
-        headers: { 'x-session-id': 'session-123' },
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
       }
       const mockRes = { json: vi.fn(), status: vi.fn().mockReturnThis() }
 
@@ -277,7 +280,7 @@ describe('BedrockAgentCoreApp', () => {
 
       const mockReq = {
         body: {},
-        headers: { 'x-session-id': 'session-123' },
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
       }
       const mockRes = { json: vi.fn(), status: vi.fn().mockReturnThis() }
 
@@ -289,7 +292,7 @@ describe('BedrockAgentCoreApp', () => {
       })
     })
 
-    it('returns 400 when handler not set', async () => {
+    it('returns 500 when handler not set', async () => {
       const app = new BedrockAgentCoreApp()
       const mockApp = (app as any)._app
 
@@ -298,13 +301,13 @@ describe('BedrockAgentCoreApp', () => {
 
       const mockReq = {
         body: {},
-        headers: { 'x-session-id': 'session-123' },
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
       }
       const mockRes = { json: vi.fn(), status: vi.fn().mockReturnThis() }
 
       await handler(mockReq, mockRes)
 
-      expect(mockRes.status).toHaveBeenCalledWith(400)
+      expect(mockRes.status).toHaveBeenCalledWith(500)
       expect(mockRes.json).toHaveBeenCalledWith({
         error: expect.stringContaining('handler'),
       })
@@ -332,6 +335,86 @@ describe('BedrockAgentCoreApp', () => {
       expect(mockRes.json).toHaveBeenCalledWith({
         error: expect.stringContaining('sessionId'),
       })
+    })
+
+    it('handles streaming response with async generator', async () => {
+      const app = new BedrockAgentCoreApp()
+      const mockApp = (app as any)._app
+
+      // Create async generator handler
+      const mockHandler = vi.fn(async function* () {
+        yield { chunk: 1, data: 'first' }
+        yield { chunk: 2, data: 'second' }
+        yield { chunk: 3, data: 'third' }
+      })
+      app.setEntrypoint(mockHandler)
+
+      const postCall = (mockApp.post as any).mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const handler = postCall[1]
+
+      const mockReq = {
+        body: { test: 'stream' },
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
+      }
+      const writes: string[] = []
+      const mockRes = {
+        setHeader: vi.fn(),
+        write: vi.fn((data: string) => writes.push(data)),
+        end: vi.fn(),
+        json: vi.fn(),
+        status: vi.fn().mockReturnThis(),
+      }
+
+      await handler(mockReq, mockRes)
+
+      // Verify SSE headers were set
+      expect(mockRes.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
+      expect(mockRes.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-cache')
+      expect(mockRes.setHeader).toHaveBeenCalledWith('Connection', 'keep-alive')
+
+      // Verify data chunks were written
+      expect(writes).toContain('data: {"chunk":1,"data":"first"}\n\n')
+      expect(writes).toContain('data: {"chunk":2,"data":"second"}\n\n')
+      expect(writes).toContain('data: {"chunk":3,"data":"third"}\n\n')
+      expect(writes).toContain('event: done\ndata: {}\n\n')
+
+      // Verify response was ended
+      expect(mockRes.end).toHaveBeenCalled()
+    })
+
+    it('handles streaming errors gracefully', async () => {
+      const app = new BedrockAgentCoreApp()
+      const mockApp = (app as any)._app
+
+      // Create async generator that throws
+      const mockHandler = vi.fn(async function* () {
+        yield { chunk: 1 }
+        throw new Error('Streaming error')
+      })
+      app.setEntrypoint(mockHandler)
+
+      const postCall = (mockApp.post as any).mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const handler = postCall[1]
+
+      const mockReq = {
+        body: {},
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
+      }
+      const writes: string[] = []
+      const mockRes = {
+        setHeader: vi.fn(),
+        write: vi.fn((data: string) => writes.push(data)),
+        end: vi.fn(),
+        json: vi.fn(),
+        status: vi.fn().mockReturnThis(),
+      }
+
+      await handler(mockReq, mockRes)
+
+      // Verify error event was sent
+      const errorWrite = writes.find((w) => w.includes('event: error'))
+      expect(errorWrite).toBeDefined()
+      expect(errorWrite).toContain('Streaming error')
     })
   })
 

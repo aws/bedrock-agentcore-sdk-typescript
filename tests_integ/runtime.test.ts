@@ -67,7 +67,7 @@ describe('BedrockAgentCoreApp Integration', () => {
     it('returns 200 status code for valid request', async () => {
       const response = await request(expressApp)
         .post('/invocations')
-        .set('x-session-id', 'test-session')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
         .send({ test: 'data' })
 
       expect(response.status).toBe(200)
@@ -76,7 +76,7 @@ describe('BedrockAgentCoreApp Integration', () => {
     it('returns JSON response', async () => {
       const response = await request(expressApp)
         .post('/invocations')
-        .set('x-session-id', 'test-session')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
         .send({ test: 'data' })
 
       expect(response.type).toBe('application/json')
@@ -85,7 +85,7 @@ describe('BedrockAgentCoreApp Integration', () => {
     it('invokes handler with request data', async () => {
       const response = await request(expressApp)
         .post('/invocations')
-        .set('x-session-id', 'test-session')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
         .send({ test: 'data', value: 42 })
 
       expect(response.body).toEqual({
@@ -98,7 +98,7 @@ describe('BedrockAgentCoreApp Integration', () => {
     it('provides sessionId from header in context', async () => {
       const response = await request(expressApp)
         .post('/invocations')
-        .set('x-session-id', 'my-session-id')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'my-session-id')
         .send({})
 
       expect(response.body.sessionId).toBe('my-session-id')
@@ -137,7 +137,7 @@ describe('BedrockAgentCoreApp Integration', () => {
     it('returns 500 when handler throws error', async () => {
       const response = await request(errorExpressApp)
         .post('/invocations')
-        .set('x-session-id', 'test-session')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
         .send({})
 
       expect(response.status).toBe(500)
@@ -146,7 +146,7 @@ describe('BedrockAgentCoreApp Integration', () => {
     it('includes error message in response', async () => {
       const response = await request(errorExpressApp)
         .post('/invocations')
-        .set('x-session-id', 'test-session')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
         .send({})
 
       expect(response.body).toHaveProperty('error')
@@ -164,22 +164,86 @@ describe('BedrockAgentCoreApp Integration', () => {
       noHandlerExpressApp = (noHandlerApp as any)._app
     })
 
-    it('returns 400 when handler not configured', async () => {
+    it('returns 500 when handler not configured', async () => {
       const response = await request(noHandlerExpressApp)
         .post('/invocations')
-        .set('x-session-id', 'test-session')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
         .send({})
 
-      expect(response.status).toBe(400)
+      expect(response.status).toBe(500)
     })
 
     it('includes descriptive error message', async () => {
       const response = await request(noHandlerExpressApp)
         .post('/invocations')
-        .set('x-session-id', 'test-session')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
         .send({})
 
       expect(response.body.error).toContain('handler')
+    })
+  })
+
+  describe('Streaming Responses', () => {
+    let streamApp: BedrockAgentCoreApp
+    let streamExpressApp: Express
+
+    beforeAll(() => {
+      streamApp = new BedrockAgentCoreApp()
+
+      // Set up streaming handler
+      const streamHandler: Handler = async function* (req, context) {
+        yield { event: 'start', sessionId: context.sessionId }
+        yield { event: 'data', content: req.message || 'streaming' }
+        yield { event: 'end' }
+      }
+
+      streamApp.setEntrypoint(streamHandler)
+      streamExpressApp = (streamApp as any)._app
+    })
+
+    it('returns SSE content type for streaming', async () => {
+      const response = await request(streamExpressApp)
+        .post('/invocations')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'stream-session')
+        .send({ message: 'test' })
+
+      expect(response.headers['content-type']).toContain('text/event-stream')
+    })
+
+    it('streams multiple chunks', async () => {
+      const response = await request(streamExpressApp)
+        .post('/invocations')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'stream-session')
+        .send({ message: 'test' })
+
+      const body = response.text
+
+      // Verify chunks are in SSE format
+      expect(body).toContain('data: {"event":"start","sessionId":"stream-session"}')
+      expect(body).toContain('data: {"event":"data","content":"test"}')
+      expect(body).toContain('data: {"event":"end"}')
+      expect(body).toContain('event: done')
+    })
+
+    it('handles streaming errors', async () => {
+      const errorApp = new BedrockAgentCoreApp()
+
+      const errorHandler: Handler = async function* () {
+        yield { event: 'start' }
+        throw new Error('Stream error occurred')
+      }
+
+      errorApp.setEntrypoint(errorHandler)
+      const errorExpressApp = (errorApp as any)._app
+
+      const response = await request(errorExpressApp)
+        .post('/invocations')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'error-session')
+        .send({})
+
+      const body = response.text
+      expect(body).toContain('event: error')
+      expect(body).toContain('Stream error occurred')
     })
   })
 })

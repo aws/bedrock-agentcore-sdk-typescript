@@ -86,7 +86,7 @@ export class BedrockAgentCoreApp {
       try {
         // Validate handler is set
         if (!this._handler) {
-          res.status(400).json({
+          res.status(500).json({
             error: 'No handler configured. Call setEntrypoint() before starting the server.',
           })
           return
@@ -98,7 +98,7 @@ export class BedrockAgentCoreApp {
         // Validate sessionId
         if (!context.sessionId) {
           res.status(400).json({
-            error: 'Missing sessionId. Provide via x-session-id header or request body.',
+            error: 'Missing sessionId. Provide via x-amzn-bedrock-agentcore-runtime-session-id header or request body.',
           })
           return
         }
@@ -106,8 +106,13 @@ export class BedrockAgentCoreApp {
         // Invoke handler
         const result = await this._handler(req.body, context)
 
-        // Return JSON response
-        res.json(result)
+        // Check if result is an async generator (streaming response)
+        if (this._isAsyncGenerator(result)) {
+          await this._handleStreamingResponse(res, result)
+        } else {
+          // Return JSON response
+          res.json(result)
+        }
       } catch (error) {
         // Handle errors
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -119,14 +124,62 @@ export class BedrockAgentCoreApp {
   }
 
   /**
+   * Checks if a value is an async generator.
+   *
+   * @param value - Value to check
+   * @returns True if the value is an async generator
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _isAsyncGenerator(value: any): value is AsyncGenerator {
+    return (
+      value &&
+      typeof value === 'object' &&
+      typeof value.next === 'function' &&
+      typeof value[Symbol.asyncIterator] === 'function'
+    )
+  }
+
+  /**
+   * Handles streaming response using Server-Sent Events (SSE).
+   *
+   * @param res - Express response object
+   * @param generator - Async generator that yields data chunks
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async _handleStreamingResponse(res: Response, generator: AsyncGenerator<any>): Promise<void> {
+    // Set headers for Server-Sent Events
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+
+    try {
+      // Stream data chunks
+      for await (const chunk of generator) {
+        const data = JSON.stringify(chunk)
+        res.write(`data: ${data}\n\n`)
+      }
+
+      // Send done event
+      res.write('event: done\ndata: {}\n\n')
+      res.end()
+    } catch (error) {
+      // Send error event
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      res.write(`event: error\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`)
+      res.end()
+    }
+  }
+
+  /**
    * Extracts request context from the incoming request.
    *
    * @param req - Express request object
    * @returns Request context with sessionId and headers
    */
   private _extractContext(req: Request): RequestContext {
-    // Extract sessionId from header (x-session-id) or body
-    const sessionId = (req.headers['x-session-id'] as string) || req.body?.sessionId || ''
+    // Extract sessionId from AWS header or body
+    const sessionId =
+      (req.headers['x-amzn-bedrock-agentcore-runtime-session-id'] as string) || req.body?.sessionId || ''
 
     // Convert headers to plain object
     const headers: Record<string, string> = {}
