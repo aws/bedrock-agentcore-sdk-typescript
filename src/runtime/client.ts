@@ -13,7 +13,7 @@ import type {
   WebSocketConnection,
   ParsedRuntimeArn,
 } from './types.js'
-import { RuntimeArnSchema, DEFAULT_REGION, DEFAULT_PRESIGNED_URL_TIMEOUT, MAX_PRESIGNED_URL_TIMEOUT } from './types.js'
+import { DEFAULT_PRESIGNED_URL_TIMEOUT, MAX_PRESIGNED_URL_TIMEOUT } from './types.js'
 
 /**
  * Client for generating WebSocket authentication for AgentCore Runtime.
@@ -50,9 +50,14 @@ export class RuntimeClient {
    * Creates a new RuntimeClient instance.
    *
    * @param config - Configuration options for the client
+   * @throws Error if region is not provided via config or AWS_REGION environment variable
    */
   constructor(config: RuntimeClientConfig = {}) {
-    this.region = config.region ?? process.env.AWS_REGION ?? DEFAULT_REGION
+    const region = config.region ?? process.env.AWS_REGION
+    if (!region) {
+      throw new Error('Region must be provided via config.region or AWS_REGION environment variable')
+    }
+    this.region = region
     this.credentialsProvider = config.credentialsProvider ?? fromNodeProviderChain()
   }
 
@@ -65,45 +70,21 @@ export class RuntimeClient {
    *
    * @internal
    */
-  private parseRuntimeArn(runtimeArn: string): ParsedRuntimeArn {
-    // Validate ARN format using Zod schema
-    const validationResult = RuntimeArnSchema.safeParse(runtimeArn)
-    if (!validationResult.success) {
+  private _parseRuntimeArn(runtimeArn: string): ParsedRuntimeArn {
+    const arnRegex = /^arn:aws:bedrock-agentcore:([^:]+):([^:]+):runtime\/(.+)$/
+    const match = runtimeArn.match(arnRegex)
+
+    if (!match) {
       throw new Error(`Invalid runtime ARN format: ${runtimeArn}`)
     }
 
-    // Expected format: arn:aws:bedrock-agentcore:{region}:{account}:runtime/{runtime_id}
-    const parts = runtimeArn.split(':')
-
-    if (parts.length !== 6) {
-      throw new Error(`Invalid runtime ARN format: ${runtimeArn}`)
-    }
-
-    if (parts[0] !== 'arn' || parts[1] !== 'aws' || parts[2] !== 'bedrock-agentcore') {
-      throw new Error(`Invalid runtime ARN format: ${runtimeArn}`)
-    }
-
-    // Parse the resource part (runtime/{runtime_id})
-    const resource = parts[5]
-    if (!resource || !resource.startsWith('runtime/')) {
-      throw new Error(`Invalid runtime ARN format: ${runtimeArn}`)
-    }
-
-    const runtimeId = resource.substring('runtime/'.length)
-
-    // Validate that components are not empty
-    const region = parts[3]
-    const accountId = parts[4]
+    const [, region, accountId, runtimeId] = match
 
     if (!region || !accountId || !runtimeId) {
       throw new Error('ARN components cannot be empty')
     }
 
-    return {
-      region,
-      accountId,
-      runtimeId,
-    }
+    return { region, accountId, runtimeId }
   }
 
   /**
@@ -116,7 +97,11 @@ export class RuntimeClient {
    *
    * @internal
    */
-  private buildWebSocketUrl(runtimeArn: string, endpointName?: string, customHeaders?: Record<string, string>): string {
+  private _buildWebSocketUrl(
+    runtimeArn: string,
+    endpointName?: string,
+    customHeaders?: Record<string, string>
+  ): string {
     // Get the data plane endpoint
     const endpoint = getDataPlaneEndpoint(this.region)
     const host = endpoint.replace('https://', '')
@@ -182,13 +167,13 @@ export class RuntimeClient {
    */
   async generateWsConnection(params: GenerateWsConnectionParams): Promise<WebSocketConnection> {
     // Validate ARN
-    this.parseRuntimeArn(params.runtimeArn)
+    this._parseRuntimeArn(params.runtimeArn)
 
     // Auto-generate session ID if not provided
     const sessionId = params.sessionId ?? randomUUID()
 
     // Build WebSocket URL
-    const wsUrl = this.buildWebSocketUrl(params.runtimeArn, params.endpointName)
+    const wsUrl = this._buildWebSocketUrl(params.runtimeArn, params.endpointName)
 
     // Get AWS credentials
     const credentials = await this.credentialsProvider()
@@ -228,6 +213,9 @@ export class RuntimeClient {
       Authorization: signedRequest.headers.authorization as string,
       'X-Amz-Date': signedRequest.headers['x-amz-date'] as string,
       'X-Amzn-Bedrock-AgentCore-Runtime-Session-Id': sessionId,
+      Connection: 'Upgrade',
+      Upgrade: 'websocket',
+      'Sec-WebSocket-Version': '13',
     }
 
     // Add session token if present
@@ -281,7 +269,7 @@ export class RuntimeClient {
     }
 
     // Validate ARN
-    this.parseRuntimeArn(params.runtimeArn)
+    this._parseRuntimeArn(params.runtimeArn)
 
     // Auto-generate session ID if not provided
     const sessionId = params.sessionId ?? randomUUID()
@@ -291,7 +279,7 @@ export class RuntimeClient {
     customHeaders['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id'] = sessionId
 
     // Build WebSocket URL with query parameters
-    const wsUrl = this.buildWebSocketUrl(params.runtimeArn, params.endpointName, customHeaders)
+    const wsUrl = this._buildWebSocketUrl(params.runtimeArn, params.endpointName, customHeaders)
 
     // Convert wss:// to https:// for signing
     const httpsUrl = wsUrl.replace('wss://', 'https://')
@@ -367,13 +355,13 @@ export class RuntimeClient {
     }
 
     // Validate ARN
-    this.parseRuntimeArn(params.runtimeArn)
+    this._parseRuntimeArn(params.runtimeArn)
 
     // Auto-generate session ID if not provided
     const sessionId = params.sessionId ?? randomUUID()
 
     // Build WebSocket URL
-    const wsUrl = this.buildWebSocketUrl(params.runtimeArn, params.endpointName)
+    const wsUrl = this._buildWebSocketUrl(params.runtimeArn, params.endpointName)
 
     // Convert wss:// to https:// to get host
     const httpsUrl = wsUrl.replace('wss://', 'https://')

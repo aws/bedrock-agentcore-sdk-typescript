@@ -84,9 +84,11 @@ describe('RuntimeClient', () => {
       expect(testClient.region).toBe('eu-west-1')
     })
 
-    it('creates client with default region when no config provided', () => {
-      const testClient = new RuntimeClient()
-      expect(testClient.region).toBe('us-west-2')
+    it('throws error when no region provided', () => {
+      delete process.env.AWS_REGION
+      expect(() => new RuntimeClient()).toThrow(
+        'Region must be provided via config.region or AWS_REGION environment variable'
+      )
     })
 
     it('creates client with custom credentials provider', () => {
@@ -99,12 +101,12 @@ describe('RuntimeClient', () => {
     })
   })
 
-  describe('parseRuntimeArn', () => {
+  describe('_parseRuntimeArn', () => {
     const validArn = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/my-runtime-id'
 
     it('parses valid ARN successfully', () => {
       // Access private method through type assertion
-      const parsed = (client as any).parseRuntimeArn(validArn)
+      const parsed = (client as any)._parseRuntimeArn(validArn)
       expect(parsed).toEqual({
         region: 'us-west-2',
         accountId: '123456789012',
@@ -114,40 +116,40 @@ describe('RuntimeClient', () => {
 
     it('throws error for invalid ARN format (wrong structure)', () => {
       const invalidArn = 'invalid-arn'
-      expect(() => (client as any).parseRuntimeArn(invalidArn)).toThrow('Invalid runtime ARN format')
+      expect(() => (client as any)._parseRuntimeArn(invalidArn)).toThrow('Invalid runtime ARN format')
     })
 
     it('throws error for wrong service name', () => {
       const wrongService = 'arn:aws:s3:us-west-2:123456789012:runtime/my-runtime-id'
-      expect(() => (client as any).parseRuntimeArn(wrongService)).toThrow('Invalid runtime ARN format')
+      expect(() => (client as any)._parseRuntimeArn(wrongService)).toThrow('Invalid runtime ARN format')
     })
 
     it('throws error for wrong resource type', () => {
       const wrongResource = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:bucket/my-bucket'
-      expect(() => (client as any).parseRuntimeArn(wrongResource)).toThrow('Invalid runtime ARN format')
+      expect(() => (client as any)._parseRuntimeArn(wrongResource)).toThrow('Invalid runtime ARN format')
     })
 
     it('throws error for missing region', () => {
       const missingRegion = 'arn:aws:bedrock-agentcore::123456789012:runtime/my-runtime-id'
-      expect(() => (client as any).parseRuntimeArn(missingRegion)).toThrow()
+      expect(() => (client as any)._parseRuntimeArn(missingRegion)).toThrow()
     })
 
     it('throws error for missing account ID', () => {
       const missingAccount = 'arn:aws:bedrock-agentcore:us-west-2::runtime/my-runtime-id'
-      expect(() => (client as any).parseRuntimeArn(missingAccount)).toThrow()
+      expect(() => (client as any)._parseRuntimeArn(missingAccount)).toThrow()
     })
 
     it('throws error for missing runtime ID', () => {
       const missingRuntimeId = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/'
-      expect(() => (client as any).parseRuntimeArn(missingRuntimeId)).toThrow()
+      expect(() => (client as any)._parseRuntimeArn(missingRuntimeId)).toThrow()
     })
   })
 
-  describe('buildWebSocketUrl', () => {
+  describe('_buildWebSocketUrl', () => {
     const testArn = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/my-runtime-id'
 
     it('builds URL with no query parameters', () => {
-      const url = (client as any).buildWebSocketUrl(testArn)
+      const url = (client as any)._buildWebSocketUrl(testArn)
       expect(url).toMatch(/^wss:\/\/bedrock-agentcore\.us-west-2\.amazonaws\.com\/runtimes\//)
       expect(url).toContain(encodeURIComponent(testArn))
       expect(url).toContain('/ws')
@@ -155,13 +157,13 @@ describe('RuntimeClient', () => {
     })
 
     it('builds URL with endpoint_name (qualifier)', () => {
-      const url = (client as any).buildWebSocketUrl(testArn, 'DEFAULT')
+      const url = (client as any)._buildWebSocketUrl(testArn, 'DEFAULT')
       expect(url).toContain('?qualifier=DEFAULT')
     })
 
     it('builds URL with custom headers', () => {
       const customHeaders = { customParam: 'value1', anotherParam: 'value2' }
-      const url = (client as any).buildWebSocketUrl(testArn, undefined, customHeaders)
+      const url = (client as any)._buildWebSocketUrl(testArn, undefined, customHeaders)
       expect(url).toContain('?')
       expect(url).toContain('customParam=value1')
       expect(url).toContain('anotherParam=value2')
@@ -169,21 +171,21 @@ describe('RuntimeClient', () => {
 
     it('builds URL with both endpoint_name and custom headers', () => {
       const customHeaders = { customParam: 'value' }
-      const url = (client as any).buildWebSocketUrl(testArn, 'DEFAULT', customHeaders)
+      const url = (client as any)._buildWebSocketUrl(testArn, 'DEFAULT', customHeaders)
       expect(url).toContain('?')
       expect(url).toContain('qualifier=DEFAULT')
       expect(url).toContain('customParam=value')
     })
 
     it('properly encodes runtime ARN in path', () => {
-      const url = (client as any).buildWebSocketUrl(testArn)
+      const url = (client as any)._buildWebSocketUrl(testArn)
       const encodedArn = encodeURIComponent(testArn)
       expect(url).toContain(`/runtimes/${encodedArn}/ws`)
     })
 
     it('uses custom endpoint from environment variable', () => {
       process.env.BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT = 'https://custom-endpoint.example.com'
-      const url = (client as any).buildWebSocketUrl(testArn)
+      const url = (client as any)._buildWebSocketUrl(testArn)
       expect(url).toContain('wss://custom-endpoint.example.com/runtimes/')
     })
   })
@@ -239,6 +241,16 @@ describe('RuntimeClient', () => {
       expect(result.headers.Host).toBeDefined()
       expect(result.headers.Authorization).toBeDefined()
       expect(result.headers['X-Amz-Date']).toBeDefined()
+    })
+
+    it('includes WebSocket upgrade headers', async () => {
+      const result = await client.generateWsConnection({
+        runtimeArn: validArn,
+      })
+
+      expect(result.headers.Connection).toBe('Upgrade')
+      expect(result.headers.Upgrade).toBe('websocket')
+      expect(result.headers['Sec-WebSocket-Version']).toBe('13')
     })
 
     it('includes X-Amz-Security-Token when session token present', async () => {
