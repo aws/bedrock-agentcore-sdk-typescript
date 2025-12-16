@@ -31,6 +31,11 @@ const ENDPOINT_OVERRIDE_ENV = 'BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT'
  * ```
  */
 export function getDataPlaneEndpoint(region: string): string {
+  // Validate region is not empty
+  if (!region || region.trim() === '') {
+    throw new Error('Region cannot be empty')
+  }
+
   // Check for environment variable override
   const override = process.env[ENDPOINT_OVERRIDE_ENV]
   if (override) {
