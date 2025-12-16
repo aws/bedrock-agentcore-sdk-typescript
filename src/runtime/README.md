@@ -21,8 +21,8 @@ import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
 const handler = async (request, context) => {
   console.log(`Processing request with session ${context.sessionId}`)
   return {
-    message: "Hello from BedrockAgentCore!",
-    timestamp: new Date().toISOString()
+    message: 'Hello from BedrockAgentCore!',
+    timestamp: new Date().toISOString(),
   }
 }
 
@@ -32,6 +32,7 @@ app.run()
 ```
 
 The server will start on port 8080 and expose two endpoints:
+
 - `GET /ping` - Health check endpoint
 - `POST /invocations` - Handler invocation endpoint
 
@@ -40,10 +41,13 @@ The server will start on port 8080 and expose two endpoints:
 Your handler receives two parameters:
 
 ### Request
+
 The JSON payload from AgentCore Runtime (typed as `unknown` for maximum flexibility).
 
 ### Context
+
 An object containing:
+
 - `sessionId` (string): Unique identifier for the session
 - `headers` (Record<string, string>): HTTP headers from the incoming request
 
@@ -55,16 +59,16 @@ Handlers can return async generators to stream responses using Server-Sent Event
 const streamingHandler = async function* (request, context) {
   // Yield multiple chunks
   yield { event: 'start', sessionId: context.sessionId }
-  
+
   // Simulate processing
   for (let i = 0; i < 5; i++) {
-    yield { 
-      event: 'progress', 
+    yield {
+      event: 'progress',
       step: i + 1,
-      data: `Processing step ${i + 1}`
+      data: `Processing step ${i + 1}`,
     }
   }
-  
+
   yield { event: 'complete', result: 'done' }
 }
 
@@ -73,6 +77,7 @@ app.run()
 ```
 
 The server automatically:
+
 - Sets appropriate SSE headers (`Content-Type: text/event-stream`)
 - Streams data chunks as `data:` events
 - Sends `event: done` when complete
@@ -87,13 +92,13 @@ Optional configuration can be passed as the second parameter:
 const app = new BedrockAgentCoreApp(handler, {
   logging: {
     enabled: true,
-    level: 'debug'  // 'debug' | 'info' | 'warn' | 'error'
+    level: 'debug', // 'debug' | 'info' | 'warn' | 'error'
   },
   middleware: [
     // Express middleware functions
     customMiddleware1,
-    customMiddleware2
-  ]
+    customMiddleware2,
+  ],
 })
 ```
 
@@ -109,6 +114,7 @@ const app = new BedrockAgentCoreApp(handler, {
 `GET /ping`
 
 Returns:
+
 ```json
 {
   "status": "Healthy",
@@ -121,12 +127,15 @@ Returns:
 `POST /invocations`
 
 Headers:
+
 - `X-Amzn-Bedrock-AgentCore-Runtime-Session-Id`: Session identifier (required)
 
 Request body:
+
 - Any JSON payload (passed to your handler)
 
 Response:
+
 - JSON response from your handler, OR
 - Server-Sent Events stream if handler returns async generator
 
@@ -149,16 +158,11 @@ data: {"error":"Error message"}
 The package includes full TypeScript definitions:
 
 ```typescript
-import { 
-  BedrockAgentCoreApp, 
-  Handler, 
-  RequestContext, 
-  AppConfig 
-} from 'bedrock-agentcore/runtime'
+import { BedrockAgentCoreApp, Handler, RequestContext, AppConfig } from 'bedrock-agentcore/runtime'
 
 // Handler with full typing
 const handler: Handler = async (
-  request: unknown,  // Accept any JSON payload
+  request: unknown, // Accept any JSON payload
   context: RequestContext
 ): Promise<unknown> => {
   // Your logic here
@@ -166,7 +170,7 @@ const handler: Handler = async (
 }
 
 const config: AppConfig = {
-  logging: { enabled: true, level: 'info' }
+  logging: { enabled: true, level: 'info' },
 }
 
 const app = new BedrockAgentCoreApp(handler, config)
@@ -210,7 +214,7 @@ const app = new BedrockAgentCoreApp(async (request, context) => {
   return {
     echo: request,
     sessionId: context.sessionId,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   }
 })
 
@@ -227,13 +231,13 @@ const app = new BedrockAgentCoreApp(async (request: any, context) => {
   if (!request || typeof request !== 'object' || !('data' in request)) {
     throw new Error('Invalid request format')
   }
-  
+
   // Process the data
   const processed = processData(request.data)
-  
+
   return {
     result: processed,
-    sessionId: context.sessionId
+    sessionId: context.sessionId,
   }
 })
 
@@ -247,16 +251,16 @@ import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
 
 const app = new BedrockAgentCoreApp(async function* (request: any, context) {
   yield { status: 'started', sessionId: context.sessionId }
-  
+
   // Perform analysis in steps
   const steps = ['load', 'analyze', 'summarize', 'complete']
-  
+
   for (const step of steps) {
     const result = await performStep(step, request)
-    yield { 
-      step, 
+    yield {
+      step,
       result,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     }
   }
 })

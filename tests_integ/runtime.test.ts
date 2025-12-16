@@ -15,8 +15,6 @@ describe('BedrockAgentCoreApp Integration', () => {
   let expressApp: Express
 
   beforeAll(() => {
-    app = new BedrockAgentCoreApp()
-
     // Set up a test handler
     const handler: Handler = async (req, context) => {
       return {
@@ -26,7 +24,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       }
     }
 
-    app.setEntrypoint(handler)
+    app = new BedrockAgentCoreApp(handler)
 
     // Get the Express app instance for testing
     expressApp = (app as any)._app
@@ -124,13 +122,11 @@ describe('BedrockAgentCoreApp Integration', () => {
     let errorExpressApp: Express
 
     beforeAll(() => {
-      errorApp = new BedrockAgentCoreApp()
-
       const errorHandler: Handler = async (req, context) => {
         throw new Error('Handler failed')
       }
 
-      errorApp.setEntrypoint(errorHandler)
+      errorApp = new BedrockAgentCoreApp(errorHandler)
       errorExpressApp = (errorApp as any)._app
     })
 
@@ -154,50 +150,19 @@ describe('BedrockAgentCoreApp Integration', () => {
     })
   })
 
-  describe('Handler Not Set', () => {
-    let noHandlerApp: BedrockAgentCoreApp
-    let noHandlerExpressApp: Express
-
-    beforeAll(() => {
-      noHandlerApp = new BedrockAgentCoreApp()
-      // Do not set a handler
-      noHandlerExpressApp = (noHandlerApp as any)._app
-    })
-
-    it('returns 500 when handler not configured', async () => {
-      const response = await request(noHandlerExpressApp)
-        .post('/invocations')
-        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
-        .send({})
-
-      expect(response.status).toBe(500)
-    })
-
-    it('includes descriptive error message', async () => {
-      const response = await request(noHandlerExpressApp)
-        .post('/invocations')
-        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
-        .send({})
-
-      expect(response.body.error).toContain('handler')
-    })
-  })
-
   describe('Streaming Responses', () => {
     let streamApp: BedrockAgentCoreApp
     let streamExpressApp: Express
 
     beforeAll(() => {
-      streamApp = new BedrockAgentCoreApp()
-
       // Set up streaming handler
       const streamHandler: Handler = async function* (req, context) {
         yield { event: 'start', sessionId: context.sessionId }
-        yield { event: 'data', content: req.message || 'streaming' }
+        yield { event: 'data', content: (req as any).message || 'streaming' }
         yield { event: 'end' }
       }
 
-      streamApp.setEntrypoint(streamHandler)
+      streamApp = new BedrockAgentCoreApp(streamHandler)
       streamExpressApp = (streamApp as any)._app
     })
 
@@ -226,14 +191,12 @@ describe('BedrockAgentCoreApp Integration', () => {
     })
 
     it('handles streaming errors', async () => {
-      const errorApp = new BedrockAgentCoreApp()
-
       const errorHandler: Handler = async function* () {
         yield { event: 'start' }
         throw new Error('Stream error occurred')
       }
 
-      errorApp.setEntrypoint(errorHandler)
+      const errorApp = new BedrockAgentCoreApp(errorHandler)
       const errorExpressApp = (errorApp as any)._app
 
       const response = await request(errorExpressApp)
