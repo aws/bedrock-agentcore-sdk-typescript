@@ -18,7 +18,7 @@ export interface RequestContext {
 /**
  * Handler function type for processing agent invocations.
  *
- * The handler accepts and returns any serializable type to support
+ * The handler accepts and returns unknown types to support
  * arbitrary JSON payloads from AgentCore Runtime. The handler can also
  * return an async generator for streaming responses via Server-Sent Events.
  *
@@ -27,21 +27,14 @@ export interface RequestContext {
  * @returns Response data (any serializable type) or async generator for streaming
  */
 export type Handler = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  request: any,
+  request: unknown,
   context: RequestContext
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-) => Promise<any> | any | AsyncGenerator<any, void, unknown>
+) => Promise<unknown> | unknown | AsyncGenerator<unknown, void, unknown>
 
 /**
  * Configuration options for BedrockAgentCoreApp.
  */
 export interface AppConfig {
-  /**
-   * Request timeout in milliseconds.
-   */
-  timeout?: number
-
   /**
    * Logging configuration options.
    */

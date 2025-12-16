@@ -1,4 +1,5 @@
-import express, { type Express, type Request, type Response } from 'express'
+import express from 'express'
+import type { Request, Response } from 'express'
 import type { AppConfig, Handler, RequestContext, HealthCheckResponse } from './types.js'
 
 /**
