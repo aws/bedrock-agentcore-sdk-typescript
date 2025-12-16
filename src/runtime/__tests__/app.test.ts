@@ -361,6 +361,9 @@ describe('BedrockAgentCoreApp', () => {
         setHeader: vi.fn(),
         write: vi.fn((data: string) => writes.push(data)),
         end: vi.fn(),
+        on: vi.fn(),
+        off: vi.fn(),
+        writableEnded: false,
         json: vi.fn(),
         status: vi.fn().mockReturnThis(),
       }
@@ -405,6 +408,9 @@ describe('BedrockAgentCoreApp', () => {
         setHeader: vi.fn(),
         write: vi.fn((data: string) => writes.push(data)),
         end: vi.fn(),
+        on: vi.fn(),
+        off: vi.fn(),
+        writableEnded: false,
         json: vi.fn(),
         status: vi.fn().mockReturnThis(),
       }
@@ -415,6 +421,61 @@ describe('BedrockAgentCoreApp', () => {
       const errorWrite = writes.find((w) => w.includes('event: error'))
       expect(errorWrite).toBeDefined()
       expect(errorWrite).toContain('Streaming error')
+    })
+
+    it('stops streaming when client disconnects', async () => {
+      const app = new BedrockAgentCoreApp()
+      const mockApp = (app as any)._app
+
+      let chunkCount = 0
+      // Create async generator that yields many chunks
+      const mockHandler = vi.fn(async function* () {
+        for (let i = 0; i < 100; i++) {
+          chunkCount++
+          yield { chunk: i }
+        }
+      })
+      app.setEntrypoint(mockHandler)
+
+      const postCall = (mockApp.post as any).mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const handler = postCall[1]
+
+      const mockReq = {
+        body: {},
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
+      }
+
+      const writes: string[] = []
+      let closeCallback: (() => void) | null = null
+      const mockRes = {
+        setHeader: vi.fn(),
+        write: vi.fn((data: string) => {
+          writes.push(data)
+          // Simulate client disconnect after 3 chunks
+          if (writes.length === 3 && closeCallback) {
+            closeCallback()
+          }
+          return true
+        }),
+        end: vi.fn(),
+        on: vi.fn((event: string, callback: () => void) => {
+          if (event === 'close') {
+            closeCallback = callback
+          }
+        }),
+        off: vi.fn(),
+        writableEnded: false,
+        json: vi.fn(),
+        status: vi.fn().mockReturnThis(),
+      }
+
+      await handler(mockReq, mockRes)
+
+      // Verify streaming stopped early (should be much less than 100 chunks)
+      expect(chunkCount).toBeLessThan(10)
+      // Verify close listener was registered and cleaned up
+      expect(mockRes.on).toHaveBeenCalledWith('close', expect.any(Function))
+      expect(mockRes.off).toHaveBeenCalledWith('close', expect.any(Function))
     })
   })
 
