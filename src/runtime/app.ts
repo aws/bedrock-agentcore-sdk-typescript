@@ -11,28 +11,27 @@ import type { AppConfig, Handler, RequestContext, HealthCheckResponse } from './
  *
  * @example
  * ```typescript
- * const app = new BedrockAgentCoreApp()
- *
- * const entrypoint = async (request, context) => {
+ * const app = new BedrockAgentCoreApp(async (request, context) => {
  *   console.log(`Processing request with session ${context.sessionId}`)
  *   return "Hello from BedrockAgentCore!"
- * }
+ * })
  *
- * app.setEntrypoint(entrypoint)
  * app.run()
  * ```
  */
 export class BedrockAgentCoreApp {
-  private readonly _app: Express
+  private readonly _app: express.Express
   private readonly _config: AppConfig
-  private _handler: Handler | null = null
+  private readonly _handler: Handler
 
   /**
    * Creates a new BedrockAgentCoreApp instance.
    *
-   * @param config - Optional configuration for timeout, logging, and middleware
+   * @param handler - The handler function to process invocation requests
+   * @param config - Optional configuration for logging and middleware
    */
-  constructor(config?: AppConfig) {
+  constructor(handler: Handler, config?: AppConfig) {
+    this._handler = handler
     this._config = config ?? {}
     this._app = express()
 
@@ -48,15 +47,6 @@ export class BedrockAgentCoreApp {
 
     // Set up routes
     this._setupRoutes()
-  }
-
-  /**
-   * Registers the handler function that will be invoked for each request.
-   *
-   * @param handler - The handler function to process invocation requests
-   */
-  setEntrypoint(handler: Handler): void {
-    this._handler = handler
   }
 
   /**
@@ -102,14 +92,6 @@ export class BedrockAgentCoreApp {
    */
   private async _handleInvocation(req: Request, res: Response): Promise<void> {
     try {
-      // Validate handler is set
-      if (!this._handler) {
-        res.status(500).json({
-          error: 'No handler configured. Call setEntrypoint() before starting the server.',
-        })
-        return
-      }
-
       // Extract context
       const context = this._extractContext(req)
 
@@ -122,7 +104,7 @@ export class BedrockAgentCoreApp {
       }
 
       // Invoke handler
-      const result = await this._handler(req.body, context)
+      const result = await this._handler(req.body as unknown, context)
 
       // Check if result is an async generator (streaming response)
       if (this._isAsyncGenerator(result)) {
@@ -146,12 +128,18 @@ export class BedrockAgentCoreApp {
    * @param value - Value to check
    * @returns True if the value is an async generator
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private _isAsyncGenerator(value: any): value is AsyncGenerator {
+  private _isAsyncGenerator(value: unknown): value is AsyncGenerator {
     return (
-      value &&
+      value !== null &&
+      value !== undefined &&
       typeof value === 'object' &&
+      'next' in value &&
       typeof value.next === 'function' &&
+      'return' in value &&
+      typeof value.return === 'function' &&
+      'throw' in value &&
+      typeof value.throw === 'function' &&
+      Symbol.asyncIterator in value &&
       typeof value[Symbol.asyncIterator] === 'function'
     )
   }
@@ -162,19 +150,22 @@ export class BedrockAgentCoreApp {
    * @param res - Express response object
    * @param generator - Async generator that yields data chunks
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async _handleStreamingResponse(res: Response, generator: AsyncGenerator<any>): Promise<void> {
+  private async _handleStreamingResponse(res: Response, generator: AsyncGenerator<unknown>): Promise<void> {
     // Set headers for Server-Sent Events
     res.setHeader('Content-Type', 'text/event-stream')
     res.setHeader('Cache-Control', 'no-cache')
     res.setHeader('Connection', 'keep-alive')
 
-    // Track client disconnect
+    // Track client disconnect and errors
     let clientDisconnected = false
     const onClose = (): void => {
       clientDisconnected = true
     }
+    const onError = (): void => {
+      clientDisconnected = true
+    }
     res.on('close', onClose)
+    res.on('error', onError)
 
     // Helper to write only if client still connected
     const writeIfConnected = (data: string): boolean => {
@@ -204,8 +195,9 @@ export class BedrockAgentCoreApp {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       writeIfConnected(`event: error\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`)
     } finally {
-      // Clean up event listener
+      // Clean up event listeners
       res.off('close', onClose)
+      res.off('error', onError)
 
       // End response if not already closed
       if (!res.writableEnded) {
