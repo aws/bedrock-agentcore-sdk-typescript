@@ -127,7 +127,6 @@ export class RuntimeClient {
     let wsUrl = `wss://${host}${path}`
 
     if (Object.keys(queryParams).length > 0) {
-      // eslint-disable-next-line no-undef
       const queryString = new URLSearchParams(queryParams).toString()
       wsUrl += `?${queryString}`
     }
@@ -183,7 +182,7 @@ export class RuntimeClient {
 
     // Convert wss:// to https:// for signing
     const httpsUrl = wsUrl.replace('wss://', 'https://')
-    // eslint-disable-next-line no-undef
+     
     const url = new URL(httpsUrl)
 
     // Create the request to sign
@@ -283,7 +282,7 @@ export class RuntimeClient {
 
     // Convert wss:// to https:// for signing
     const httpsUrl = wsUrl.replace('wss://', 'https://')
-    // eslint-disable-next-line no-undef
+     
     const url = new URL(httpsUrl)
 
     // Get AWS credentials
@@ -365,7 +364,6 @@ export class RuntimeClient {
 
     // Convert wss:// to https:// to get host
     const httpsUrl = wsUrl.replace('wss://', 'https://')
-    // eslint-disable-next-line no-undef
     const url = new URL(httpsUrl)
 
     // Generate WebSocket key (required for OAuth connections)
