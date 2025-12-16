@@ -5,9 +5,15 @@
 const fs = require('fs');
 
 async function getIssueInfo(github, context, inputs) {
-  const issueId = context.eventName === 'workflow_dispatch' 
-    ? inputs.issue_id
-    : context.payload.issue.number.toString();
+  let issueId;
+
+  if (context.eventName === 'workflow_dispatch') {
+    issueId = inputs.issue_id;
+  } else {
+    // Handle both issue comments and PR comments
+    issueId = (context.payload.issue?.number || context.payload.pull_request?.number)?.toString();
+  }
+
   const command = context.eventName === 'workflow_dispatch'
     ? inputs.command
     : (context.payload.comment.body.match(/^\/strands\s*(.*)$/)?.[1]?.trim() || '');
@@ -28,13 +34,13 @@ async function determineBranch(github, context, issueId, mode, isPullRequest) {
 
   if (mode === 'implementer' && !isPullRequest) {
     branchName = `agent-tasks/${issueId}`;
-    
+
     const mainRef = await github.rest.git.getRef({
       owner: context.repo.owner,
       repo: context.repo.repo,
       ref: 'heads/main'
     });
-    
+
     try {
       await github.rest.git.createRef({
         owner: context.repo.owner,
@@ -63,17 +69,17 @@ async function determineBranch(github, context, issueId, mode, isPullRequest) {
 }
 
 function buildPrompts(mode, issueId, isPullRequest, command, branchName, inputs) {
-  const sessionId = inputs.session_id || (mode === 'implementer' 
+  const sessionId = inputs.session_id || (mode === 'implementer'
     ? `${mode}-${branchName}`.replace(/[\/\\]/g, '-')
     : `${mode}-${issueId}`);
 
-  const scriptFile = mode === 'implementer' 
+  const scriptFile = mode === 'implementer'
     ? '.github/agent-sops/task-implementer.sop.md'
     : '.github/agent-sops/task-refiner.sop.md';
-  
+
   const systemPrompt = fs.readFileSync(scriptFile, 'utf8');
-  
-  let prompt = (isPullRequest) 
+
+  let prompt = (isPullRequest)
     ? 'The pull request id is:'
     : 'The issue id is:';
   prompt += `${issueId}\n${command}\nreview and continue`;
@@ -84,7 +90,7 @@ function buildPrompts(mode, issueId, isPullRequest, command, branchName, inputs)
 module.exports = async (context, github, core, inputs) => {
   try {
     const { issueId, command, issue } = await getIssueInfo(github, context, inputs);
-    
+
     const isPullRequest = !!issue.data.pull_request;
     const mode = (isPullRequest || command.startsWith('implement')) ? 'implementer' : 'refiner';
     console.log(`Is PR: ${isPullRequest}, Mode: ${mode}`);
@@ -93,7 +99,7 @@ module.exports = async (context, github, core, inputs) => {
     console.log(`Building prompts - mode: ${mode}, issue: ${issueId}, is PR: ${isPullRequest}`);
 
     const { sessionId, systemPrompt, prompt } = buildPrompts(mode, issueId, isPullRequest, command, branchName, inputs);
-    
+
     console.log(`Session ID: ${sessionId}`);
     console.log(`Task prompt: "${prompt}"`);
 
