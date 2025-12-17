@@ -182,7 +182,7 @@ export class RuntimeClient {
 
     // Convert wss:// to https:// for signing
     const httpsUrl = wsUrl.replace('wss://', 'https://')
-     
+
     const url = new URL(httpsUrl)
 
     // Create the request to sign
@@ -282,7 +282,7 @@ export class RuntimeClient {
 
     // Convert wss:// to https:// for signing
     const httpsUrl = wsUrl.replace('wss://', 'https://')
-     
+
     const url = new URL(httpsUrl)
 
     // Get AWS credentials
