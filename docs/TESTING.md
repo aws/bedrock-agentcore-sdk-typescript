@@ -49,7 +49,172 @@ tests_integ/
 ### Test File Naming
 
 - Unit tests: `{sourceFileName}.test.ts` in `src/**/__tests__/**`
-- Integration tests: `{feature}.test.ts` in `test/integ/`
+- Integration tests: `{feature}.test.ts` in `tests_integ/`
+
+## Integration Test Guidelines
+
+Integration tests validate end-to-end functionality with real external services. They test the **public API** against actual AWS services, not mocked implementations.
+
+### What to Include in Integration Tests
+
+**✅ DO test:**
+- Real service integration (actual AWS Bedrock calls)
+- Public API validation (main client classes)
+- Complete user workflows
+- Session management and lifecycle
+- Cross-operation workflows
+- Error scenarios with real services
+- Framework integrations (Vercel AI, LangChain, etc.)
+
+**❌ DON'T test:**
+- Internal helper functions
+- Mocked services (defeats the purpose)
+- Unit-level logic
+- TypeScript type checking
+
+### Integration Test Structure
+
+```typescript
+/**
+ * Integration tests for [FeatureName]
+ *
+ * Prerequisites:
+ * - AWS credentials configured
+ * - Access to AWS Bedrock [ServiceName] service
+ * - Required permissions: [list permissions]
+ *
+ * To run: npm run test:integ
+ */
+
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { ClientClass } from '../src/path/to/client'
+
+describe('[FeatureName] Integration Tests', () => {
+  let client: ClientClass
+  const testRegion = process.env.AWS_REGION || 'us-west-2'
+
+  beforeAll(() => {
+    client = new ClientClass({ region: testRegion })
+  })
+
+  afterAll(async () => {
+    // Cleanup resources
+  })
+
+  describe('Basic Functionality', () => {
+    it('performs core operation', async () => {
+      const result = await client.coreMethod()
+      expect(result).toBeDefined()
+      // Validate actual service response structure
+    }, 30000) // Longer timeout for real service calls
+  })
+
+  describe('Error Handling', () => {
+    it('handles service errors gracefully', async () => {
+      await expect(client.invalidOperation()).rejects.toThrow()
+    })
+  })
+})
+```
+
+### Prerequisites for Integration Tests
+
+**AWS Credentials:**
+- Configure via environment variables or AWS config
+- Ensure credentials have required permissions
+- Tests will fail with `AccessDeniedException` if credentials are expired
+
+**Service Access:**
+- Access to AWS Bedrock AgentCore service
+- Valid runtime ARNs (for runtime client tests)
+- Appropriate service quotas and limits
+
+**Environment Variables:**
+```bash
+AWS_REGION=us-west-2
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+# Or use AWS profiles, IAM roles, etc.
+```
+
+### Common Integration Test Patterns
+
+**Session Lifecycle Testing:**
+```typescript
+describe('Session Management', () => {
+  it('creates and manages sessions', async () => {
+    const session = await client.startSession({ name: 'test-session' })
+    expect(session.sessionId).toBeDefined()
+    
+    // Use session
+    const result = await client.performOperation({ sessionId: session.sessionId })
+    expect(result).toBeDefined()
+    
+    // Cleanup
+    await client.stopSession()
+  })
+})
+```
+
+**Multi-Step Workflows:**
+```typescript
+describe('Real-World Workflows', () => {
+  it('performs complete workflow', async () => {
+    // Step 1: Setup
+    await client.initialize()
+    
+    // Step 2: Execute
+    const result1 = await client.step1()
+    const result2 = await client.step2(result1)
+    
+    // Step 3: Validate
+    expect(result2).toMatchObject({
+      status: 'success',
+      data: expect.any(Object)
+    })
+  })
+})
+```
+
+**Error Scenario Testing:**
+```typescript
+describe('Error Handling', () => {
+  it('handles invalid parameters', async () => {
+    await expect(client.method({
+      invalidParam: 'bad-value'
+    })).rejects.toThrow('Invalid parameter')
+  })
+  
+  it('handles service unavailable', async () => {
+    // Test with invalid region or credentials
+    const invalidClient = new ClientClass({ region: 'invalid-region' })
+    await expect(invalidClient.method()).rejects.toThrow()
+  })
+})
+```
+
+### Running Integration Tests
+
+```bash
+# Run all integration tests
+npm run test:integ
+
+# Run specific integration test
+npm run test:integ -- runtime-client
+
+# Run with verbose output
+npm run test:integ -- --reporter=verbose
+```
+
+### Integration Test Best Practices
+
+1. **Use longer timeouts** (30-60 seconds) for real service calls
+2. **Clean up resources** in `afterAll` or `afterEach` hooks
+3. **Test realistic scenarios** that users would actually perform
+4. **Validate complete response structures** not just existence
+5. **Handle flaky network conditions** with appropriate retries
+6. **Use environment variables** for configuration
+7. **Document prerequisites** clearly in test file comments
 
 ## Test Structure Pattern
 
