@@ -1,31 +1,36 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { RequestHandler } from 'express'
+import type { FastifyPluginAsync } from 'fastify'
 import type { Handler } from '../types.js'
 
-// Mock express module
-vi.mock('express', () => {
-  const expressFn = vi.fn(() => {
+// Mock fastify module
+vi.mock('fastify', () => {
+  const mockFastify = vi.fn(() => {
     return {
       get: vi.fn(),
       post: vi.fn(),
-      use: vi.fn(),
-      listen: vi.fn((port: number, callback?: () => void) => {
-        if (callback) callback()
-        return { close: vi.fn() }
-      }),
+      register: vi.fn(async () => {}), // Make register async
+      ready: vi.fn(async () => {}), // Add ready method
+      listen: vi.fn(async () => {}),
+      log: {
+        error: vi.fn(),
+      },
     }
   })
-  expressFn.json = vi.fn(() => vi.fn())
-  return { default: expressFn }
+  return { default: mockFastify }
+})
+
+// Mock @fastify/sse
+vi.mock('@fastify/sse', () => {
+  return vi.fn()
 })
 
 describe('BedrockAgentCoreApp', () => {
   let BedrockAgentCoreApp: any
-  let express: any
+  let Fastify: any
 
   beforeEach(async () => {
     vi.resetModules()
-    express = (await import('express')).default
+    Fastify = (await import('fastify')).default
     const module = await import('../app.js')
     BedrockAgentCoreApp = module.BedrockAgentCoreApp
   })
@@ -45,17 +50,40 @@ describe('BedrockAgentCoreApp', () => {
       expect(app).toBeDefined()
     })
 
-    it('creates instance with handler and middleware config', () => {
-      const handler: Handler = async (request, context) => 'test response'
-      const middleware: RequestHandler = (req, res, next) => next()
-      const app = new BedrockAgentCoreApp(handler, { middleware: [middleware] })
-      expect(app).toBeDefined()
-    })
-
-    it('initializes Express app', () => {
+    it('initializes Fastify app', () => {
       const handler: Handler = async (request, context) => 'test response'
       new BedrockAgentCoreApp(handler)
-      expect(express).toHaveBeenCalled()
+      expect(Fastify).toHaveBeenCalled()
+    })
+
+    it('configures logger with default settings when no config provided', () => {
+      const handler: Handler = async (request, context) => 'test response'
+      new BedrockAgentCoreApp(handler)
+      expect(Fastify).toHaveBeenCalledWith({ logger: true })
+    })
+
+    it('configures logger with custom level', () => {
+      const handler: Handler = async (request, context) => 'test response'
+      new BedrockAgentCoreApp(handler, {
+        logging: { enabled: true, level: 'debug' },
+      })
+      expect(Fastify).toHaveBeenCalledWith({ logger: { level: 'debug' } })
+    })
+
+    it('disables logger when logging is disabled', () => {
+      const handler: Handler = async (request, context) => 'test response'
+      new BedrockAgentCoreApp(handler, {
+        logging: { enabled: false },
+      })
+      expect(Fastify).toHaveBeenCalledWith({ logger: false })
+    })
+
+    it('uses info level as default when level not specified', () => {
+      const handler: Handler = async (request, context) => 'test response'
+      new BedrockAgentCoreApp(handler, {
+        logging: { enabled: true },
+      })
+      expect(Fastify).toHaveBeenCalledWith({ logger: { level: 'info' } })
     })
   })
 
@@ -63,23 +91,23 @@ describe('BedrockAgentCoreApp', () => {
     it('registers GET /ping route', () => {
       const handler: Handler = async (request, context) => 'test response'
       const app = new BedrockAgentCoreApp(handler)
-      const mockApp = (app as any)._app
+      const mockApp = app._app
+
+      // Call _setupRoutes to register the routes
+      app._setupRoutes()
+
       expect(mockApp.get).toHaveBeenCalledWith('/ping', expect.any(Function))
     })
 
     it('registers POST /invocations route', () => {
       const handler: Handler = async (request, context) => 'test response'
       const app = new BedrockAgentCoreApp(handler)
-      const mockApp = (app as any)._app
-      expect(mockApp.post).toHaveBeenCalledWith('/invocations', expect.any(Function))
-    })
+      const mockApp = app._app
 
-    it('applies custom middleware if provided', () => {
-      const handler: Handler = async (request, context) => 'test response'
-      const middleware: RequestHandler = (req, res, next) => next()
-      const app = new BedrockAgentCoreApp(handler, { middleware: [middleware] })
-      const mockApp = (app as any)._app
-      expect(mockApp.use).toHaveBeenCalled()
+      // Call _setupRoutes to register the routes
+      app._setupRoutes()
+
+      expect(mockApp.post).toHaveBeenCalledWith('/invocations', { sse: true }, expect.any(Function))
     })
   })
 
@@ -87,13 +115,17 @@ describe('BedrockAgentCoreApp', () => {
     it('returns correct response format', async () => {
       const handler: Handler = async (request, context) => 'test response'
       const app = new BedrockAgentCoreApp(handler)
-      const mockApp = (app as any)._app
-      const getCall = (mockApp.get as any).mock.calls.find((call: any[]) => call[0] === '/ping')
+      const mockApp = app._app
+
+      // Call _setupRoutes to register the routes
+      app._setupRoutes()
+
+      const getCall = mockApp.get.mock.calls.find((call: any[]) => call[0] === '/ping')
       const pingHandler = getCall[1]
       const mockReq = {}
-      const mockRes = { json: vi.fn() }
-      await pingHandler(mockReq, mockRes)
-      expect(mockRes.json).toHaveBeenCalledWith({
+      const mockReply = { send: vi.fn() }
+      await pingHandler(mockReq, mockReply)
+      expect(mockReply.send).toHaveBeenCalledWith({
         status: expect.stringMatching(/^(Healthy|HealthyBusy)$/),
         time_of_last_update: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/),
       })
@@ -104,9 +136,13 @@ describe('BedrockAgentCoreApp', () => {
     it('invokes handler with request and context', async () => {
       const mockHandler = vi.fn(async (request, context) => ({ result: 'success' }))
       const app = new BedrockAgentCoreApp(mockHandler)
-      const mockApp = (app as any)._app
-      const postCall = (mockApp.post as any).mock.calls.find((call: any[]) => call[0] === '/invocations')
-      const invocationHandler = postCall[1]
+      const mockApp = app._app
+
+      // Call _setupRoutes to register the routes
+      app._setupRoutes()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2] // Third argument since we have { sse: true } as second
       const mockReq = {
         body: { test: 'data' },
         headers: {
@@ -114,8 +150,8 @@ describe('BedrockAgentCoreApp', () => {
           'content-type': 'application/json',
         },
       }
-      const mockRes = { json: vi.fn(), status: vi.fn().mockReturnThis() }
-      await invocationHandler(mockReq, mockRes)
+      const mockReply = { send: vi.fn(), status: vi.fn().mockReturnThis() }
+      await invocationHandler(mockReq, mockReply)
       expect(mockHandler).toHaveBeenCalledWith(
         { test: 'data' },
         {
@@ -130,16 +166,20 @@ describe('BedrockAgentCoreApp', () => {
     it('returns JSON response from handler', async () => {
       const mockHandler = vi.fn(async () => ({ result: 'success' }))
       const app = new BedrockAgentCoreApp(mockHandler)
-      const mockApp = (app as any)._app
-      const postCall = (mockApp.post as any).mock.calls.find((call: any[]) => call[0] === '/invocations')
-      const invocationHandler = postCall[1]
+      const mockApp = app._app
+
+      // Call _setupRoutes to register the routes
+      app._setupRoutes()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2] // Third argument since we have { sse: true } as second
       const mockReq = {
         body: {},
         headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
       }
-      const mockRes = { json: vi.fn(), status: vi.fn().mockReturnThis() }
-      await invocationHandler(mockReq, mockRes)
-      expect(mockRes.json).toHaveBeenCalledWith({ result: 'success' })
+      const mockReply = { send: vi.fn(), status: vi.fn().mockReturnThis() }
+      await invocationHandler(mockReq, mockReply)
+      expect(mockReply.send).toHaveBeenCalledWith({ result: 'success' })
     })
 
     it('handles streaming response', async () => {
@@ -148,35 +188,116 @@ describe('BedrockAgentCoreApp', () => {
         yield { chunk: 2 }
       })
       const app = new BedrockAgentCoreApp(mockHandler)
-      const mockApp = (app as any)._app
-      const postCall = (mockApp.post as any).mock.calls.find((call: any[]) => call[0] === '/invocations')
-      const invocationHandler = postCall[1]
+      const mockApp = app._app
+
+      // Call _setupRoutes to register the routes
+      app._setupRoutes()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2] // Third argument since we have { sse: true } as second
       const mockReq = {
         body: {},
         headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
       }
-      const writes: string[] = []
-      const mockRes = {
-        setHeader: vi.fn(),
-        write: vi.fn((data: string) => writes.push(data)),
-        end: vi.fn(),
-        on: vi.fn(),
-        off: vi.fn(),
-        writableEnded: false,
+      const mockSSE = {
+        keepAlive: vi.fn(),
+        onClose: vi.fn(),
+        isConnected: true,
+        send: vi.fn(),
+        close: vi.fn(),
       }
-      await invocationHandler(mockReq, mockRes)
-      expect(mockRes.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
-      expect(writes.length).toBeGreaterThan(0)
+      const mockReply = {
+        sse: mockSSE,
+      }
+      await invocationHandler(mockReq, mockReply)
+      expect(mockSSE.keepAlive).toHaveBeenCalled()
+      expect(mockSSE.send).toHaveBeenCalled()
+    })
+
+    it('sends correct SSE events for streaming response', async () => {
+      const mockHandler = vi.fn(async function* (req, context) {
+        yield { event: 'start', sessionId: context.sessionId }
+        yield { event: 'data', content: 'streaming test' }
+        yield { event: 'end' }
+      })
+
+      const app = new BedrockAgentCoreApp(mockHandler)
+      const mockApp = app._app
+
+      // Call _setupRoutes to register the routes
+      app._setupRoutes()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2] // Third argument since we have { sse: true } as second
+
+      const mockReq = {
+        body: { message: 'test' },
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'stream-session' },
+      }
+
+      // Track all SSE events sent
+      const sentEvents: any[] = []
+      const mockSSE = {
+        keepAlive: vi.fn(),
+        onClose: vi.fn(),
+        isConnected: true,
+        send: vi.fn((event) => {
+          sentEvents.push(event)
+          return Promise.resolve()
+        }),
+        close: vi.fn(),
+      }
+
+      const mockReply = {
+        sse: mockSSE,
+      }
+
+      await invocationHandler(mockReq, mockReply)
+
+      // Verify SSE setup
+      expect(mockSSE.keepAlive).toHaveBeenCalled()
+
+      // Verify correct number of SSE events (3 data + 1 done)
+      expect(mockSSE.send).toHaveBeenCalledTimes(4)
+
+      // Verify the actual SSE event data
+      expect(sentEvents).toEqual([
+        { data: { event: 'start', sessionId: 'stream-session' } },
+        { data: { event: 'data', content: 'streaming test' } },
+        { data: { event: 'end' } },
+        { event: 'done', data: {} }, // Final done event
+      ])
+
+      // Verify connection was closed
+      expect(mockSSE.close).toHaveBeenCalled()
     })
   })
 
   describe('run', () => {
-    it('starts server on port 8080', () => {
+    it('starts server on port 8080', async () => {
       const handler: Handler = async (request, context) => 'test response'
       const app = new BedrockAgentCoreApp(handler)
-      const mockApp = (app as any)._app
+      const mockApp = app._app
+
+      // Mock the register method to return a resolved promise
+      mockApp.register.mockResolvedValue(undefined)
+      mockApp.listen.mockResolvedValue(undefined)
+
+      // Mock console.log to avoid output during tests
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
       app.run()
-      expect(mockApp.listen).toHaveBeenCalledWith(8080, expect.any(Function))
+
+      // Wait a bit for the async operations to complete
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      // Verify that register was called (for SSE plugin)
+      expect(mockApp.register).toHaveBeenCalled()
+
+      // Verify that listen was called with correct parameters
+      expect(mockApp.listen).toHaveBeenCalledWith({ port: 8080, host: '0.0.0.0' })
+
+      consoleSpy.mockRestore()
     })
   })
 })

@@ -1,9 +1,16 @@
-import express from 'express'
-import type { Request, Response } from 'express'
-import type { AppConfig, Handler, RequestContext, HealthCheckResponse } from './types.js'
+import { createRequire } from 'module'
+import Fastify from 'fastify'
+
+import type { FastifyInstance, FastifyLoggerOptions, FastifyRequest, FastifyReply } from 'fastify'
+// Import SSE types to ensure module augmentation is applied
+import type {} from '@fastify/sse'
+import type { BedrockAgentCoreAppConfig, Handler, RequestContext, HealthCheckResponse } from './types.js'
+
+const require = createRequire(import.meta.url)
+const fastifySse = require('@fastify/sse')
 
 /**
- * Express-based HTTP server for hosting agents on AWS Bedrock AgentCore Runtime.
+ * Fastify-based HTTP server for hosting agents on AWS Bedrock AgentCore Runtime.
  *
  * This class provides an HTTP server that implements the AgentCore Runtime protocol
  * with health check and invocation endpoints. The server runs on port 8080 and
@@ -20,43 +27,45 @@ import type { AppConfig, Handler, RequestContext, HealthCheckResponse } from './
  * ```
  */
 export class BedrockAgentCoreApp {
-  private readonly _app: express.Express
-  private readonly _config: AppConfig
+  private readonly _app: FastifyInstance
+  private readonly _config: BedrockAgentCoreAppConfig
   private readonly _handler: Handler
 
   /**
    * Creates a new BedrockAgentCoreApp instance.
    *
    * @param handler - The handler function to process invocation requests
-   * @param config - Optional configuration for logging and middleware
+   * @param config - Optional configuration for logging, etc.
    */
-  constructor(handler: Handler, config?: AppConfig) {
+  constructor(handler: Handler, config?: BedrockAgentCoreAppConfig) {
     this._handler = handler
     this._config = config ?? {}
-    this._app = express()
 
-    // Add JSON body parser middleware
-    this._app.use(express.json())
+    // Configure Fastify logger based on BedrockAgentCoreAppConfig
+    const loggerConfig = this._getLoggerConfig()
 
-    // Apply custom middleware if provided
-    if (this._config.middleware) {
-      for (const middleware of this._config.middleware) {
-        this._app.use(middleware)
-      }
-    }
-
-    // Set up routes
-    this._setupRoutes()
+    this._app = Fastify({ logger: loggerConfig })
   }
 
   /**
-   * Starts the Express server on port 8080.
+   * Starts the Fastify server on port 8080.
    */
   run(): void {
     const PORT = 8080
-    this._app.listen(PORT, () => {
-      console.log(`BedrockAgentCoreApp server listening on port ${PORT}`)
-    })
+
+    // Wait for Fastify to be ready (all plugins registered), setup routes, and start the server
+    Promise.resolve(this._registerPlugins())
+      .then(() => {
+        this._setupRoutes()
+        return this._app.listen({ port: PORT, host: '0.0.0.0' })
+      })
+      .then(() => {
+        console.log(`BedrockAgentCoreApp server listening on port ${PORT}`)
+      })
+      .catch((error: Error) => {
+        this._app.log.error(error)
+        process.exit(1)
+      })
   }
 
   /**
@@ -67,56 +76,89 @@ export class BedrockAgentCoreApp {
     this._app.get('/ping', this._handlePing.bind(this))
 
     // Invocation endpoint
-    this._app.post('/invocations', this._handleInvocation.bind(this))
+    this._app.post('/invocations', { sse: true }, this._handleInvocation.bind(this))
+  }
+
+  /**
+   * Registers Fastify plugins.
+   */
+  private async _registerPlugins(): Promise<void> {
+    // Register SSE plugin
+    await this._app.register(fastifySse)
+  }
+
+  /**
+   * Gets the logger configuration based on BedrockAgentCoreAppConfig.
+   *
+   * @returns Fastify logger configuration
+   */
+  private _getLoggerConfig(): boolean | FastifyLoggerOptions {
+    const loggingConfig = this._config.logging
+
+    // If no logging config provided, use default (enabled with info level)
+    if (!loggingConfig) {
+      return true
+    }
+
+    // If logging is explicitly disabled, return false
+    if (loggingConfig?.enabled === false) {
+      return false
+    }
+
+    // Build logger configuration object
+    const loggerConfig: { level: string } = {
+      level: loggingConfig.level || 'info',
+    }
+    return loggerConfig
   }
 
   /**
    * Handles health check requests.
    *
-   * @param req - Express request object
-   * @param res - Express response object
+   * @param request - Fastify request object
+   * @param reply - Fastify reply object
    */
-  private _handlePing(req: Request, res: Response): void {
+  private async _handlePing(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const response: HealthCheckResponse = {
       status: 'Healthy',
       time_of_last_update: new Date().toISOString(),
     }
-    res.json(response)
+    await reply.send(response)
   }
 
   /**
    * Handles agent invocation requests.
    *
-   * @param req - Express request object
-   * @param res - Express response object
+   * @param request - Fastify request object
+   * @param reply - Fastify reply object
    */
-  private async _handleInvocation(req: Request, res: Response): Promise<void> {
+  private async _handleInvocation(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     try {
       // Extract context
-      const context = this._extractContext(req)
+      const context = this._extractContext(request)
 
       // Validate sessionId
       if (!context.sessionId) {
-        res.status(400).json({
+        await reply.status(400).send({
           error: 'Missing sessionId. Provide via x-amzn-bedrock-agentcore-runtime-session-id header or request body.',
         })
         return
       }
 
       // Invoke handler
-      const result = await this._handler(req.body as unknown, context)
+      const result = await this._handler(request.body as unknown, context)
 
       // Check if result is an async generator (streaming response)
       if (this._isAsyncGenerator(result)) {
-        await this._handleStreamingResponse(res, result)
+        await this._handleStreamingResponse(reply, result)
       } else {
         // Return JSON response
-        res.json(result)
+        await reply.send(result)
       }
     } catch (error) {
       // Handle errors
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({
+      await reply.status(500).send({
         error: errorMessage,
       })
     }
@@ -145,63 +187,50 @@ export class BedrockAgentCoreApp {
   }
 
   /**
-   * Handles streaming response using Server-Sent Events (SSE).
+   * Handles streaming response using Server-Sent Events (SSE) via Fastify SSE plugin.
    *
-   * @param res - Express response object
+   * @param reply - Fastify reply object
    * @param generator - Async generator that yields data chunks
    */
-  private async _handleStreamingResponse(res: Response, generator: AsyncGenerator<unknown>): Promise<void> {
-    // Set headers for Server-Sent Events
-    res.setHeader('Content-Type', 'text/event-stream')
-    res.setHeader('Cache-Control', 'no-cache')
-    res.setHeader('Connection', 'keep-alive')
-
-    // Track client disconnect and errors
-    let clientDisconnected = false
-    const onClose = (): void => {
-      clientDisconnected = true
-    }
-    const onError = (): void => {
-      clientDisconnected = true
-    }
-    res.on('close', onClose)
-    res.on('error', onError)
-
-    // Helper to write only if client still connected
-    const writeIfConnected = (data: string): boolean => {
-      if (!clientDisconnected) {
-        res.write(data)
-        return true
-      }
-      return false
-    }
-
+  private async _handleStreamingResponse(reply: FastifyReply, generator: AsyncGenerator<unknown>): Promise<void> {
     try {
+      await reply.sse.keepAlive()
       // Stream data chunks
       for await (const chunk of generator) {
         // Stop if client disconnected
-        if (clientDisconnected) {
+        if (!reply.sse.isConnected) {
           break
         }
 
-        const data = JSON.stringify(chunk)
-        writeIfConnected(`data: ${data}\n\n`)
+        // Send SSE message
+        await reply.sse.send({
+          data: chunk,
+        })
       }
 
       // Send done event if still connected
-      writeIfConnected('event: done\ndata: {}\n\n')
+      if (reply.sse.isConnected) {
+        await reply.sse.send({
+          event: 'done',
+          data: {},
+        })
+      }
     } catch (error) {
       // Send error event if still connected
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      writeIfConnected(`event: error\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`)
+      if (reply.sse && reply.sse.isConnected) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        await reply.sse.send({
+          event: 'error',
+          data: { error: errorMessage },
+        })
+      } else {
+        console.error(`Error during streaming SSE events: ${error}`)
+        throw new Error('Error during streaming SSE events')
+      }
     } finally {
-      // Clean up event listeners
-      res.off('close', onClose)
-      res.off('error', onError)
-
-      // End response if not already closed
-      if (!res.writableEnded) {
-        res.end()
+      // Close the SSE connection
+      if (reply.sse) {
+        reply.sse.close()
       }
     }
   }
@@ -209,17 +238,19 @@ export class BedrockAgentCoreApp {
   /**
    * Extracts request context from the incoming request.
    *
-   * @param req - Express request object
+   * @param request - Fastify request object
    * @returns Request context with sessionId and headers
    */
-  private _extractContext(req: Request): RequestContext {
+  private _extractContext(request: FastifyRequest): RequestContext {
     // Extract sessionId from AWS header or body
     const sessionId =
-      (req.headers['x-amzn-bedrock-agentcore-runtime-session-id'] as string) || req.body?.sessionId || ''
+      (request.headers['x-amzn-bedrock-agentcore-runtime-session-id'] as string) ||
+      ((request.body as Record<string, unknown>)?.sessionId as string) ||
+      ''
 
     // Convert headers to plain object
     const headers: Record<string, string> = {}
-    for (const [key, value] of Object.entries(req.headers)) {
+    for (const [key, value] of Object.entries(request.headers)) {
       if (typeof value === 'string') {
         headers[key] = value
       } else if (Array.isArray(value)) {

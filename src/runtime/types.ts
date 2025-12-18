@@ -1,5 +1,3 @@
-import type { RequestHandler } from 'express'
-
 /**
  * Context provided to handler functions for each invocation request.
  */
@@ -34,7 +32,7 @@ export type Handler = (
 /**
  * Configuration options for BedrockAgentCoreApp.
  */
-export interface AppConfig {
+export interface BedrockAgentCoreAppConfig {
   /**
    * Logging configuration options.
    */
@@ -42,11 +40,6 @@ export interface AppConfig {
     enabled?: boolean
     level?: 'debug' | 'info' | 'warn' | 'error'
   }
-
-  /**
-   * Additional Express middleware to apply.
-   */
-  middleware?: RequestHandler[]
 }
 
 /**
