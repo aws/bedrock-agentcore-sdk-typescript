@@ -158,7 +158,7 @@ data: {"error":"Error message"}
 The package includes full TypeScript definitions:
 
 ```typescript
-import { BedrockAgentCoreApp, Handler, RequestContext, AppConfig } from 'bedrock-agentcore/runtime'
+import { BedrockAgentCoreApp, Handler, RequestContext, BedrockAgentCoreAppConfig } from 'bedrock-agentcore/runtime'
 
 // Handler with full typing
 const handler: Handler = async (
@@ -169,7 +169,7 @@ const handler: Handler = async (
   return { result: 'success' }
 }
 
-const config: AppConfig = {
+const config: BedrockAgentCoreAppConfig = {
   logging: { enabled: true, level: 'info' },
 }
 

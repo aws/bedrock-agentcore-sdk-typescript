@@ -1,2 +1,2 @@
 export { BedrockAgentCoreApp } from './app.js'
-export type { AppConfig, Handler, RequestContext, HealthStatus, HealthCheckResponse } from './types.js'
+export type { BedrockAgentCoreAppConfig, Handler, RequestContext, HealthStatus, HealthCheckResponse } from './types.js'
