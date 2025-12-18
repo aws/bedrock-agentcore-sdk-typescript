@@ -91,7 +91,7 @@ export const DEFAULT_REGION = 'us-west-2'
 /**
  * Zod schema for validating runtime ARN format.
  *
- * Expected format: arn:aws:bedrock-agentcore:{region}:{account}:runtime/{runtime_id}
+ * Expected format: arn:aws:bedrock-agentcore:\{region\}:\{account\}:runtime/\{runtime_id\}
  */
 export const RuntimeArnSchema = z
   .string()
@@ -167,7 +167,7 @@ export interface GenerateWsConnectionParams {
 
   /**
    * Optional endpoint name to use as 'qualifier' query parameter.
-   * If provided, adds ?qualifier={endpointName} to the URL.
+   * If provided, adds ?qualifier=\{endpointName\} to the URL.
    */
   endpointName?: string
 }
@@ -191,14 +191,14 @@ export interface GeneratePresignedUrlParams {
 
   /**
    * Optional endpoint name to use as 'qualifier' query parameter.
-   * If provided, adds ?qualifier={endpointName} to the URL before signing.
+   * If provided, adds ?qualifier=\{endpointName\} to the URL before signing.
    */
   endpointName?: string
 
   /**
    * Additional query parameters to include in the presigned URL before signing.
    *
-   * Example: { "customParam": "value", "anotherParam": "value2" }
+   * Example: \{ "customParam": "value", "anotherParam": "value2" \}
    */
   customHeaders?: Record<string, string>
 

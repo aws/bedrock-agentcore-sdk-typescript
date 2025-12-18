@@ -1,7 +1,7 @@
-import { fromNodeProviderChain } from '@aws-sdk/credential-providers'
+import { defaultProvider } from '@aws-sdk/credential-provider-node'
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
-import { HttpRequest } from '@smithy/protocol-http'
-import { SignatureV4 } from '@smithy/signature-v4'
+import { HttpRequest } from '@aws-sdk/protocol-http'
+import { SignatureV4 } from '@aws-sdk/signature-v4'
 import { Sha256 } from '@aws-crypto/sha256-js'
 import { randomUUID, randomBytes } from 'crypto'
 import { getDataPlaneEndpoint } from '../_utils/endpoints.js'
@@ -54,11 +54,11 @@ export class RuntimeClient {
    */
   constructor(config: RuntimeClientConfig = {}) {
     const region = config.region ?? process.env.AWS_REGION
-    if (!region) {
+    if (!region || !region.trim()) {
       throw new Error('Region must be provided via config.region or AWS_REGION environment variable')
     }
     this.region = region
-    this.credentialsProvider = config.credentialsProvider ?? fromNodeProviderChain()
+    this.credentialsProvider = config.credentialsProvider ?? defaultProvider()
   }
 
   /**
@@ -102,36 +102,24 @@ export class RuntimeClient {
     endpointName?: string,
     customHeaders?: Record<string, string>
   ): string {
-    // Get the data plane endpoint
+    // Get the data plane endpoint and build base URL
     const endpoint = getDataPlaneEndpoint(this.region)
-    const host = endpoint.replace('https://', '')
-
-    // URL-encode the runtime ARN
     const encodedArn = encodeURIComponent(runtimeArn)
+    const url = new URL(`${endpoint}/runtimes/${encodedArn}/ws`)
 
-    // Build base path
-    const path = `/runtimes/${encodedArn}/ws`
-
-    // Build query parameters
-    const queryParams: Record<string, string> = {}
-
+    // Add query parameters
     if (endpointName) {
-      queryParams.qualifier = endpointName
+      url.searchParams.set('qualifier', endpointName)
     }
 
     if (customHeaders) {
-      Object.assign(queryParams, customHeaders)
+      Object.entries(customHeaders).forEach(([key, value]) => {
+        url.searchParams.set(key, value)
+      })
     }
 
-    // Construct URL
-    let wsUrl = `wss://${host}${path}`
-
-    if (Object.keys(queryParams).length > 0) {
-      const queryString = new URLSearchParams(queryParams).toString()
-      wsUrl += `?${queryString}`
-    }
-
-    return wsUrl
+    // Convert to WebSocket URL
+    return url.toString().replace('https://', 'wss://')
   }
 
   /**
@@ -165,66 +153,48 @@ export class RuntimeClient {
    * ```
    */
   async generateWsConnection(params: GenerateWsConnectionParams): Promise<WebSocketConnection> {
-    // Validate ARN
     this._parseRuntimeArn(params.runtimeArn)
 
-    // Auto-generate session ID if not provided
     const sessionId = params.sessionId ?? randomUUID()
-
-    // Build WebSocket URL
     const wsUrl = this._buildWebSocketUrl(params.runtimeArn, params.endpointName)
 
-    // Get AWS credentials
     const credentials = await this.credentialsProvider()
     if (!credentials) {
       throw new Error('No AWS credentials found')
     }
 
-    // Convert wss:// to https:// for signing
-    const httpsUrl = wsUrl.replace('wss://', 'https://')
-
-    const url = new URL(httpsUrl)
-
-    // Create the request to sign
-    const request = new HttpRequest({
-      protocol: 'https:',
-      hostname: url.hostname,
-      path: url.pathname + url.search,
-      method: 'GET',
-      headers: {
-        host: url.hostname,
-      },
-    })
-
-    // Sign the request with SigV4
-    const signer = new SignatureV4({
-      service: 'bedrock-agentcore',
-      region: this.region,
+    // Create and sign the request
+    const url = new URL(wsUrl.replace('wss://', 'https://'))
+    const signedRequest = await new SignatureV4({
       credentials,
+      region: this.region,
+      service: 'bedrock-agentcore',
       sha256: Sha256,
-    })
+    }).sign(
+      new HttpRequest({
+        protocol: 'https:',
+        hostname: url.hostname,
+        path: url.pathname,
+        query: Object.fromEntries(url.searchParams.entries()),
+        method: 'GET',
+        headers: {
+          host: url.hostname,
+          'X-Amzn-Bedrock-AgentCore-Runtime-Session-Id': sessionId,
+        },
+      })
+    )
 
-    const signedRequest = await signer.sign(request)
-
-    // Build headers for WebSocket connection
-    const headers: Record<string, string> = {
-      Host: url.hostname,
-      Authorization: signedRequest.headers.authorization as string,
-      'X-Amz-Date': signedRequest.headers['x-amz-date'] as string,
-      'X-Amzn-Bedrock-AgentCore-Runtime-Session-Id': sessionId,
-      Connection: 'Upgrade',
-      Upgrade: 'websocket',
-      'Sec-WebSocket-Version': '13',
-    }
-
-    // Add session token if present
-    if (credentials.sessionToken) {
-      headers['X-Amz-Security-Token'] = credentials.sessionToken
-    }
-
+    // Return WebSocket connection with signed headers + WebSocket upgrade headers
     return {
       url: wsUrl,
-      headers,
+      headers: {
+        ...signedRequest.headers,
+        Connection: 'Upgrade',
+        Upgrade: 'websocket',
+        'Sec-WebSocket-Version': '13',
+        'Sec-WebSocket-Key': randomBytes(16).toString('base64'),
+        'User-Agent': 'AgentCoreRuntimeClient/1.0',
+      },
     }
   }
 
@@ -273,12 +243,12 @@ export class RuntimeClient {
     // Auto-generate session ID if not provided
     const sessionId = params.sessionId ?? randomUUID()
 
-    // Add session ID to custom headers (which become query params)
-    const customHeaders = { ...params.customHeaders }
-    customHeaders['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id'] = sessionId
-
-    // Build WebSocket URL with query parameters
-    const wsUrl = this._buildWebSocketUrl(params.runtimeArn, params.endpointName, customHeaders)
+    // Build minimal WebSocket URL without any custom parameters
+    // This should match the working presigned URL format
+    const wsUrl = this._buildWebSocketUrl(params.runtimeArn, params.endpointName, {
+      ...params.customHeaders,
+      'X-Amzn-Bedrock-AgentCore-Runtime-Session-Id': sessionId,
+    })
 
     // Convert wss:// to https:// for signing
     const httpsUrl = wsUrl.replace('wss://', 'https://')
@@ -291,30 +261,42 @@ export class RuntimeClient {
       throw new Error('No AWS credentials found')
     }
 
-    // Create the request to sign
+    // Create minimal request to sign - separate path and query for presigned URLs
     const request = new HttpRequest({
+      method: 'GET',
       protocol: 'https:',
       hostname: url.hostname,
-      path: url.pathname + url.search,
-      method: 'GET',
+      path: url.pathname,
+      query: Object.fromEntries(url.searchParams.entries()),
       headers: {
         host: url.hostname,
       },
     })
 
-    // Sign the request with SigV4 (presigned URL style)
+    // Sign the request with SigV4 (presigned URL style) following the exact pattern
     const signer = new SignatureV4({
-      service: 'bedrock-agentcore',
-      region: this.region,
       credentials,
+      region: this.region,
+      service: 'bedrock-agentcore',
       sha256: Sha256,
     })
 
     const signedRequest = await signer.presign(request, { expiresIn: expires })
 
+    // Construct the full signed URL with query parameters
+    let presignedUrl = `${signedRequest.protocol}//${signedRequest.hostname}${signedRequest.path}`
+
+    // Add the signature query parameters
+    if (signedRequest.query) {
+      const existingParams = presignedUrl.includes('?') ? '&' : '?'
+      const queryString = Object.entries(signedRequest.query)
+        .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
+        .join('&')
+      presignedUrl += existingParams + queryString
+    }
+
     // Convert signed URL from https:// back to wss://
-    const signedUrl = `${signedRequest.protocol}//${signedRequest.hostname}${signedRequest.path}`
-    const presignedWsUrl = signedUrl.replace('https://', 'wss://')
+    const presignedWsUrl = presignedUrl.replace('https://', 'wss://')
 
     return presignedWsUrl
   }

@@ -1,4 +1,3 @@
-
 export { BedrockAgentCoreApp } from './app.js'
 export { RuntimeClient } from './client.js'
 export type {
