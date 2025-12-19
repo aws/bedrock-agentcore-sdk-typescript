@@ -217,6 +217,11 @@ export class IdentityClient {
    * @returns Created OAuth2 provider
    */
   async createOAuth2CredentialProvider(config: OAuth2ProviderConfig): Promise<OAuth2Provider> {
+    // Validate that either discoveryUrl or authorizationServerMetadata is provided
+    if (!config.discoveryUrl && !config.authorizationServerMetadata) {
+      throw new Error('Either discoveryUrl or authorizationServerMetadata must be provided')
+    }
+
     const command = new CreateOauth2CredentialProviderCommand({
       name: config.name,
       credentialProviderVendor: 'CustomOauth2',
@@ -224,7 +229,11 @@ export class IdentityClient {
         customOauth2ProviderConfig: {
           clientId: config.clientId,
           clientSecret: config.clientSecret,
-          oauthDiscovery: { discoveryUrl: config.discoveryUrl },
+          oauthDiscovery: config.discoveryUrl
+            ? { discoveryUrl: config.discoveryUrl }
+            : config.authorizationServerMetadata
+              ? { authorizationServerMetadata: config.authorizationServerMetadata }
+              : undefined,
         },
       },
     })
