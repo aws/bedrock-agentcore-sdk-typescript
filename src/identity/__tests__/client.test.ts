@@ -283,7 +283,7 @@ describe('IdentityClient', () => {
   })
 
   describe('OAuth2 Provider CRUD', () => {
-    it('should create OAuth2 provider', async () => {
+    it('should create OAuth2 provider with discoveryUrl', async () => {
       const client = new IdentityClient()
       const mockSend = vi.fn().mockResolvedValue({
         name: 'test-oauth2-provider',
@@ -300,6 +300,31 @@ describe('IdentityClient', () => {
       })
 
       expect(provider.name).toBe('test-oauth2-provider')
+      expect(provider.callbackUrl).toBeDefined()
+      expect(mockSend).toHaveBeenCalledTimes(1)
+    })
+
+    it('should create OAuth2 provider with authorizationServerMetadata', async () => {
+      const client = new IdentityClient()
+      const mockSend = vi.fn().mockResolvedValue({
+        name: 'test-oauth2-provider-github',
+        credentialProviderArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789:oauth2-provider/test',
+        callbackUrl: 'https://callback.example.com',
+      })
+      ;(client as any).controlPlaneClient.send = mockSend
+
+      const provider = await client.createOAuth2CredentialProvider({
+        name: 'test-oauth2-provider-github',
+        clientId: 'client-456',
+        clientSecret: 'secret-789',
+        authorizationServerMetadata: {
+          issuer: 'https://github.com',
+          authorizationEndpoint: 'https://github.com/login/oauth/authorize',
+          tokenEndpoint: 'https://github.com/login/oauth/access_token',
+        },
+      })
+
+      expect(provider.name).toBe('test-oauth2-provider-github')
       expect(provider.callbackUrl).toBeDefined()
       expect(mockSend).toHaveBeenCalledTimes(1)
     })

@@ -117,26 +117,33 @@ export interface OAuth2Provider {
 }
 
 /**
+ * Authorization server metadata for OAuth2 providers
+ */
+export interface AuthorizationServerMetadata {
+  /** Issuer URL */
+  issuer: string
+  /** Authorization endpoint URL */
+  authorizationEndpoint: string
+  /** Token endpoint URL */
+  tokenEndpoint: string
+}
+
+/**
  * Configuration for creating an OAuth2 credential provider
  */
-export interface OAuth2ProviderConfig {
+export type OAuth2ProviderConfig = {
   /** Unique name for the provider */
   name: string
   /** Client ID from OAuth2 provider */
   clientId: string
   /** Client secret from OAuth2 provider */
   clientSecret: string
-  /** Discovery URL for OIDC providers like Google, Cognito */
-  discoveryUrl?: string | undefined
-  /** Authorization server metadata for providers like GitHub */
-  authorizationServerMetadata?:
-    | {
-        issuer: string
-        authorizationEndpoint: string
-        tokenEndpoint: string
-      }
-    | undefined
-}
+} & (
+  | { /** Discovery URL for OIDC providers like Google, Cognito */ discoveryUrl: string }
+  | {
+      /** Authorization server metadata for providers like GitHub */ authorizationServerMetadata: AuthorizationServerMetadata
+    }
+)
 
 /**
  * API key credential provider resource
