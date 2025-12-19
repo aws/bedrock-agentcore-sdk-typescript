@@ -12,6 +12,9 @@ import type {
   WebSocketHandler,
   RequestContext,
   HealthCheckResponse,
+  AsyncTaskInfo,
+  AsyncTaskStatus,
+  HealthStatus,
 } from './types.js'
 
 const require = createRequire(import.meta.url)
@@ -40,6 +43,12 @@ export class BedrockAgentCoreApp {
   private readonly _config: BedrockAgentCoreAppConfig
   private readonly _handler: Handler
   private _websocketHandler: WebSocketHandler | undefined
+  private readonly _activeTasksMap: Map<number, AsyncTaskInfo> = new Map()
+  private _taskCounter: number = 0
+  private _pingHandler?: () => HealthStatus | Promise<HealthStatus>
+  private _forcedPingStatus?: HealthStatus
+  private _lastStatusUpdateTime: number = Date.now()
+  private _lastKnownStatus?: HealthStatus
 
   /**
    * Creates a new BedrockAgentCoreApp instance.
@@ -76,6 +85,71 @@ export class BedrockAgentCoreApp {
         this._app.log.error(error)
         process.exit(1)
       })
+  }
+
+  /**
+   * Register an async task for health tracking.
+   *
+   * @param name - Human-readable task name
+   * @param metadata - Optional task metadata
+   * @returns Task ID for completion tracking
+   */
+  public addAsyncTask(name: string, metadata?: Record<string, unknown>): number {
+    const taskId = ++this._taskCounter
+    const taskInfo: AsyncTaskInfo = {
+      name,
+      startTime: Date.now(),
+    }
+    if (metadata) {
+      taskInfo.metadata = metadata
+    }
+    this._activeTasksMap.set(taskId, taskInfo)
+    return taskId
+  }
+
+  /**
+   * Mark an async task as complete.
+   *
+   * @param taskId - Task ID from addAsyncTask
+   * @returns True if task was found and removed
+   */
+  public completeAsyncTask(taskId: number): boolean {
+    return this._activeTasksMap.delete(taskId)
+  }
+
+  /**
+   * Get current ping status based on priority system.
+   * Priority: Forced > Custom Handler > Automatic
+   *
+   * @returns Current health status
+   */
+  public getCurrentPingStatus(): HealthStatus {
+    // Priority 1: Forced status
+    if (this._forcedPingStatus) {
+      return this._forcedPingStatus
+    }
+
+    // Priority 2: Custom handler
+    if (this._pingHandler) {
+      try {
+        const result = this._pingHandler()
+        // Handle both sync and async handlers
+        return result instanceof Promise ? 'Healthy' : result
+      } catch (error) {
+        this._app.log.warn('Custom ping handler failed, falling back to automatic')
+      }
+    }
+
+    // Priority 3: Automatic based on active tasks
+    const status: HealthStatus = this._activeTasksMap.size > 0 ? 'HealthyBusy' : 'Healthy'
+
+    // Track status changes
+    if (!this._lastKnownStatus || this._lastKnownStatus !== status) {
+      this._lastKnownStatus = status
+      this._lastStatusUpdateTime = Date.now()
+    }
+
+    return status
   }
 
   /**
@@ -136,9 +210,10 @@ export class BedrockAgentCoreApp {
    * @param reply - Fastify reply object
    */
   private async _handlePing(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const status = this.getCurrentPingStatus()
     const response: HealthCheckResponse = {
-      status: 'Healthy',
-      time_of_last_update: new Date().toISOString(),
+      status,
+      time_of_last_update: new Date(this._lastStatusUpdateTime).toISOString(),
     }
     await reply.send(response)
   }
