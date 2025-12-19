@@ -126,8 +126,16 @@ export interface OAuth2ProviderConfig {
   clientId: string
   /** Client secret from OAuth2 provider */
   clientSecret: string
-  /** Discovery URL */
-  discoveryUrl: string
+  /** Discovery URL for OIDC providers like Google, Cognito */
+  discoveryUrl?: string | undefined
+  /** Authorization server metadata for providers like GitHub */
+  authorizationServerMetadata?:
+    | {
+        issuer: string
+        authorizationEndpoint: string
+        tokenEndpoint: string
+      }
+    | undefined
 }
 
 /**
