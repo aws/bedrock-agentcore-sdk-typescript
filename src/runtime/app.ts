@@ -119,7 +119,7 @@ export class BedrockAgentCoreApp {
 
   /**
    * Get current ping status based on priority system.
-   * Priority: Forced > Custom Handler > Automatic
+   * Priority: Forced \> Custom Handler \> Automatic
    *
    * @returns Current health status
    */
@@ -135,7 +135,7 @@ export class BedrockAgentCoreApp {
         const result = this._pingHandler()
         // Handle both sync and async handlers
         return result instanceof Promise ? 'Healthy' : result
-      } catch (error) {
+      } catch {
         this._app.log.warn('Custom ping handler failed, falling back to automatic')
       }
     }
@@ -150,6 +150,54 @@ export class BedrockAgentCoreApp {
     }
 
     return status
+  }
+
+  /**
+   * Register a custom ping status handler.
+   *
+   * @param handler - Function that returns health status
+   */
+  public ping(handler: () => HealthStatus | Promise<HealthStatus>): void {
+    this._pingHandler = handler
+  }
+
+  /**
+   * Decorator to automatically track async tasks.
+   * Status becomes HealthyBusy during execution.
+   *
+   * @param fn - Async function to wrap
+   * @returns Wrapped function with automatic task tracking
+   */
+  public asyncTask<T extends (...args: any[]) => Promise<any>>(fn: T): T {
+    const self = this
+    const wrapped = async function (this: any, ...args: any[]) {
+      const taskId = self.addAsyncTask(fn.name || 'anonymous')
+      try {
+        return await fn.apply(this, args)
+      } finally {
+        self.completeAsyncTask(taskId)
+      }
+    }
+    Object.defineProperty(wrapped, 'name', { value: fn.name })
+    return wrapped as T
+  }
+
+  /**
+   * Get information about currently running async tasks.
+   *
+   * @returns Task status with count and details
+   */
+  public getAsyncTaskInfo(): AsyncTaskStatus {
+    const now = Date.now()
+    const runningJobs = Array.from(this._activeTasksMap.values()).map((task) => ({
+      name: task.name,
+      duration: (now - task.startTime) / 1000, // Convert to seconds
+    }))
+
+    return {
+      activeCount: this._activeTasksMap.size,
+      runningJobs,
+    }
   }
 
   /**
