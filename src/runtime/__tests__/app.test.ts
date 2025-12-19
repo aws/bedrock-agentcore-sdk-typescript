@@ -182,6 +182,55 @@ describe('BedrockAgentCoreApp', () => {
       expect(mockReply.send).toHaveBeenCalledWith({ result: 'success' })
     })
 
+    it('extracts workloadAccessToken from header when present', async () => {
+      const mockHandler = vi.fn(async (request, context) => ({ token: context.workloadAccessToken }))
+      const app = new BedrockAgentCoreApp(mockHandler)
+      const mockApp = app._app
+
+      app._setupRoutes()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2] // Third argument (after path and options)
+      const mockReq = {
+        body: {},
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123',
+          workloadaccesstoken: 'workload-token-abc123',
+        },
+      }
+      const mockReply = { send: vi.fn(), status: vi.fn().mockReturnThis() }
+      await invocationHandler(mockReq, mockReply)
+      expect(mockHandler).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({
+          workloadAccessToken: 'workload-token-abc123',
+        })
+      )
+    })
+
+    it('sets workloadAccessToken to undefined when header not present', async () => {
+      const mockHandler = vi.fn(async (request, context) => ({ hasToken: !!context.workloadAccessToken }))
+      const app = new BedrockAgentCoreApp(mockHandler)
+      const mockApp = app._app
+
+      app._setupRoutes()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2] // Third argument (after path and options)
+      const mockReq = {
+        body: {},
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
+      }
+      const mockReply = { send: vi.fn(), status: vi.fn().mockReturnThis() }
+      await invocationHandler(mockReq, mockReply)
+      expect(mockHandler).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({
+          workloadAccessToken: undefined,
+        })
+      )
+    })
+
     it('handles streaming response', async () => {
       const mockHandler = vi.fn(async function* () {
         yield { chunk: 1 }

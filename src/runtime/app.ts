@@ -258,9 +258,13 @@ export class BedrockAgentCoreApp {
       }
     }
 
+    // Extract workload token from header (if present)
+    const workloadAccessToken = request.headers['workloadaccesstoken'] as string | undefined
+
     return {
       sessionId,
       headers,
+      workloadAccessToken,
     }
   }
 }

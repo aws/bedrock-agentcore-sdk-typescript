@@ -11,6 +11,13 @@ export interface RequestContext {
    * HTTP headers from the incoming request.
    */
   headers: Record<string, string>
+
+  /**
+   * Workload access token for authenticating with AgentCore Identity.
+   * Set by RuntimeApp when WorkloadAccessToken header is present.
+   * Used by Identity SDK to fetch OAuth2 tokens and API keys.
+   */
+  workloadAccessToken?: string | undefined
 }
 
 /**

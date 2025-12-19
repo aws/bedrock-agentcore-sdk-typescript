@@ -37,6 +37,10 @@
     "./runtime": {
       "import": "./dist/src/runtime/index.js",
       "types": "./dist/src/runtime/index.d.ts"
+    },
+    "./identity": {
+      "import": "./dist/src/identity/index.js",
+      "types": "./dist/src/identity/index.d.ts"
     }
   },
   "scripts": {
@@ -80,9 +84,9 @@
     "eslint-plugin-tsdoc": "^0.5.0",
     "husky": "^9.1.7",
     "playwright": "^1.56.1",
+    "prettier": "^3.0.0",
     "supertest": "^7.0.0",
     "tsx": "^4.19.4",
-    "prettier": "^3.0.0",
     "typescript": "^5.5.0",
     "vitest": "^4.0.8"
   },
@@ -99,7 +103,8 @@
   "homepage": "https://github.com/aws/bedrock-agentcore-sdk-typescript#readme",
   "dependencies": {
     "@aws-crypto/sha256-js": "^5.2.0",
-    "@aws-sdk/client-bedrock-agentcore": "^3.939.0",
+    "@aws-sdk/client-bedrock-agentcore": "^3.948.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "^3.948.0",
     "@aws-sdk/credential-providers": "^3.939.0",
     "@smithy/protocol-http": "^5.3.5",
     "@smithy/signature-v4": "^5.3.5",
