@@ -103,6 +103,26 @@ export interface HealthCheckResponse {
   time_of_last_update: string
 }
 
+/**
+ * Information about a tracked async task.
+ */
+export interface AsyncTaskInfo {
+  name: string
+  startTime: number
+  metadata?: Record<string, unknown>
+}
+
+/**
+ * Status information about all async tasks.
+ */
+export interface AsyncTaskStatus {
+  activeCount: number
+  runningJobs: Array<{
+    name: string
+    duration: number
+  }>
+}
+
 // =============================================================================
 // RuntimeClient Types (WebSocket Client)
 // =============================================================================
