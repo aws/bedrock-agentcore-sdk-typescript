@@ -167,8 +167,14 @@ export class BedrockAgentCoreApp {
    *
    * @param fn - Async function to wrap
    * @returns Wrapped function with automatic task tracking
+   * @throws Error if fn is not an async function
    */
   public asyncTask<T extends (...args: unknown[]) => Promise<unknown>>(fn: T): T {
+    // Validate that fn is actually an async function
+    if (fn.constructor.name !== 'AsyncFunction') {
+      throw new Error('asyncTask can only be applied to async functions')
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this
     const wrapped = async function (this: unknown, ...args: unknown[]): Promise<unknown> {
