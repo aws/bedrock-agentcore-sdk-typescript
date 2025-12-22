@@ -595,5 +595,16 @@ describe('BedrockAgentCoreApp', () => {
       const wrapped = app.asyncTask(myFunction)
       expect(wrapped.name).toBe('myFunction')
     })
+
+    it('throws error for non-async functions', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp(handler)
+
+      const syncFunction = () => {
+        return 'result'
+      }
+
+      expect(() => app.asyncTask(syncFunction as any)).toThrow('asyncTask can only be applied to async functions')
+    })
   })
 })
