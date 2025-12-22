@@ -485,4 +485,115 @@ describe('BedrockAgentCoreApp', () => {
       consoleSpy.mockRestore()
     })
   })
+
+  describe('task tracking', () => {
+    it('adds and completes tasks', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp(handler)
+
+      const taskId = app.addAsyncTask('test-task')
+      expect(app.getAsyncTaskInfo().activeCount).toBe(1)
+
+      app.completeAsyncTask(taskId)
+      expect(app.getAsyncTaskInfo().activeCount).toBe(0)
+    })
+
+    it('returns HealthyBusy with active tasks', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp(handler)
+
+      expect(app.getCurrentPingStatus()).toBe('Healthy')
+
+      app.addAsyncTask('test-task')
+      expect(app.getCurrentPingStatus()).toBe('HealthyBusy')
+    })
+
+    it('tracks multiple tasks', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp(handler)
+
+      const id1 = app.addAsyncTask('task1')
+      const id2 = app.addAsyncTask('task2')
+
+      const info = app.getAsyncTaskInfo()
+      expect(info.activeCount).toBe(2)
+      expect(info.runningJobs).toHaveLength(2)
+
+      app.completeAsyncTask(id1)
+      expect(app.getAsyncTaskInfo().activeCount).toBe(1)
+    })
+  })
+
+  describe('status priority', () => {
+    it('custom handler used when provided', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp(handler)
+
+      app.ping(() => 'HealthyBusy')
+      expect(app.getCurrentPingStatus()).toBe('HealthyBusy')
+    })
+
+    it('automatic status when no handler', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp(handler)
+
+      expect(app.getCurrentPingStatus()).toBe('Healthy')
+
+      app.addAsyncTask('test')
+      expect(app.getCurrentPingStatus()).toBe('HealthyBusy')
+    })
+
+    it('custom handler overrides automatic status', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp(handler)
+
+      app.addAsyncTask('test-task')
+      app.ping(() => 'Healthy')
+
+      expect(app.getCurrentPingStatus()).toBe('Healthy')
+    })
+  })
+
+  describe('asyncTask decorator', () => {
+    it('tracks task during execution', async () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp(handler)
+
+      let statusDuringExecution: string | undefined
+
+      const fn = app.asyncTask(async () => {
+        statusDuringExecution = app.getCurrentPingStatus()
+        return 'done'
+      })
+
+      await fn()
+
+      expect(statusDuringExecution).toBe('HealthyBusy')
+      expect(app.getCurrentPingStatus()).toBe('Healthy')
+    })
+
+    it('removes task even on error', async () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp(handler)
+
+      const fn = app.asyncTask(async () => {
+        throw new Error('test error')
+      })
+
+      await expect(fn()).rejects.toThrow('test error')
+      expect(app.getCurrentPingStatus()).toBe('Healthy')
+    })
+
+    it('preserves function name', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp(handler)
+
+      async function myFunction() {
+        return 'result'
+      }
+
+      const wrapped = app.asyncTask(myFunction)
+      expect(wrapped.name).toBe('myFunction')
+    })
+  })
 })

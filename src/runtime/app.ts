@@ -168,9 +168,10 @@ export class BedrockAgentCoreApp {
    * @param fn - Async function to wrap
    * @returns Wrapped function with automatic task tracking
    */
-  public asyncTask<T extends (...args: any[]) => Promise<any>>(fn: T): T {
+  public asyncTask<T extends (...args: unknown[]) => Promise<unknown>>(fn: T): T {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this
-    const wrapped = async function (this: any, ...args: any[]) {
+    const wrapped = async function (this: unknown, ...args: unknown[]): Promise<unknown> {
       const taskId = self.addAsyncTask(fn.name || 'anonymous')
       try {
         return await fn.apply(this, args)
