@@ -20,6 +20,8 @@ export default [
       globals: {
         console: 'readonly',
         process: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
       },
     },
     plugins: {
@@ -46,6 +48,7 @@ export default [
       globals: {
         process: 'readonly',
         console: 'readonly',
+        fetch: 'readonly',
       },
     },
     plugins: {
