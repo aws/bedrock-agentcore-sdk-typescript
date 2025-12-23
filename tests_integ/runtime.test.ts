@@ -60,6 +60,53 @@ describe('BedrockAgentCoreApp Integration', () => {
           expect(timestamp.toISOString()).toBe(res.body.time_of_last_update)
         })
     })
+
+    it('returns HealthyBusy with active tasks', async () => {
+      // Create app with task tracking
+      const handler: Handler = async (req, context) => {
+        return { message: 'test' }
+      }
+      const testApp = new BedrockAgentCoreApp(handler)
+
+      // Add a task
+      testApp.addAsyncTask('test-task')
+
+      // Setup routes
+      await testApp._registerPlugins()
+      testApp._setupRoutes()
+      await testApp._app.ready()
+
+      const response = await testApp._app.inject({
+        method: 'GET',
+        url: '/ping',
+      })
+
+      const body = JSON.parse(response.body)
+      expect(body.status).toBe('HealthyBusy')
+    })
+
+    it('custom ping handler works', async () => {
+      const handler: Handler = async (req, context) => {
+        return { message: 'test' }
+      }
+      const testApp = new BedrockAgentCoreApp(handler)
+
+      // Register custom handler
+      testApp.ping(() => 'HealthyBusy')
+
+      // Setup routes
+      await testApp._registerPlugins()
+      testApp._setupRoutes()
+      await testApp._app.ready()
+
+      const response = await testApp._app.inject({
+        method: 'GET',
+        url: '/ping',
+      })
+
+      const body = JSON.parse(response.body)
+      expect(body.status).toBe('HealthyBusy')
+    })
   })
 
   describe('POST /invocations', () => {

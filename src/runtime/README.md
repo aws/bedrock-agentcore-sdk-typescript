@@ -184,6 +184,79 @@ const app = new BedrockAgentCoreApp({ handler, websocketHandler, config })
 app.run()
 ```
 
+## Dynamic Health Check
+
+The `/ping` endpoint returns dynamic health status based on your application's workload:
+
+### Health Status Types
+
+- `Healthy` - No active operations, ready for new work
+- `HealthyBusy` - Currently processing operations
+
+### Automatic Task Tracking
+
+Track async operations automatically with the `asyncTask` decorator:
+
+```typescript
+const app = new BedrockAgentCoreApp(handler)
+
+// Wrap your async function
+const processData = app.asyncTask(async (data: string) => {
+  // Status automatically becomes HealthyBusy during execution
+  await heavyProcessing(data)
+  // Status reverts to Healthy when complete
+  return result
+})
+
+await processData('input')
+```
+
+### Manual Task Tracking
+
+For more control, manually register and complete tasks:
+
+```typescript
+const app = new BedrockAgentCoreApp(handler)
+
+// Register a task
+const taskId = app.addAsyncTask('background-job', { priority: 'high' })
+
+// Do work...
+await doBackgroundWork()
+
+// Mark as complete
+app.completeAsyncTask(taskId)
+```
+
+### Custom Health Logic
+
+Implement custom health check logic based on your application's needs:
+
+```typescript
+const app = new BedrockAgentCoreApp(handler)
+
+// Custom health check
+app.ping(() => {
+  // Check database connection, external dependencies, etc.
+  return databaseConnected ? 'Healthy' : 'HealthyBusy'
+})
+
+app.run()
+```
+
+### Task Introspection
+
+Query active tasks for monitoring and debugging:
+
+```typescript
+const status = app.getAsyncTaskInfo()
+console.log(`Active tasks: ${status.activeCount}`)
+
+status.runningJobs.forEach((job) => {
+  console.log(`  ${job.name}: ${job.duration.toFixed(2)}s`)
+})
+```
+
 ## Client Disconnect Handling
 
 The server automatically detects when clients disconnect and stops processing:

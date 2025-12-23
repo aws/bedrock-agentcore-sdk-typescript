@@ -12,6 +12,9 @@ import type {
   WebSocketHandler,
   RequestContext,
   HealthCheckResponse,
+  AsyncTaskInfo,
+  AsyncTaskStatus,
+  HealthStatus,
 } from './types.js'
 
 const require = createRequire(import.meta.url)
@@ -40,6 +43,12 @@ export class BedrockAgentCoreApp {
   private readonly _config: BedrockAgentCoreAppConfig
   private readonly _handler: Handler
   private _websocketHandler: WebSocketHandler | undefined
+  private readonly _activeTasksMap: Map<number, AsyncTaskInfo> = new Map()
+  private _taskCounter: number = 0
+  private _pingHandler?: () => HealthStatus | Promise<HealthStatus>
+  private _forcedPingStatus?: HealthStatus
+  private _lastStatusUpdateTime: number = Date.now()
+  private _lastKnownStatus?: HealthStatus
 
   /**
    * Creates a new BedrockAgentCoreApp instance.
@@ -76,6 +85,126 @@ export class BedrockAgentCoreApp {
         this._app.log.error(error)
         process.exit(1)
       })
+  }
+
+  /**
+   * Register an async task for health tracking.
+   *
+   * @param name - Human-readable task name
+   * @param metadata - Optional task metadata
+   * @returns Task ID for completion tracking
+   */
+  public addAsyncTask(name: string, metadata?: Record<string, unknown>): number {
+    const taskId = ++this._taskCounter
+    const taskInfo: AsyncTaskInfo = {
+      name,
+      startTime: Date.now(),
+    }
+    if (metadata) {
+      taskInfo.metadata = metadata
+    }
+    this._activeTasksMap.set(taskId, taskInfo)
+    return taskId
+  }
+
+  /**
+   * Mark an async task as complete.
+   *
+   * @param taskId - Task ID from addAsyncTask
+   * @returns True if task was found and removed
+   */
+  public completeAsyncTask(taskId: number): boolean {
+    return this._activeTasksMap.delete(taskId)
+  }
+
+  /**
+   * Get current ping status based on priority system.
+   * Priority: Forced \> Custom Handler \> Automatic
+   *
+   * @returns Current health status
+   */
+  public getCurrentPingStatus(): HealthStatus {
+    // Priority 1: Forced status
+    if (this._forcedPingStatus) {
+      return this._forcedPingStatus
+    }
+
+    // Priority 2: Custom handler
+    if (this._pingHandler) {
+      try {
+        const result = this._pingHandler()
+        // Handle both sync and async handlers
+        return result instanceof Promise ? 'Healthy' : result
+      } catch {
+        this._app.log.warn('Custom ping handler failed, falling back to automatic')
+      }
+    }
+
+    // Priority 3: Automatic based on active tasks
+    const status: HealthStatus = this._activeTasksMap.size > 0 ? 'HealthyBusy' : 'Healthy'
+
+    // Track status changes
+    if (!this._lastKnownStatus || this._lastKnownStatus !== status) {
+      this._lastKnownStatus = status
+      this._lastStatusUpdateTime = Date.now()
+    }
+
+    return status
+  }
+
+  /**
+   * Register a custom ping status handler.
+   *
+   * @param handler - Function that returns health status
+   */
+  public ping(handler: () => HealthStatus | Promise<HealthStatus>): void {
+    this._pingHandler = handler
+  }
+
+  /**
+   * Decorator to automatically track async tasks.
+   * Status becomes HealthyBusy during execution.
+   *
+   * @param fn - Async function to wrap
+   * @returns Wrapped function with automatic task tracking
+   * @throws Error if fn is not an async function
+   */
+  public asyncTask<T extends (...args: unknown[]) => Promise<unknown>>(fn: T): T {
+    // Validate that fn is actually an async function
+    if (fn.constructor.name !== 'AsyncFunction') {
+      throw new Error('asyncTask can only be applied to async functions')
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this
+    const wrapped = async function (this: unknown, ...args: unknown[]): Promise<unknown> {
+      const taskId = self.addAsyncTask(fn.name || 'anonymous')
+      try {
+        return await fn.apply(this, args)
+      } finally {
+        self.completeAsyncTask(taskId)
+      }
+    }
+    Object.defineProperty(wrapped, 'name', { value: fn.name })
+    return wrapped as T
+  }
+
+  /**
+   * Get information about currently running async tasks.
+   *
+   * @returns Task status with count and details
+   */
+  public getAsyncTaskInfo(): AsyncTaskStatus {
+    const now = Date.now()
+    const runningJobs = Array.from(this._activeTasksMap.values()).map((task) => ({
+      name: task.name,
+      duration: (now - task.startTime) / 1000, // Convert to seconds
+    }))
+
+    return {
+      activeCount: this._activeTasksMap.size,
+      runningJobs,
+    }
   }
 
   /**
@@ -136,9 +265,10 @@ export class BedrockAgentCoreApp {
    * @param reply - Fastify reply object
    */
   private async _handlePing(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const status = this.getCurrentPingStatus()
     const response: HealthCheckResponse = {
-      status: 'Healthy',
-      time_of_last_update: new Date().toISOString(),
+      status,
+      time_of_last_update: new Date(this._lastStatusUpdateTime).toISOString(),
     }
     await reply.send(response)
   }

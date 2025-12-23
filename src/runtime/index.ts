@@ -10,6 +10,8 @@ export type {
   RequestContext,
   HealthStatus,
   HealthCheckResponse,
+  AsyncTaskInfo,
+  AsyncTaskStatus,
   RuntimeClientConfig,
   GenerateWsConnectionParams,
   GeneratePresignedUrlParams,
