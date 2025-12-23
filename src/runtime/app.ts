@@ -4,10 +4,19 @@ import Fastify from 'fastify'
 import type { FastifyInstance, FastifyLoggerOptions, FastifyRequest, FastifyReply } from 'fastify'
 // Import SSE types to ensure module augmentation is applied
 import type {} from '@fastify/sse'
-import type { BedrockAgentCoreAppConfig, Handler, RequestContext, HealthCheckResponse } from './types.js'
+import type { WebSocket } from '@fastify/websocket'
+import type {
+  BedrockAgentCoreAppParams,
+  BedrockAgentCoreAppConfig,
+  Handler,
+  WebSocketHandler,
+  RequestContext,
+  HealthCheckResponse,
+} from './types.js'
 
 const require = createRequire(import.meta.url)
 const fastifySse = require('@fastify/sse')
+const fastifyWebsocket = require('@fastify/websocket')
 
 /**
  * Fastify-based HTTP server for hosting agents on AWS Bedrock AgentCore Runtime.
@@ -30,16 +39,17 @@ export class BedrockAgentCoreApp {
   private readonly _app: FastifyInstance
   private readonly _config: BedrockAgentCoreAppConfig
   private readonly _handler: Handler
+  private _websocketHandler: WebSocketHandler | undefined
 
   /**
    * Creates a new BedrockAgentCoreApp instance.
    *
-   * @param handler - The handler function to process invocation requests
-   * @param config - Optional configuration for logging, etc.
+   * @param params - Configuration including handler and optional settings
    */
-  constructor(handler: Handler, config?: BedrockAgentCoreAppConfig) {
-    this._handler = handler
-    this._config = config ?? {}
+  constructor(params: BedrockAgentCoreAppParams) {
+    this._handler = params.handler
+    this._websocketHandler = params.websocketHandler ?? undefined
+    this._config = params.config ?? {}
 
     // Configure Fastify logger based on BedrockAgentCoreAppConfig
     const loggerConfig = this._getLoggerConfig()
@@ -77,14 +87,21 @@ export class BedrockAgentCoreApp {
 
     // Invocation endpoint
     this._app.post('/invocations', { sse: true }, this._handleInvocation.bind(this))
+
+    // WebSocket endpoint (only if handler exists)
+    if (this._websocketHandler) {
+      this._app.get('/ws', { websocket: true }, this._handleWebSocket.bind(this))
+    }
   }
 
   /**
    * Registers Fastify plugins.
    */
   private async _registerPlugins(): Promise<void> {
-    // Register SSE plugin
     await this._app.register(fastifySse)
+    if (this._websocketHandler) {
+      await this._app.register(fastifyWebsocket)
+    }
   }
 
   /**
@@ -231,6 +248,33 @@ export class BedrockAgentCoreApp {
       // Close the SSE connection
       if (reply.sse) {
         reply.sse.close()
+      }
+    }
+  }
+
+  /**
+   * Handles WebSocket connections at /ws endpoint.
+   *
+   * @param connection - Fastify WebSocket connection
+   * @param request - Fastify request object
+   */
+  private async _handleWebSocket(connection: WebSocket, request: FastifyRequest): Promise<void> {
+    try {
+      // Extract context from WebSocket request
+      const context = this._extractContext(request)
+
+      this._app.log.info(`WebSocket connection established for session: ${context.sessionId}`)
+
+      // Call the user's WebSocket handler (guaranteed to exist since route is conditionally registered)
+      await this._websocketHandler!(connection, context)
+    } catch (error) {
+      this._app.log.error(`error=<${error instanceof Error ? error.message : String(error)}> | websocket handler error`)
+      try {
+        connection.close(1011, 'Internal server error')
+      } catch (closeError) {
+        this._app.log.error(
+          `close_error=<${closeError instanceof Error ? closeError.message : String(closeError)}> | error closing websocket`
+        )
       }
     }
   }

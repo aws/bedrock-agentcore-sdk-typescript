@@ -27,7 +27,7 @@ const handler = async (request, context) => {
 }
 
 // Create and start the server
-const app = new BedrockAgentCoreApp(handler)
+const app = new BedrockAgentCoreApp({ handler })
 app.run()
 ```
 
@@ -72,7 +72,7 @@ const streamingHandler = async function* (request, context) {
   yield { event: 'complete', result: 'done' }
 }
 
-const app = new BedrockAgentCoreApp(streamingHandler)
+const app = new BedrockAgentCoreApp({ handler: streamingHandler })
 app.run()
 ```
 
@@ -86,26 +86,23 @@ The server automatically:
 
 ## Configuration
 
-Optional configuration can be passed as the second parameter:
+Optional configuration can be passed in the config parameter:
 
 ```typescript
-const app = new BedrockAgentCoreApp(handler, {
-  logging: {
-    enabled: true,
-    level: 'debug', // 'debug' | 'info' | 'warn' | 'error'
+const app = new BedrockAgentCoreApp({
+  handler,
+  config: {
+    logging: {
+      enabled: true,
+      level: 'debug', // 'debug' | 'info' | 'warn' | 'error'
+    },
   },
-  middleware: [
-    // Express middleware functions
-    customMiddleware1,
-    customMiddleware2,
-  ],
 })
 ```
 
 ### Configuration Options
 
 - `logging`: Logging configuration (Note: logging is not yet implemented, but the configuration is reserved for future use)
-- `middleware`: Array of Express middleware functions to apply to all requests
 
 ## Protocol Details
 
@@ -158,7 +155,13 @@ data: {"error":"Error message"}
 The package includes full TypeScript definitions:
 
 ```typescript
-import { BedrockAgentCoreApp, Handler, RequestContext, BedrockAgentCoreAppConfig } from 'bedrock-agentcore/runtime'
+import {
+  BedrockAgentCoreApp,
+  Handler,
+  WebSocketHandler,
+  RequestContext,
+  BedrockAgentCoreAppConfig,
+} from 'bedrock-agentcore/runtime'
 
 // Handler with full typing
 const handler: Handler = async (
@@ -169,11 +172,15 @@ const handler: Handler = async (
   return { result: 'success' }
 }
 
+const websocketHandler: WebSocketHandler = async (socket, context) => {
+  socket.send(JSON.stringify({ connected: true, sessionId: context.sessionId }))
+}
+
 const config: BedrockAgentCoreAppConfig = {
   logging: { enabled: true, level: 'info' },
 }
 
-const app = new BedrockAgentCoreApp(handler, config)
+const app = new BedrockAgentCoreApp({ handler, websocketHandler, config })
 app.run()
 ```
 
@@ -191,6 +198,68 @@ const longRunningHandler = async function* (request, context) {
 ```
 
 This prevents wasted resources on disconnected clients.
+
+## WebSocket Support
+
+The server supports WebSocket connections for real-time bidirectional communication:
+
+```typescript
+import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
+
+const app = new BedrockAgentCoreApp({
+  handler: async (request, context) => {
+    return { message: 'HTTP response', sessionId: context.sessionId }
+  },
+  websocketHandler: async (socket, context) => {
+    // Send welcome message
+    socket.send(
+      JSON.stringify({
+        type: 'connected',
+        sessionId: context.sessionId,
+      })
+    )
+
+    // Handle incoming messages
+    socket.on('message', (message) => {
+      const data = JSON.parse(message)
+      socket.send(
+        JSON.stringify({
+          type: 'echo',
+          received: data,
+          sessionId: context.sessionId,
+        })
+      )
+    })
+  },
+})
+
+app.run()
+```
+
+### WebSocket Endpoint
+
+`GET /ws`
+
+The WebSocket endpoint is only available when a `websocketHandler` is provided. The handler receives:
+
+- `socket`: Fastify WebSocket connection object
+- `context`: Same RequestContext as HTTP handlers (sessionId, headers, etc.)
+
+### Session Context
+
+WebSocket connections receive the same session context as HTTP requests:
+
+- Session ID from `x-amzn-bedrock-agentcore-runtime-session-id` header
+- Access to request headers
+- Workload access token (if present)
+
+### Error Handling
+
+WebSocket errors are automatically handled:
+
+- Connection errors close the socket with code 1011
+- Handler errors are logged and the connection is terminated
+- Client disconnections are handled gracefully
 
 ## AWS Bedrock AgentCore Runtime Integration
 
@@ -210,12 +279,14 @@ This package handles all these requirements automatically.
 ```typescript
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
 
-const app = new BedrockAgentCoreApp(async (request, context) => {
-  return {
-    echo: request,
-    sessionId: context.sessionId,
-    timestamp: new Date().toISOString(),
-  }
+const app = new BedrockAgentCoreApp({
+  handler: async (request, context) => {
+    return {
+      echo: request,
+      sessionId: context.sessionId,
+      timestamp: new Date().toISOString(),
+    }
+  },
 })
 
 app.run()
@@ -226,19 +297,21 @@ app.run()
 ```typescript
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
 
-const app = new BedrockAgentCoreApp(async (request: any, context) => {
-  // Type guard for expected structure
-  if (!request || typeof request !== 'object' || !('data' in request)) {
-    throw new Error('Invalid request format')
-  }
+const app = new BedrockAgentCoreApp({
+  handler: async (request: any, context) => {
+    // Type guard for expected structure
+    if (!request || typeof request !== 'object' || !('data' in request)) {
+      throw new Error('Invalid request format')
+    }
 
-  // Process the data
-  const processed = processData(request.data)
+    // Process the data
+    const processed = processData(request.data)
 
-  return {
-    result: processed,
-    sessionId: context.sessionId,
-  }
+    return {
+      result: processed,
+      sessionId: context.sessionId,
+    }
+  },
 })
 
 app.run()
@@ -249,20 +322,22 @@ app.run()
 ```typescript
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
 
-const app = new BedrockAgentCoreApp(async function* (request: any, context) {
-  yield { status: 'started', sessionId: context.sessionId }
+const app = new BedrockAgentCoreApp({
+  handler: async function* (request: any, context) {
+    yield { status: 'started', sessionId: context.sessionId }
 
-  // Perform analysis in steps
-  const steps = ['load', 'analyze', 'summarize', 'complete']
+    // Perform analysis in steps
+    const steps = ['load', 'analyze', 'summarize', 'complete']
 
-  for (const step of steps) {
-    const result = await performStep(step, request)
-    yield {
-      step,
-      result,
-      timestamp: new Date().toISOString(),
+    for (const step of steps) {
+      const result = await performStep(step, request)
+      yield {
+        step,
+        result,
+        timestamp: new Date().toISOString(),
+      }
     }
-  }
+  },
 })
 
 app.run()
