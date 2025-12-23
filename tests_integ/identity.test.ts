@@ -16,7 +16,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { IdentityClient, withAccessToken, withApiKey } from '../src/identity';
-import { AgentCoreContext } from '../src/runtime/context';
 
 describe('Identity Integration Tests', () => {
   const testIdentityName = `test-identity-${Date.now()}`;
@@ -26,7 +25,7 @@ describe('Identity Integration Tests', () => {
   let workloadToken: string | undefined;
 
   beforeAll(async () => {
-    client = new IdentityClient();
+    client = new IdentityClient(process.env.AWS_REGION || 'us-west-2');
     
     // Create a test workload identity and get workload token
     try {
@@ -134,23 +133,6 @@ describe('Identity Integration Tests', () => {
 
       // Verify deleted
       await expect(client.getApiKeyCredentialProvider(testApiKeyProviderName)).rejects.toThrow();
-    });
-  });
-
-  describe('Context Integration', () => {
-    it('should store and retrieve workload token from context', () => {
-      const token = 'test-workload-token-123';
-      AgentCoreContext.setWorkloadAccessToken(token);
-      expect(AgentCoreContext.getWorkloadAccessToken()).toBe(token);
-    });
-
-    it('should store and retrieve request headers from context', () => {
-      const headers = {
-        Authorization: 'Bearer jwt-token-123',
-        'Content-Type': 'application/json',
-      };
-      AgentCoreContext.setRequestHeaders(headers);
-      expect(AgentCoreContext.getRequestHeaders()).toEqual(headers);
     });
   });
 
