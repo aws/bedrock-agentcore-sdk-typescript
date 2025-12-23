@@ -137,7 +137,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          rm -rf node_modules package-lock.json
+          npm clean
           npm install
 
       - name: Build package
