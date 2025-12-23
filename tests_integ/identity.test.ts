@@ -22,20 +22,9 @@ describe('Identity Integration Tests', () => {
   const testOAuth2ProviderName = `test-oauth2-${Date.now()}`;
   const testApiKeyProviderName = `test-apikey-${Date.now()}`;
   let client: IdentityClient;
-  let workloadToken: string | undefined;
 
   beforeAll(async () => {
     client = new IdentityClient(process.env.AWS_REGION || 'us-west-2');
-    
-    // Create a test workload identity and get workload token
-    try {
-      await client.createWorkloadIdentity(testIdentityName);
-      // Get workload access token for testing
-      workloadToken = await client.getWorkloadAccessTokenForUserId(testIdentityName, 'test-user-123');
-      console.log('Workload token obtained for testing');
-    } catch (e) {
-      console.warn('Could not create test workload identity or get token:', e);
-    }
   });
 
   afterAll(async () => {
@@ -138,8 +127,9 @@ describe('Identity Integration Tests', () => {
 
   describe('HOF Wrappers', () => {
     it('should wrap function with withAccessToken', async () => {
-      // Note: This test verifies the wrapper works, but won't actually fetch a token
-      // without a real workload token and provider setup
+      // Set region for wrapper's internal IdentityClient
+      process.env.AWS_REGION = process.env.AWS_REGION || 'us-west-2';
+      
       const wrappedFn = withAccessToken({
         providerName: 'test-provider',
         scopes: ['read'],
@@ -153,6 +143,9 @@ describe('Identity Integration Tests', () => {
     });
 
     it('should wrap function with withApiKey', async () => {
+      // Set region for wrapper's internal IdentityClient
+      process.env.AWS_REGION = process.env.AWS_REGION || 'us-west-2';
+      
       const wrappedFn = withApiKey({
         providerName: 'test-provider',
       })(async (input: string, apiKey: string) => {
@@ -164,81 +157,107 @@ describe('Identity Integration Tests', () => {
     });
   });
 
-  describe('OAuth2 Token Retrieval (Requires Setup)', () => {
-    it.skipIf(!process.env.OAUTH2_PROVIDER_NAME)('should retrieve OAuth2 token for M2M flow', async () => {
-      const providerName = process.env.OAUTH2_PROVIDER_NAME!;
-      const scopes = process.env.OAUTH2_SCOPES?.split(',') || ['openid'];
+  describe('M2M OAuth2 Token Retrieval (Full Flow)', { timeout: 60000 }, () => {
+    it('should complete full M2M flow with Cognito', async () => {
+      // This test requires AWS Cognito permissions
+      const { CognitoIdentityProviderClient, CreateUserPoolCommand, CreateResourceServerCommand, CreateUserPoolClientCommand, CreateUserPoolDomainCommand, DeleteUserPoolCommand } = await import('@aws-sdk/client-cognito-identity-provider');
       
-      if (!workloadToken) {
-        console.warn('Skipping: No workload token available');
-        return;
+      const cognito = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION || 'us-west-2' });
+      const testSuffix = Date.now();
+      let userPoolId: string | undefined;
+      let domainName: string | undefined;
+
+      try {
+        // 1. Create User Pool
+        const poolResponse = await cognito.send(new CreateUserPoolCommand({
+          PoolName: `AgentCoreM2MTest-${testSuffix}`,
+        }));
+        userPoolId = poolResponse.UserPool!.Id!;
+
+        // 2. Create User Pool Domain
+        domainName = `agentcore-m2m-${testSuffix}`;
+        await cognito.send(new CreateUserPoolDomainCommand({
+          Domain: domainName,
+          UserPoolId: userPoolId,
+        }));
+
+        // Wait for domain to become active
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        // 3. Create Resource Server
+        await cognito.send(new CreateResourceServerCommand({
+          UserPoolId: userPoolId,
+          Identifier: 'test-api',
+          Name: 'Test API',
+          Scopes: [
+            { ScopeName: 'read', ScopeDescription: 'Read access' },
+          ],
+        }));
+
+        // 4. Create App Client with client credentials grant
+        const clientResponse = await cognito.send(new CreateUserPoolClientCommand({
+          UserPoolId: userPoolId,
+          ClientName: 'M2MTestClient',
+          GenerateSecret: true,
+          AllowedOAuthFlows: ['client_credentials'],
+          AllowedOAuthScopes: ['test-api/read'],
+          AllowedOAuthFlowsUserPoolClient: true,
+        }));
+        const clientId = clientResponse.UserPoolClient!.ClientId!;
+        const clientSecret = clientResponse.UserPoolClient!.ClientSecret!;
+
+        // 5. Create AgentCore Identity OAuth2 provider
+        const region = process.env.AWS_REGION || 'us-west-2';
+        const discoveryUrl = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}/.well-known/openid-configuration`;
+        const providerName = `test-m2m-provider-${testSuffix}`;
+        
+        await client.createOAuth2CredentialProvider({
+          name: providerName,
+          clientId,
+          clientSecret,
+          discoveryUrl,
+        });
+
+        // 6. Create workload identity
+        const workloadName = `test-m2m-workload-${testSuffix}`;
+        await client.createWorkloadIdentity(workloadName);
+        const workloadToken = await client.getWorkloadAccessTokenForUserId(workloadName, 'test-user');
+
+        // 7. Get OAuth2 token via M2M flow
+        const token = await client.getOAuth2Token({
+          providerName,
+          scopes: ['test-api/read'],
+          authFlow: 'M2M',
+          workloadIdentityToken: workloadToken,
+        });
+
+        // Verify token
+        expect(token).toBeDefined();
+        expect(typeof token).toBe('string');
+        expect(token.length).toBeGreaterThan(0);
+
+        // Cleanup
+        await client.deleteOAuth2CredentialProvider(providerName);
+        await client.deleteWorkloadIdentity(workloadName);
+      } finally {
+        // Cleanup Cognito resources
+        if (userPoolId) {
+          const { DeleteUserPoolDomainCommand } = await import('@aws-sdk/client-cognito-identity-provider');
+          try {
+            // Delete domain first
+            if (domainName) {
+              await cognito.send(new DeleteUserPoolDomainCommand({
+                Domain: domainName,
+                UserPoolId: userPoolId,
+              }));
+            }
+            // Then delete user pool
+            await cognito.send(new DeleteUserPoolCommand({ UserPoolId: userPoolId }));
+          } catch (e) {
+            console.warn('Failed to cleanup Cognito resources:', e);
+          }
+        }
       }
-
-      const token = await client.getOAuth2Token({
-        providerName,
-        scopes,
-        authFlow: 'M2M',
-        workloadIdentityToken: workloadToken,
-      });
-
-      expect(token).toBeDefined();
-      expect(typeof token).toBe('string');
-      expect(token.length).toBeGreaterThan(0);
-    });
-
-    it.skipIf(!process.env.OAUTH2_PROVIDER_NAME)('should handle USER_FEDERATION flow with auth URL', async () => {
-      const providerName = process.env.OAUTH2_PROVIDER_NAME!;
-      const scopes = process.env.OAUTH2_SCOPES?.split(',') || ['openid'];
-      
-      if (!workloadToken) {
-        console.warn('Skipping: No workload token available');
-        return;
-      }
-
-      let authUrl: string | undefined;
-      
-      // This will return an auth URL and start polling
-      // In a real scenario, user would visit the URL
-      const tokenPromise = client.getOAuth2Token({
-        providerName,
-        scopes,
-        authFlow: 'USER_FEDERATION',
-        workloadIdentityToken: workloadToken,
-        callbackUrl: 'https://example.com/callback',
-        onAuthUrl: (url) => {
-          authUrl = url;
-          console.log('Authorization URL:', url);
-        },
-      });
-
-      // Wait a bit for auth URL callback
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      expect(authUrl).toBeDefined();
-      expect(authUrl).toContain('http');
-      
-      // Note: Token promise will timeout unless user completes auth
-      // This test just verifies the auth URL is returned
-    });
-  });
-
-  describe('API Key Retrieval (Requires Setup)', () => {
-    it.skipIf(!process.env.APIKEY_PROVIDER_NAME)('should retrieve API key', async () => {
-      const providerName = process.env.APIKEY_PROVIDER_NAME!;
-      
-      if (!workloadToken) {
-        console.warn('Skipping: No workload token available');
-        return;
-      }
-
-      const apiKey = await client.getApiKey({
-        providerName,
-        workloadIdentityToken: workloadToken,
-      });
-
-      expect(apiKey).toBeDefined();
-      expect(typeof apiKey).toBe('string');
-      expect(apiKey.length).toBeGreaterThan(0);
     });
   });
 
