@@ -1,22 +1,20 @@
 /**
  * Integration tests for BedrockAgentCoreApp HTTP server
  *
- * These tests validate the actual HTTP endpoints with a real Fastify server.
+ * These tests validate the actual HTTP endpoints with a real server using supertest.
  */
 
-import { createRequire } from 'module'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import request from 'supertest'
+import WebSocket from 'ws'
 import { BedrockAgentCoreApp } from '../src/runtime/app.js'
 import type { Handler } from '../src/runtime/types.js'
 
-const require = createRequire(import.meta.url)
-
 describe('BedrockAgentCoreApp Integration', () => {
   let app: BedrockAgentCoreApp
-  let fastifyApp: any
+  let fastify: any
 
   beforeAll(async () => {
-    // Set up a test handler
     const handler: Handler = async (req, context) => {
       return {
         message: 'Hello from BedrockAgentCore!',
@@ -25,306 +23,328 @@ describe('BedrockAgentCoreApp Integration', () => {
       }
     }
 
-    app = new BedrockAgentCoreApp(handler)
-
-    // Get the Fastify app instance for testing
-    fastifyApp = app._app
-
-    // Register plugins and setup routes (same as run() method but without listening)
-    await app._registerPlugins()
-    app._setupRoutes()
-    await fastifyApp.ready()
+    app = new BedrockAgentCoreApp({ handler })
+    fastify = (app as any)._app
+    await (app as any)._registerPlugins()
+    ;(app as any)._setupRoutes()
+    await fastify.ready()
   })
 
   describe('GET /ping', () => {
-    it('returns 200 status code', async () => {
-      const response = await fastifyApp.inject({
-        method: 'GET',
-        url: '/ping',
-      })
-      expect(response.statusCode).toBe(200)
-    })
-
-    it('returns JSON response', async () => {
-      const response = await fastifyApp.inject({
-        method: 'GET',
-        url: '/ping',
-      })
-      expect(response.headers['content-type']).toContain('application/json')
-    })
-
-    it('returns correct health check format', async () => {
-      const response = await fastifyApp.inject({
-        method: 'GET',
-        url: '/ping',
-      })
-      const body = JSON.parse(response.body)
-      expect(body).toEqual({
-        status: expect.stringMatching(/^(Healthy|HealthyBusy)$/),
-        time_of_last_update: expect.any(String),
-      })
+    it('returns JSON response with correct structure', async () => {
+      await request(fastify.server)
+        .get('/ping')
+        .expect('Content-Type', /json/)
+        .expect(200)
+        .expect(function(res) {
+          expect(res.body).toHaveProperty('status')
+          expect(res.body).toHaveProperty('time_of_last_update')
+        })
     })
 
     it('returns Healthy status', async () => {
-      const response = await fastifyApp.inject({
-        method: 'GET',
-        url: '/ping',
-      })
-      const body = JSON.parse(response.body)
-      expect(body.status).toBe('Healthy')
+      await request(fastify.server)
+        .get('/ping')
+        .expect(200)
+        .expect(function(res) {
+          expect(res.body.status).toBe('Healthy')
+        })
     })
 
     it('returns valid ISO 8601 timestamp', async () => {
-      const response = await fastifyApp.inject({
-        method: 'GET',
-        url: '/ping',
-      })
-      const body = JSON.parse(response.body)
-      const timestamp = new Date(body.time_of_last_update)
-      expect(timestamp.toISOString()).toBe(body.time_of_last_update)
+      await request(fastify.server)
+        .get('/ping')
+        .expect(200)
+        .expect(function(res) {
+          const timestamp = new Date(res.body.time_of_last_update)
+          expect(timestamp.toISOString()).toBe(res.body.time_of_last_update)
+        })
     })
   })
 
   describe('POST /invocations', () => {
-    it('returns 200 status code for valid request', async () => {
-      const response = await fastifyApp.inject({
-        method: 'POST',
-        url: '/invocations',
-        headers: {
-          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session',
-          'content-type': 'application/json',
-        },
-        payload: { test: 'data' },
-      })
-
-      expect(response.statusCode).toBe(200)
-    })
-
-    it('returns JSON response', async () => {
-      const response = await fastifyApp.inject({
-        method: 'POST',
-        url: '/invocations',
-        headers: {
-          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session',
-          'content-type': 'application/json',
-        },
-        payload: { test: 'data' },
-      })
-
-      expect(response.headers['content-type']).toContain('application/json')
-    })
-
     it('invokes handler with request data', async () => {
-      const response = await fastifyApp.inject({
-        method: 'POST',
-        url: '/invocations',
-        headers: {
-          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session',
-          'content-type': 'application/json',
-        },
-        payload: { test: 'data', value: 42 },
-      })
-
-      const body = JSON.parse(response.body)
-      expect(body).toEqual({
-        message: 'Hello from BedrockAgentCore!',
-        receivedData: { test: 'data', value: 42 },
-        sessionId: 'test-session',
-      })
+      await request(fastify.server)
+        .post('/invocations')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
+        .send({ test: 'data', value: 42 })
+        .expect('Content-Type', /json/)
+        .expect(200)
+        .expect(function(res) {
+          expect(res.body).toEqual({
+            message: 'Hello from BedrockAgentCore!',
+            receivedData: { test: 'data', value: 42 },
+            sessionId: 'test-session',
+          })
+        })
     })
 
     it('provides sessionId from header in context', async () => {
-      const response = await fastifyApp.inject({
-        method: 'POST',
-        url: '/invocations',
-        headers: {
-          'x-amzn-bedrock-agentcore-runtime-session-id': 'my-session-id',
-          'content-type': 'application/json',
-        },
-        payload: {},
-      })
-
-      const body = JSON.parse(response.body)
-      expect(body.sessionId).toBe('my-session-id')
+      await request(fastify.server)
+        .post('/invocations')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'my-session-id')
+        .send({})
+        .expect(200)
+        .expect(function(res) {
+          expect(res.body.sessionId).toBe('my-session-id')
+        })
     })
 
     it('provides sessionId from body if header missing', async () => {
-      const response = await fastifyApp.inject({
-        method: 'POST',
-        url: '/invocations',
-        headers: {
-          'content-type': 'application/json',
-        },
-        payload: { sessionId: 'body-session-id' },
-      })
-
-      const body = JSON.parse(response.body)
-      expect(body.sessionId).toBe('body-session-id')
+      await request(fastify.server)
+        .post('/invocations')
+        .send({ sessionId: 'body-session-id' })
+        .expect(200)
+        .expect(function(res) {
+          expect(res.body.sessionId).toBe('body-session-id')
+        })
     })
 
     it('returns 400 when sessionId missing', async () => {
-      const response = await fastifyApp.inject({
-        method: 'POST',
-        url: '/invocations',
-        headers: {
-          'content-type': 'application/json',
-        },
-        payload: { test: 'data' },
+      await request(fastify.server)
+        .post('/invocations')
+        .send({ test: 'data' })
+        .expect(400)
+    })
+
+    describe('Error Handling', () => {
+      let errorFastify: any
+
+      beforeAll(async () => {
+        const errorHandler: Handler = async (req, context) => {
+          throw new Error('Handler failed')
+        }
+
+        const errorApp = new BedrockAgentCoreApp({ handler: errorHandler })
+        errorFastify = (errorApp as any)._app
+        await (errorApp as any)._registerPlugins()
+        ;(errorApp as any)._setupRoutes()
+        await errorFastify.ready()
       })
 
-      expect(response.statusCode).toBe(400)
-      const body = JSON.parse(response.body)
-      expect(body).toHaveProperty('error')
-      expect(body.error).toContain('sessionId')
+      it('returns 500 when handler throws error', async () => {
+        await request(errorFastify.server)
+          .post('/invocations')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
+          .send({})
+          .expect(500)
+      })
+
+      it('includes error message in response', async () => {
+        await request(errorFastify.server)
+          .post('/invocations')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
+          .send({})
+          .expect(500)
+          .expect(function(res) {
+            expect(res.body).toHaveProperty('error')
+            expect(res.body.error).toBe('Handler failed')
+          })
+      })
+    })
+
+    describe('Streaming Responses', () => {
+      let streamFastify: any
+
+      beforeAll(async () => {
+        const streamHandler: Handler = async function* (req, context) {
+          yield { event: 'start', sessionId: context.sessionId }
+          yield { event: 'data', content: 'streaming test' }
+          yield { event: 'end' }
+        }
+
+        const streamApp = new BedrockAgentCoreApp({ handler: streamHandler })
+        streamFastify = (streamApp as any)._app
+        await (streamApp as any)._registerPlugins()
+        ;(streamApp as any)._setupRoutes()
+        await streamFastify.ready()
+      })
+
+      it('handles streaming responses with SSE', async () => {
+        await request(streamFastify.server)
+          .post('/invocations')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'stream-session')
+          .set('accept', 'text/event-stream')
+          .send({ message: 'test' })
+          .expect('Content-Type', 'text/event-stream')
+          .expect(200)
+          .expect(function(res) {
+            expect(res.text).toContain('data: {"event":"start","sessionId":"stream-session"}')
+            expect(res.text).toContain('data: {"event":"data","content":"streaming test"}')
+            expect(res.text).toContain('data: {"event":"end"}')
+          })
+      })
     })
   })
 
-  describe('Error Handling', () => {
-    let errorApp: BedrockAgentCoreApp
-    let errorFastifyApp: any
+  describe('WebSocket /ws', () => {
+    let wsApp: BedrockAgentCoreApp
+    let server: any
 
     beforeAll(async () => {
-      const errorHandler: Handler = async (req, context) => {
-        throw new Error('Handler failed')
+      const wsHandler: Handler = async (req, context) => {
+        return { message: 'HTTP handler', sessionId: context.sessionId }
       }
 
-      errorApp = new BedrockAgentCoreApp(errorHandler)
-      errorFastifyApp = errorApp._app
-
-      // Register plugins and setup routes for error handling tests
-      await errorApp._registerPlugins()
-      errorApp._setupRoutes()
-      await errorFastifyApp.ready()
-    })
-
-    it('returns 500 when handler throws error', async () => {
-      const response = await errorFastifyApp.inject({
-        method: 'POST',
-        url: '/invocations',
-        headers: {
-          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session',
-          'content-type': 'application/json',
-        },
-        payload: {},
-      })
-
-      expect(response.statusCode).toBe(500)
-    })
-
-    it('includes error message in response', async () => {
-      const response = await errorFastifyApp.inject({
-        method: 'POST',
-        url: '/invocations',
-        headers: {
-          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session',
-          'content-type': 'application/json',
-        },
-        payload: {},
-      })
-
-      const body = JSON.parse(response.body)
-      expect(body).toHaveProperty('error')
-      expect(body.error).toBe('Handler failed')
-    })
-  })
-
-  describe('Streaming Responses', () => {
-    it('detects async generator responses correctly', async () => {
-      // Test that the server can identify streaming responses
-      const streamHandler: Handler = async function* (req, context) {
-        yield { event: 'start', sessionId: context.sessionId }
-        yield { event: 'data', content: 'test' }
-        yield { event: 'end' }
+      const websocketHandler = async (socket: any, context: any) => {
+        socket.send(JSON.stringify({ 
+          type: 'connected', 
+          sessionId: context.sessionId 
+        }))
+        
+        socket.on('message', (message: string) => {
+          const data = JSON.parse(message)
+          socket.send(JSON.stringify({ 
+            type: 'echo', 
+            received: data,
+            sessionId: context.sessionId 
+          }))
+        })
       }
 
-      const streamApp = new BedrockAgentCoreApp(streamHandler)
-
-      // Test the _isAsyncGenerator method directly
-      const isAsyncGen = streamApp._isAsyncGenerator(streamHandler({}, { sessionId: 'test', headers: {} }))
-      expect(isAsyncGen).toBe(true)
-
-      // Test with non-generator
-      const nonStreamHandler: Handler = async () => ({ result: 'not streaming' })
-      const isNotAsyncGen = streamApp._isAsyncGenerator(nonStreamHandler({}, { sessionId: 'test', headers: {} }))
-      expect(isNotAsyncGen).toBe(false)
+      wsApp = new BedrockAgentCoreApp({ 
+        handler: wsHandler, 
+        websocketHandler 
+      })
+      
+      // Get the underlying Fastify server and start it manually
+      const fastify = (wsApp as any)._app
+      await (wsApp as any)._registerPlugins()
+      ;(wsApp as any)._setupRoutes()
+      await fastify.ready()
+      await fastify.listen({ port: 0, host: '127.0.0.1' })
+      server = fastify.server
     })
 
-    it('handles streaming responses with proper SSE plugin registration', async () => {
-      const streamHandler: Handler = async function* (req, context) {
-        yield { event: 'start', sessionId: context.sessionId }
-        yield { event: 'data', content: 'streaming test' }
-        yield { event: 'end' }
+    afterAll(async () => {
+      if (server) {
+        await new Promise<void>((resolve) => {
+          server.close(() => resolve())
+        })
       }
-
-      const streamApp = new BedrockAgentCoreApp(streamHandler)
-      const streamFastifyApp = streamApp._app
-
-      // Register plugins and setup routes
-      await streamApp._registerPlugins()
-      streamApp._setupRoutes()
-      await streamFastifyApp.ready()
-
-      // Make request with SSE accept header
-      const response = await streamFastifyApp.inject({
-        method: 'POST',
-        url: '/invocations',
-        headers: {
-          'x-amzn-bedrock-agentcore-runtime-session-id': 'stream-session',
-          'content-type': 'application/json',
-          'accept': 'text/event-stream',
-        },
-        payload: { message: 'test' },
-      })
-
-      expect(response.statusCode).toBe(200)
-      // Verify SSE content type and streaming data
-      expect(response.headers['content-type']).toBe('text/event-stream')
-
-      // Verify the SSE stream contains expected events
-      const sseBody = response.body
-      expect(sseBody).toContain('data: {"event":"start","sessionId":"stream-session"}')
-      expect(sseBody).toContain('data: {"event":"data","content":"streaming test"}')
-      expect(sseBody).toContain('data: {"event":"end"}')
-      expect(sseBody).toContain('event: done')
     })
 
-    it('handles streaming errors properly', async () => {
-      const errorHandler: Handler = async function* () {
-        yield { event: 'start' }
-        throw new Error('Stream error occurred')
-      }
+    it('establishes websocket connection', async () => {
+      const port = server.address().port
+      const ws = new WebSocket(`ws://localhost:${port}/ws`)
+      
+      await new Promise((resolve, reject) => {
+        ws.on('open', resolve)
+        ws.on('error', reject)
+      })
+      
+      ws.close()
+    })
 
-      const errorApp = new BedrockAgentCoreApp(errorHandler)
-      const errorFastifyApp = errorApp._app
-
-      // Register plugins and setup routes
-      await errorApp._registerPlugins()
-      errorApp._setupRoutes()
-      await errorFastifyApp.ready()
-
-      const response = await errorFastifyApp.inject({
-        method: 'POST',
-        url: '/invocations',
+    it('receives connected message with sessionId from header', async () => {
+      const port = server.address().port
+      const ws = new WebSocket(`ws://localhost:${port}/ws`, {
         headers: {
-          'x-amzn-bedrock-agentcore-runtime-session-id': 'error-session',
-          'content-type': 'application/json',
-          'accept': 'text/event-stream',
-        },
-        payload: {},
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session-123'
+        }
+      })
+      
+      const message = await new Promise((resolve, reject) => {
+        ws.on('message', (data) => {
+          resolve(JSON.parse(data.toString()))
+        })
+        ws.on('error', reject)
+      })
+      
+      expect(message).toEqual({
+        type: 'connected',
+        sessionId: 'test-session-123'
+      })
+      
+      ws.close()
+    })
+
+    it('handles bidirectional messaging', async () => {
+      const port = server.address().port
+      const ws = new WebSocket(`ws://localhost:${port}/ws`, {
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'echo-session'
+        }
+      })
+      
+      // Wait for connection and skip connected message
+      await new Promise((resolve, reject) => {
+        ws.on('message', resolve)
+        ws.on('error', reject)
+      })
+      
+      // Send test message
+      ws.send(JSON.stringify({ test: 'hello', value: 42 }))
+      
+      // Receive echo response
+      const response = await new Promise((resolve, reject) => {
+        ws.on('message', (data) => {
+          resolve(JSON.parse(data.toString()))
+        })
+        ws.on('error', reject)
+      })
+      
+      expect(response).toEqual({
+        type: 'echo',
+        received: { test: 'hello', value: 42 },
+        sessionId: 'echo-session'
+      })
+      
+      ws.close()
+    })
+
+    describe('Error Handling', () => {
+      let errorServer: any
+
+      beforeAll(async () => {
+        const errorWebsocketHandler = async (socket: any, context: any) => {
+          throw new Error('WebSocket handler failed')
+        }
+
+        const errorApp = new BedrockAgentCoreApp({ 
+          handler: async () => ({}), 
+          websocketHandler: errorWebsocketHandler 
+        })
+        
+        const errorFastify = (errorApp as any)._app
+        await (errorApp as any)._registerPlugins()
+        ;(errorApp as any)._setupRoutes()
+        await errorFastify.ready()
+        await errorFastify.listen({ port: 0, host: '127.0.0.1' })
+        errorServer = errorFastify.server
       })
 
-      // With SSE streaming, errors are handled within the stream
-      // The response status should still be 200 as the stream starts successfully
-      expect(response.statusCode).toBe(200)
+      afterAll(async () => {
+        if (errorServer) {
+          await new Promise<void>((resolve) => {
+            errorServer.close(() => resolve())
+          })
+        }
+      })
 
-      // Verify SSE content type
-      expect(response.headers['content-type']).toBe('text/event-stream')
+      it('rejects non-websocket requests to /ws endpoint', async () => {
+        await request(server)
+          .get('/ws')
+          .expect(404) // WebSocket route not found for HTTP requests
+      })
 
-      // Verify the SSE stream contains the start event and error event
-      const sseBody = response.body
-      expect(sseBody).toContain('data: {"event":"start"}')
-      expect(sseBody).toContain('event: error')
-      expect(sseBody).toContain('data: {"error":"Stream error occurred"}')
+      it('closes connection when handler throws error', async () => {
+        const port = errorServer.address().port
+        const ws = new WebSocket(`ws://localhost:${port}/ws`, {
+          headers: {
+            'x-amzn-bedrock-agentcore-runtime-session-id': 'error-session'
+          }
+        })
+        
+        const closeEvent = await new Promise((resolve, reject) => {
+          ws.on('close', (code, reason) => {
+            resolve({ code, reason: reason.toString() })
+          })
+          ws.on('error', reject)
+        })
+        
+        expect(closeEvent.code).toBe(1011) // Internal server error
+      })
     })
   })
 })

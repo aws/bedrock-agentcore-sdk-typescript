@@ -5,6 +5,7 @@ import { z } from 'zod'
 // BedrockAgentCoreApp Types (HTTP Server)
 // =============================================================================
 
+import type { WebSocket } from '@fastify/websocket'
 /**
  * Context provided to handler functions for each invocation request.
  */
@@ -44,6 +45,14 @@ export type Handler = (
 ) => Promise<unknown> | unknown | AsyncGenerator<unknown, void, unknown>
 
 /**
+ * WebSocket handler function type for processing WebSocket connections.
+ *
+ * @param connection - Fastify WebSocket connection object
+ * @param context - Request context including sessionId and headers
+ */
+export type WebSocketHandler = (socket: WebSocket, context: RequestContext) => Promise<void> | void
+
+/**
  * Configuration options for BedrockAgentCoreApp.
  */
 export interface BedrockAgentCoreAppConfig {
@@ -54,6 +63,24 @@ export interface BedrockAgentCoreAppConfig {
     enabled?: boolean
     level?: 'debug' | 'info' | 'warn' | 'error'
   }
+}
+
+/**
+ * Parameters for BedrockAgentCoreApp constructor.
+ */
+export interface BedrockAgentCoreAppParams {
+  /**
+   * The handler function to process invocation requests.
+   */
+  handler: Handler
+  /**
+   * WebSocket handler for the /ws endpoint.
+   */
+  websocketHandler?: WebSocketHandler
+  /**
+   * Additional configuration options.
+   */
+  config?: BedrockAgentCoreAppConfig
 }
 
 /**
