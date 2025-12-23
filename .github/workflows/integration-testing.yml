@@ -146,6 +146,9 @@ jobs:
       - name: Run integration tests
         env:
           AWS_REGION: us-west-2
+          OAUTH2_PROVIDER_NAME: ${{ secrets.OAUTH2_PROVIDER_NAME }}
+          OAUTH2_SCOPES: ${{ secrets.OAUTH2_SCOPES }}
+          APIKEY_PROVIDER_NAME: ${{ secrets.APIKEY_PROVIDER_NAME }}
         timeout-minutes: 10
         run: |
           npm run test:integ --reporter=verbose
