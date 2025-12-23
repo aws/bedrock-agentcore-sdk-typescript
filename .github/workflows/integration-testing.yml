@@ -136,7 +136,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm clean
+          npm run clean
           npm install
 
       - name: Build package
