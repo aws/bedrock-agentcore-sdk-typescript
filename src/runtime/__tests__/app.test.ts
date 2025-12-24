@@ -204,10 +204,10 @@ describe('BedrockAgentCoreApp', () => {
         { test: 'data' },
         {
           sessionId: 'session-123',
-          headers: expect.objectContaining({
-            'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123',
-          }),
+          headers: {},
           workloadAccessToken: undefined,
+          requestId: expect.any(String),
+          oauth2CallbackUrl: undefined,
         }
       )
     })
@@ -396,10 +396,10 @@ describe('BedrockAgentCoreApp', () => {
 
       expect(websocketHandler).toHaveBeenCalledWith(mockSocket, {
         sessionId: 'ws-session-123',
-        headers: expect.objectContaining({
-          'x-amzn-bedrock-agentcore-runtime-session-id': 'ws-session-123',
-        }),
+        headers: {},
         workloadAccessToken: undefined,
+        requestId: expect.any(String),
+        oauth2CallbackUrl: undefined,
       })
     })
 
@@ -605,6 +605,189 @@ describe('BedrockAgentCoreApp', () => {
       }
 
       expect(() => app.asyncTask(syncFunction as any)).toThrow('asyncTask can only be applied to async functions')
+    })
+  })
+
+  describe('_extractContext', () => {
+    it('auto-generates requestId when header is missing', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp({ handler })
+
+      const mockRequest = {
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session',
+        },
+        body: {},
+      }
+
+      const context = (app as any)._extractContext(mockRequest)
+
+      expect(context.requestId).toBeDefined()
+      expect(typeof context.requestId).toBe('string')
+      expect(context.requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+    })
+
+    it('extracts requestId from header when present', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp({ handler })
+
+      const mockRequest = {
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session',
+          'x-amzn-bedrock-agentcore-runtime-request-id': 'test-request-123',
+        },
+        body: {},
+      }
+
+      const context = (app as any)._extractContext(mockRequest)
+
+      expect(context.requestId).toBe('test-request-123')
+    })
+
+    it('extracts oauth2CallbackUrl when present', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp({ handler })
+
+      const mockRequest = {
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session',
+          oauth2callbackurl: 'https://example.com/callback',
+        },
+        body: {},
+      }
+
+      const context = (app as any)._extractContext(mockRequest)
+
+      expect(context.oauth2CallbackUrl).toBe('https://example.com/callback')
+    })
+
+    it('returns undefined oauth2CallbackUrl when header is missing', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp({ handler })
+
+      const mockRequest = {
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session',
+        },
+        body: {},
+      }
+
+      const context = (app as any)._extractContext(mockRequest)
+
+      expect(context.oauth2CallbackUrl).toBeUndefined()
+    })
+
+    it('includes Authorization header in filtered headers', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp({ handler })
+
+      const mockRequest = {
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session',
+          authorization: 'Bearer token123',
+        },
+        body: {},
+      }
+
+      const context = (app as any)._extractContext(mockRequest)
+
+      expect(context.headers['authorization']).toBe('Bearer token123')
+    })
+
+    it('includes custom headers in filtered headers', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp({ handler })
+
+      const mockRequest = {
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session',
+          'x-amzn-bedrock-agentcore-runtime-custom-foo': 'bar',
+        },
+        body: {},
+      }
+
+      const context = (app as any)._extractContext(mockRequest)
+
+      expect(context.headers['x-amzn-bedrock-agentcore-runtime-custom-foo']).toBe('bar')
+    })
+
+    it('excludes non-custom headers from filtered headers', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp({ handler })
+
+      const mockRequest = {
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session',
+          'user-agent': 'test-agent',
+          'content-type': 'application/json',
+          host: 'example.com',
+        },
+        body: {},
+      }
+
+      const context = (app as any)._extractContext(mockRequest)
+
+      expect(context.headers['user-agent']).toBeUndefined()
+      expect(context.headers['content-type']).toBeUndefined()
+      expect(context.headers['host']).toBeUndefined()
+    })
+
+    it('includes multiple custom headers', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp({ handler })
+
+      const mockRequest = {
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session',
+          'x-amzn-bedrock-agentcore-runtime-custom-foo': 'bar',
+          'x-amzn-bedrock-agentcore-runtime-custom-baz': 'qux',
+        },
+        body: {},
+      }
+
+      const context = (app as any)._extractContext(mockRequest)
+
+      expect(context.headers['x-amzn-bedrock-agentcore-runtime-custom-foo']).toBe('bar')
+      expect(context.headers['x-amzn-bedrock-agentcore-runtime-custom-baz']).toBe('qux')
+    })
+
+    it('handles Authorization header case-insensitively', () => {
+      const handler: Handler = async (request, context) => 'test'
+      const app = new BedrockAgentCoreApp({ handler })
+
+      const mockRequest = {
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session',
+          AUTHORIZATION: 'Bearer token123',
+        },
+        body: {},
+      }
+
+      const context = (app as any)._extractContext(mockRequest)
+
+      expect(context.headers['AUTHORIZATION']).toBe('Bearer token123')
+    })
+
+    it('maintains backward compatibility with existing handlers', () => {
+      const handler: Handler = async (request, context) => {
+        // Old handlers only expect sessionId
+        expect(context.sessionId).toBeDefined()
+        return 'test'
+      }
+      const app = new BedrockAgentCoreApp({ handler })
+
+      const mockRequest = {
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session',
+        },
+        body: {},
+      }
+
+      const context = (app as any)._extractContext(mockRequest)
+
+      expect(context.sessionId).toBe('test-session')
+      expect(context.requestId).toBeDefined()
+      expect(context.headers).toBeDefined()
     })
   })
 })

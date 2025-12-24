@@ -1,4 +1,5 @@
 import { createRequire } from 'module'
+import { randomUUID } from 'crypto'
 import Fastify from 'fastify'
 
 import type { FastifyInstance, FastifyLoggerOptions, FastifyRequest, FastifyReply } from 'fastify'
@@ -422,13 +423,27 @@ export class BedrockAgentCoreApp {
       ((request.body as Record<string, unknown>)?.sessionId as string) ||
       ''
 
-    // Convert headers to plain object
-    const headers: Record<string, string> = {}
+    // Extract request ID or generate if missing
+    const requestId = (request.headers['x-amzn-bedrock-agentcore-runtime-request-id'] as string) || randomUUID()
+
+    // Extract OAuth2 callback URL
+    const oauth2CallbackUrl = request.headers['oauth2callbackurl'] as string | undefined
+
+    // Filter headers to include only Authorization and Custom-* headers
+    const filteredHeaders: Record<string, string> = {}
     for (const [key, value] of Object.entries(request.headers)) {
-      if (typeof value === 'string') {
-        headers[key] = value
-      } else if (Array.isArray(value)) {
-        headers[key] = value.join(', ')
+      const lowerKey = key.toLowerCase()
+      const stringValue = typeof value === 'string' ? value : Array.isArray(value) ? value.join(', ') : undefined
+
+      if (stringValue) {
+        // Include Authorization header
+        if (lowerKey === 'authorization') {
+          filteredHeaders[key] = stringValue
+        }
+        // Include Custom-* headers
+        else if (lowerKey.startsWith('x-amzn-bedrock-agentcore-runtime-custom-')) {
+          filteredHeaders[key] = stringValue
+        }
       }
     }
 
@@ -437,8 +452,10 @@ export class BedrockAgentCoreApp {
 
     return {
       sessionId,
-      headers,
+      headers: filteredHeaders,
       workloadAccessToken,
+      requestId,
+      oauth2CallbackUrl,
     }
   }
 }
