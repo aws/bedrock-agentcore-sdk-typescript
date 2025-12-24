@@ -17,6 +17,7 @@ export interface RequestContext {
 
   /**
    * HTTP headers from the incoming request.
+   * Filtered to include only Authorization and Custom-* headers.
    */
   headers: Record<string, string>
 
@@ -26,6 +27,19 @@ export interface RequestContext {
    * Used by Identity SDK to fetch OAuth2 tokens and API keys.
    */
   workloadAccessToken?: string | undefined
+
+  /**
+   * Request ID for tracing and log correlation.
+   * Extracted from X-Amzn-Bedrock-AgentCore-Runtime-Request-Id header
+   * or auto-generated if not provided.
+   */
+  requestId?: string | undefined
+
+  /**
+   * OAuth2 callback URL for authentication flows.
+   * Extracted from OAuth2CallbackUrl header when present.
+   */
+  oauth2CallbackUrl?: string | undefined
 }
 
 /**
