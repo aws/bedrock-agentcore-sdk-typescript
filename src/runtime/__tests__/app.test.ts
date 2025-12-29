@@ -280,6 +280,37 @@ describe('BedrockAgentCoreApp', () => {
       )
     })
 
+    it('request missing Accept header, return 406', async () => {
+      const mockHandler = vi.fn(async function* () {
+        yield { chunk: 1 }
+        yield { chunk: 2 }
+      })
+      const app = new BedrockAgentCoreApp({ handler: mockHandler })
+      const mockApp = app._app
+
+      app._setupRoutes()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2]
+      const mockReq = {
+        body: {},
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
+      }
+      // No SSE support (reply.sse is undefined)
+      const mockReply = {
+        status: vi.fn().mockReturnThis(),
+        send: vi.fn(),
+      }
+
+      await invocationHandler(mockReq, mockReply)
+
+      expect(mockReply.status).toHaveBeenCalledWith(406)
+      expect(mockReply.send).toHaveBeenCalledWith({
+        error:
+          'Streaming response requires Accept: text/event-stream header. Please include this header in your request to receive streaming data.',
+      })
+    })
+
     it('handles streaming response', async () => {
       const mockHandler = vi.fn(async function* () {
         yield { chunk: 1 }

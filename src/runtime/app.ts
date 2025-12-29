@@ -298,7 +298,14 @@ export class BedrockAgentCoreApp {
 
       // Check if result is an async generator (streaming response)
       if (this._isAsyncGenerator(result)) {
-        await this._handleStreamingResponse(reply, result)
+        if (reply.sse) {
+          await this._handleStreamingResponse(reply, result)
+        } else {
+          await reply.status(406).send({
+            error:
+              'Streaming response requires Accept: text/event-stream header. Please include this header in your request to receive streaming data.',
+          })
+        }
       } else {
         // Return JSON response
         await reply.send(result)
