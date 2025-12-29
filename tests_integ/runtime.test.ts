@@ -394,4 +394,101 @@ describe('BedrockAgentCoreApp Integration', () => {
       })
     })
   })
+
+  describe('Session Management Features', () => {
+    let testApp: BedrockAgentCoreApp
+    let testFastify: any
+    let capturedContext: any
+
+    beforeAll(async () => {
+      const handler: Handler = async (req, context) => {
+        capturedContext = context
+        return { success: true, context }
+      }
+
+      testApp = new BedrockAgentCoreApp({ handler })
+      testFastify = (testApp as any)._app
+      await (testApp as any)._registerPlugins()
+      ;(testApp as any)._setupRoutes()
+      await testFastify.ready()
+    })
+
+    afterAll(async () => {
+      await testFastify.close()
+    })
+
+    it('extracts requestId from header', async () => {
+      await request(testFastify.server)
+        .post('/invocations')
+        .set('X-Amzn-Bedrock-AgentCore-Runtime-Session-Id', 'test-session')
+        .set('X-Amzn-Bedrock-AgentCore-Runtime-Request-Id', 'test-request-123')
+        .send({ test: 'data' })
+        .expect(200)
+
+      expect(capturedContext.requestId).toBe('test-request-123')
+    })
+
+    it('auto-generates requestId when header missing', async () => {
+      await request(testFastify.server)
+        .post('/invocations')
+        .set('X-Amzn-Bedrock-AgentCore-Runtime-Session-Id', 'test-session')
+        .send({ test: 'data' })
+        .expect(200)
+
+      expect(capturedContext.requestId).toBeDefined()
+      expect(typeof capturedContext.requestId).toBe('string')
+      expect(capturedContext.requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+    })
+
+    it('extracts oauth2CallbackUrl from header', async () => {
+      await request(testFastify.server)
+        .post('/invocations')
+        .set('X-Amzn-Bedrock-AgentCore-Runtime-Session-Id', 'test-session')
+        .set('OAuth2CallbackUrl', 'https://example.com/callback')
+        .send({ test: 'data' })
+        .expect(200)
+
+      expect(capturedContext.oauth2CallbackUrl).toBe('https://example.com/callback')
+    })
+
+    it('filters headers to include only Authorization and Custom-* headers', async () => {
+      await request(testFastify.server)
+        .post('/invocations')
+        .set('X-Amzn-Bedrock-AgentCore-Runtime-Session-Id', 'test-session')
+        .set('Authorization', 'Bearer token123')
+        .set('X-Amzn-Bedrock-AgentCore-Runtime-Custom-Foo', 'bar')
+        .set('User-Agent', 'test-agent')
+        .set('Content-Type', 'application/json')
+        .send({ test: 'data' })
+        .expect(200)
+
+      expect(capturedContext.headers['authorization']).toBe('Bearer token123')
+      expect(capturedContext.headers['x-amzn-bedrock-agentcore-runtime-custom-foo']).toBe('bar')
+      expect(capturedContext.headers['user-agent']).toBeUndefined()
+      expect(capturedContext.headers['content-type']).toBeUndefined()
+    })
+
+    it('includes custom headers in filtered headers', async () => {
+      await request(testFastify.server)
+        .post('/invocations')
+        .set('X-Amzn-Bedrock-AgentCore-Runtime-Session-Id', 'test-session')
+        .set('X-Amzn-Bedrock-AgentCore-Runtime-Custom-Metadata', 'test-value')
+        .send({ test: 'data' })
+        .expect(200)
+
+      expect(capturedContext.headers['x-amzn-bedrock-agentcore-runtime-custom-metadata']).toBe('test-value')
+    })
+
+    it('maintains backward compatibility', async () => {
+      await request(testFastify.server)
+        .post('/invocations')
+        .set('X-Amzn-Bedrock-AgentCore-Runtime-Session-Id', 'test-session')
+        .send({ test: 'data' })
+        .expect(200)
+
+      expect(capturedContext.sessionId).toBe('test-session')
+      expect(capturedContext.requestId).toBeDefined()
+      expect(capturedContext.headers).toBeDefined()
+    })
+  })
 })
