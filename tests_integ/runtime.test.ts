@@ -491,4 +491,217 @@ describe('BedrockAgentCoreApp Integration', () => {
       expect(capturedContext.headers).toBeDefined()
     })
   })
+
+  describe('Concurrency Tests', () => {
+    let concurrentApp: BedrockAgentCoreApp
+    let concurrentFastify: any
+    const requestCounts = new Map<string, number>()
+
+    beforeAll(async () => {
+      const handler: Handler = async (req: any, context) => {
+        // Track concurrent requests
+        const count = requestCounts.get(context.sessionId) || 0
+        requestCounts.set(context.sessionId, count + 1)
+        
+        // Simulate some processing time
+        await new Promise(resolve => setTimeout(resolve, 50))
+        
+        return {
+          sessionId: context.sessionId,
+          requestNumber: count + 1,
+          timestamp: Date.now(),
+        }
+      }
+
+      concurrentApp = new BedrockAgentCoreApp({ handler })
+      concurrentFastify = (concurrentApp as any)._app
+      await (concurrentApp as any)._registerPlugins()
+      ;(concurrentApp as any)._setupRoutes()
+      await concurrentFastify.ready()
+    })
+
+    afterAll(async () => {
+      await concurrentFastify.close()
+    })
+
+    it('handles multiple simultaneous POST requests', async () => {
+      const numRequests = 10
+      const promises = []
+
+      for (let i = 0; i < numRequests; i++) {
+        promises.push(
+          request(concurrentFastify.server)
+            .post('/invocations')
+            .set('x-amzn-bedrock-agentcore-runtime-session-id', `concurrent-session-${i}`)
+            .send({ requestId: i })
+        )
+      }
+
+      const results = await Promise.all(promises)
+
+      // All requests should succeed
+      results.forEach((res, i) => {
+        expect(res.status).toBe(200)
+        expect(res.body.sessionId).toBe(`concurrent-session-${i}`)
+      })
+    })
+
+    it('handles multiple requests to same session without race conditions', async () => {
+      const sessionId = 'shared-session'
+      const numRequests = 5
+      const promises = []
+
+      for (let i = 0; i < numRequests; i++) {
+        promises.push(
+          request(concurrentFastify.server)
+            .post('/invocations')
+            .set('x-amzn-bedrock-agentcore-runtime-session-id', sessionId)
+            .send({ requestId: i })
+        )
+      }
+
+      const results = await Promise.all(promises)
+
+      // All requests should succeed
+      results.forEach(res => {
+        expect(res.status).toBe(200)
+        expect(res.body.sessionId).toBe(sessionId)
+      })
+
+      // Should have processed all requests
+      expect(requestCounts.get(sessionId)).toBe(numRequests)
+    })
+
+    it('handles concurrent WebSocket connections', async () => {
+      const wsHandler: Handler = async () => ({ message: 'test' })
+      const websocketHandler = async (socket: any, context: any) => {
+        socket.send(JSON.stringify({ type: 'connected', sessionId: context.sessionId }))
+      }
+
+      const wsTestApp = new BedrockAgentCoreApp({ handler: wsHandler, websocketHandler })
+      const wsFastify = (wsTestApp as any)._app
+      await (wsTestApp as any)._registerPlugins()
+      ;(wsTestApp as any)._setupRoutes()
+      await wsFastify.ready()
+      await wsFastify.listen({ port: 0, host: '127.0.0.1' })
+      const wsServer = wsFastify.server
+
+      try {
+        const port = wsServer.address().port
+        const numConnections = 5
+        const connections: WebSocket[] = []
+        const messages: any[] = []
+
+        // Create multiple concurrent WebSocket connections
+        for (let i = 0; i < numConnections; i++) {
+          const ws = new WebSocket(`ws://localhost:${port}/ws`, {
+            headers: {
+              'x-amzn-bedrock-agentcore-runtime-session-id': `ws-session-${i}`
+            }
+          })
+          connections.push(ws)
+
+          const messagePromise = new Promise((resolve, reject) => {
+            ws.on('message', (data) => {
+              resolve(JSON.parse(data.toString()))
+            })
+            ws.on('error', reject)
+          })
+          messages.push(messagePromise)
+        }
+
+        // Wait for all connections to receive messages
+        const results = await Promise.all(messages)
+
+        // Verify all connections received correct messages
+        results.forEach((msg: any, i) => {
+          expect(msg.type).toBe('connected')
+          expect(msg.sessionId).toBe(`ws-session-${i}`)
+        })
+
+        // Close all connections
+        connections.forEach(ws => ws.close())
+      } finally {
+        await new Promise<void>((resolve) => {
+          wsServer.close(() => resolve())
+        })
+      }
+    })
+
+    it('handles mixed HTTP and WebSocket traffic concurrently', async () => {
+      const mixedHandler: Handler = async (req: any, context) => {
+        await new Promise(resolve => setTimeout(resolve, 20))
+        return { type: 'http', sessionId: context.sessionId }
+      }
+
+      const mixedWsHandler = async (socket: any, context: any) => {
+        socket.send(JSON.stringify({ type: 'ws', sessionId: context.sessionId }))
+      }
+
+      const mixedApp = new BedrockAgentCoreApp({ 
+        handler: mixedHandler, 
+        websocketHandler: mixedWsHandler 
+      })
+      const mixedFastify = (mixedApp as any)._app
+      await (mixedApp as any)._registerPlugins()
+      ;(mixedApp as any)._setupRoutes()
+      await mixedFastify.ready()
+      await mixedFastify.listen({ port: 0, host: '127.0.0.1' })
+      const mixedServer = mixedFastify.server
+
+      try {
+        const port = mixedServer.address().port
+        const promises: Promise<any>[] = []
+
+        // Create HTTP requests
+        for (let i = 0; i < 3; i++) {
+          promises.push(
+            request(mixedServer)
+              .post('/invocations')
+              .set('x-amzn-bedrock-agentcore-runtime-session-id', `http-${i}`)
+              .send({})
+              .then(res => ({ source: 'http', body: res.body }))
+          )
+        }
+
+        // Create WebSocket connections
+        for (let i = 0; i < 3; i++) {
+          const ws = new WebSocket(`ws://localhost:${port}/ws`, {
+            headers: {
+              'x-amzn-bedrock-agentcore-runtime-session-id': `ws-${i}`
+            }
+          })
+
+          const wsPromise = new Promise((resolve, reject) => {
+            ws.on('message', (data) => {
+              ws.close()
+              resolve({ source: 'ws', body: JSON.parse(data.toString()) })
+            })
+            ws.on('error', reject)
+          })
+          promises.push(wsPromise)
+        }
+
+        const results = await Promise.all(promises)
+
+        // Verify HTTP responses
+        const httpResults = results.filter(r => r.source === 'http')
+        expect(httpResults).toHaveLength(3)
+        httpResults.forEach(r => {
+          expect(r.body.type).toBe('http')
+        })
+
+        // Verify WebSocket responses
+        const wsResults = results.filter(r => r.source === 'ws')
+        expect(wsResults).toHaveLength(3)
+        wsResults.forEach(r => {
+          expect(r.body.type).toBe('ws')
+        })
+      } finally {
+        await new Promise<void>((resolve) => {
+          mixedServer.close(() => resolve())
+        })
+      }
+    })
+  })
 })
