@@ -1,3 +1,5 @@
+import type { Readable } from 'node:stream'
+import { Buffer } from 'buffer'
 import { createRequire } from 'module'
 import { randomUUID } from 'crypto'
 import Fastify from 'fastify'
@@ -76,6 +78,7 @@ export class BedrockAgentCoreApp {
     // Wait for Fastify to be ready (all plugins registered), setup routes, and start the server
     Promise.resolve(this._registerPlugins())
       .then(() => {
+        this._setupContentTypeParsers()
         this._setupRoutes()
         return this._app.listen({ port: PORT, host: '0.0.0.0' })
       })
@@ -222,6 +225,34 @@ export class BedrockAgentCoreApp {
     if (this._websocketHandler) {
       this._app.get('/ws', { websocket: true }, this._handleWebSocket.bind(this))
     }
+  }
+
+  /**
+   * Register custom content type parsers.
+   */
+  private _setupContentTypeParsers(): void {
+    this._config.contentTypeParsers?.forEach((parserConfig) => {
+      const parseAs = parserConfig.parseAs || 'string'
+
+      // Create error-wrapped parser that handles both sync and async parsers
+      const parser = async (_request: FastifyRequest, body: string | Buffer | Readable): Promise<unknown> => {
+        try {
+          const result = parserConfig.parser(body)
+          // Handle both sync and async parsers
+          return result instanceof Promise ? await result : result
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown parsing error'
+          throw new Error(`Failed to parse ${parserConfig.contentType} (parseAs: ${parseAs}): ${errorMessage}`)
+        }
+      }
+
+      // Register parser
+      if (parseAs === 'stream') {
+        this._app.addContentTypeParser(parserConfig.contentType, parser)
+      } else {
+        this._app.addContentTypeParser(parserConfig.contentType, { parseAs: parseAs as 'string' | 'buffer' }, parser)
+      }
+    })
   }
 
   /**
