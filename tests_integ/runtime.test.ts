@@ -395,6 +395,316 @@ describe('BedrockAgentCoreApp Integration', () => {
     })
   })
 
+  describe('Content Type Parsers', () => {
+    let app: BedrockAgentCoreApp
+    let fastify: any
+
+    beforeAll(async () => {
+      const handler: Handler = async (req, context) => {
+        return {
+          message: 'Content parsed successfully!',
+          sessionId: context.sessionId,
+          parsedData: req
+        }
+      }
+
+      app = new BedrockAgentCoreApp({
+        handler,
+        config: {
+          contentTypeParsers: [
+            {
+              // Sync parser for XML content
+              contentType: 'application/xml',
+              parser: (body) => {
+                const content = body as string
+                return {
+                  type: 'xml',
+                  content: content.trim(),
+                  parsed: true,
+                }
+              },
+              parseAs: 'string',
+            },
+            {
+              // Async parser for JSON with validation
+              contentType: 'application/custom-json',
+              parser: async (body) => {
+                const content = body as string
+
+                // Simulate async validation (e.g., schema validation, external API call)
+                await new Promise(resolve => setTimeout(resolve, 10))
+
+                try {
+                  const parsed = JSON.parse(content)
+                  return {
+                    type: 'custom-json',
+                    data: parsed,
+                    validated: true,
+                  }
+                } catch (error) {
+                  throw new Error(`Invalid JSON: ${error instanceof Error ? error.message : 'Unknown error'}`)
+                }
+              },
+              parseAs: 'string',
+            },
+            {
+              // Sync parser for binary data
+              contentType: 'application/octet-stream',
+              parser: (body) => {
+                const buffer = body as Buffer
+                return {
+                  type: 'binary',
+                  size: buffer.length,
+                  checksum: buffer.toString('hex').slice(0, 8), // Simple checksum
+                }
+              },
+              parseAs: 'buffer',
+            },
+            {
+              // Parser that throws an error for testing error handling
+              contentType: 'application/error-test',
+              parser: () => {
+                throw new Error('Parser intentionally failed')
+              },
+              parseAs: 'string',
+            },
+          ],
+        },
+      })
+
+      fastify = (app as any)._app
+      await (app as any)._registerPlugins()
+      ;(app as any)._setupContentTypeParsers()
+      ;(app as any)._setupRoutes()
+      await fastify.ready()
+    })
+
+    afterAll(async () => {
+      await fastify.close()
+    })
+
+    describe('XML Parser (Sync)', () => {
+      it('parses XML content correctly', async () => {
+        const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+          <root>
+            <message>Hello from XML parser!</message>
+            <timestamp>2024-01-01T00:00:00Z</timestamp>
+          </root>`
+
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'application/xml')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-xml')
+          .send(xmlContent)
+          .expect(200)
+          .expect(function(res) {
+            expect(res.body.message).toBe('Content parsed successfully!')
+            expect(res.body.sessionId).toBe('test-session-xml')
+            expect(res.body.parsedData).toEqual({
+              type: 'xml',
+              content: xmlContent.trim(),
+              parsed: true,
+            })
+          })
+      })
+
+      it('handles empty XML content', async () => {
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'application/xml')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-xml-empty')
+          .send('')
+          .expect(200)
+          .expect(function(res) {
+            expect(res.body.parsedData).toEqual({
+              type: 'xml',
+              content: '',
+              parsed: true,
+            })
+          })
+      })
+    })
+
+    describe('Custom JSON Parser (Async)', () => {
+      it('parses valid JSON with async validation', async () => {
+        const jsonData = {
+          name: 'John Doe',
+          age: 30,
+          city: 'New York',
+          hobbies: ['reading', 'coding', 'hiking']
+        }
+
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'application/custom-json')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-json')
+          .send(JSON.stringify(jsonData))
+          .expect(200)
+          .expect(function(res) {
+            expect(res.body.message).toBe('Content parsed successfully!')
+            expect(res.body.sessionId).toBe('test-session-json')
+            expect(res.body.parsedData).toEqual({
+              type: 'custom-json',
+              data: jsonData,
+              validated: true,
+            })
+          })
+      })
+
+      it('handles invalid JSON with proper error message', async () => {
+        const invalidJson = '{"invalid": json, "missing": quotes}'
+
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'application/custom-json')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-invalid-json')
+          .send(invalidJson)
+          .expect(500)
+          .expect(function(res) {
+            // Check that we get a parsing error (the actual error message may be wrapped by Fastify)
+            expect(res.body.error).toBeDefined()
+            expect(typeof res.body.error).toBe('string')
+          })
+      })
+
+      it('handles empty JSON content', async () => {
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'application/custom-json')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-json-empty')
+          .send('{}')
+          .expect(200)
+          .expect(function(res) {
+            expect(res.body.parsedData).toEqual({
+              type: 'custom-json',
+              data: {},
+              validated: true,
+            })
+          })
+      })
+    })
+
+    describe('Binary Parser (Buffer)', () => {
+      it('parses binary data correctly', async () => {
+        const binaryData = Buffer.from('Hello, this is binary data! 🚀', 'utf8')
+
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'application/octet-stream')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-binary')
+          .send(binaryData)
+          .expect(200)
+          .expect(function(res) {
+            expect(res.body.message).toBe('Content parsed successfully!')
+            expect(res.body.sessionId).toBe('test-session-binary')
+            expect(res.body.parsedData).toEqual({
+              type: 'binary',
+              size: binaryData.length,
+              checksum: binaryData.toString('hex').slice(0, 8),
+            })
+          })
+      })
+
+      it('handles empty binary data', async () => {
+        const emptyBuffer = Buffer.alloc(0)
+
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'application/octet-stream')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-binary-empty')
+          .send(emptyBuffer)
+          .expect(200)
+          .expect(function(res) {
+            expect(res.body.parsedData).toEqual({
+              type: 'binary',
+              size: 0,
+              checksum: '',
+            })
+          })
+      })
+
+      it('handles large binary data', async () => {
+        // Create a 1KB buffer with repeating pattern
+        const largeBuffer = Buffer.alloc(1024, 'A')
+
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'application/octet-stream')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-binary-large')
+          .send(largeBuffer)
+          .expect(200)
+          .expect(function(res) {
+            expect(res.body.parsedData).toEqual({
+              type: 'binary',
+              size: 1024,
+              checksum: largeBuffer.toString('hex').slice(0, 8),
+            })
+          })
+      })
+    })
+
+    describe('Default Content Types', () => {
+      it('uses default JSON parser for application/json', async () => {
+        const jsonData = { message: 'This should use default JSON parser', test: true }
+
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'application/json')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-default-json')
+          .send(jsonData)
+          .expect(200)
+          .expect(function(res) {
+            expect(res.body.message).toBe('Content parsed successfully!')
+            expect(res.body.parsedData).toEqual(jsonData)
+          })
+      })
+
+      it('uses default text parser for text/plain', async () => {
+        const textData = 'This is plain text content'
+
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'text/plain')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-text')
+          .send(textData)
+          .expect(200)
+          .expect(function(res) {
+            expect(res.body.message).toBe('Content parsed successfully!')
+            expect(res.body.parsedData).toBe(textData)
+          })
+      })
+    })
+
+    describe('Error Handling', () => {
+      it('handles parser that throws synchronous error', async () => {
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'application/error-test')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-error')
+          .send('test content')
+          .expect(500)
+          .expect(function(res) {
+            // Check that we get a parsing error (the actual error message may be wrapped by Fastify)
+            expect(res.body.error).toBeDefined()
+            expect(typeof res.body.error).toBe('string')
+          })
+      })
+
+      it('handles unsupported content type gracefully', async () => {
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'application/unsupported-type')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-unsupported')
+          .send('some content')
+          .expect(415) // Fastify returns 415 for unsupported media types
+          .expect(function(res) {
+            expect(res.body.error).toBeDefined()
+            expect(res.body.message).toContain('Unsupported Media Type')
+          })
+      })
+    })
+  })
+
   describe('Session Management Features', () => {
     let testApp: BedrockAgentCoreApp
     let testFastify: any

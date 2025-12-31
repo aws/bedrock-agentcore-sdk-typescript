@@ -11,6 +11,7 @@ vi.mock('fastify', () => {
       register: vi.fn(async () => {}), // Make register async
       ready: vi.fn(async () => {}), // Add ready method
       listen: vi.fn(async () => {}),
+      addContentTypeParser: vi.fn(), // Add content type parser method
       log: {
         error: vi.fn(),
         info: vi.fn(),
@@ -486,6 +487,182 @@ describe('BedrockAgentCoreApp', () => {
 
       // Only SSE plugin should be registered
       expect(mockApp.register).toHaveBeenCalledTimes(1)
+    })
+
+    it('registers custom content type parsers when provided', async () => {
+      const handler: Handler = async (request, context) => 'test response'
+      const xmlParser = vi.fn((body) => ({ parsed: 'xml', content: body }))
+      const pdfParser = vi.fn((body) => ({ parsed: 'pdf', size: (body as Buffer).length }))
+      const csvStreamParser = vi.fn(async (stream) => ({ parsed: 'csv-stream', stream: 'processed' }))
+
+      const app = new BedrockAgentCoreApp({
+        handler,
+        config: {
+          contentTypeParsers: [
+            { contentType: 'application/xml', parser: xmlParser, parseAs: 'string' },
+            { contentType: 'application/pdf', parser: pdfParser, parseAs: 'buffer' },
+            { contentType: 'text/csv', parser: csvStreamParser, parseAs: 'stream' },
+          ],
+        },
+      })
+      const mockApp = app._app
+
+      app._setupContentTypeParsers()
+
+      // Should register content type parsers
+      expect(mockApp.addContentTypeParser).toHaveBeenCalledTimes(3)
+
+      // String and buffer parsers use the parseAs option
+      expect(mockApp.addContentTypeParser).toHaveBeenCalledWith(
+        'application/xml',
+        { parseAs: 'string' },
+        expect.any(Function)
+      )
+      expect(mockApp.addContentTypeParser).toHaveBeenCalledWith(
+        'application/pdf',
+        { parseAs: 'buffer' },
+        expect.any(Function)
+      )
+
+      // Stream parser doesn't use parseAs option (raw stream handling)
+      expect(mockApp.addContentTypeParser).toHaveBeenCalledWith('text/csv', expect.any(Function))
+    })
+
+    it('defaults to string parsing when parseAs is not specified', async () => {
+      const handler: Handler = async (request, context) => 'test response'
+      const xmlParser = vi.fn((body) => ({ parsed: 'xml', content: body }))
+
+      const app = new BedrockAgentCoreApp({
+        handler,
+        config: {
+          contentTypeParsers: [
+            { contentType: 'application/xml', parser: xmlParser }, // No parseAs specified
+          ],
+        },
+      })
+      const mockApp = app._app
+
+      app._setupContentTypeParsers()
+
+      expect(mockApp.addContentTypeParser).toHaveBeenCalledWith(
+        'application/xml',
+        { parseAs: 'string' }, // Should default to 'string'
+        expect.any(Function)
+      )
+    })
+
+    it('does not register content type parsers when none provided', async () => {
+      const handler: Handler = async (request, context) => 'test response'
+      const app = new BedrockAgentCoreApp({ handler })
+      const mockApp = app._app
+
+      await app._registerPlugins()
+
+      // Should not call addContentTypeParser
+      expect(mockApp.addContentTypeParser).not.toHaveBeenCalled()
+    })
+
+    it('handles content type parser errors gracefully', async () => {
+      const handler: Handler = async (request, context) => 'test response'
+      const failingParser = vi.fn(() => {
+        throw new Error('Parser failed')
+      })
+
+      const app = new BedrockAgentCoreApp({
+        handler,
+        config: {
+          contentTypeParsers: [{ contentType: 'application/xml', parser: failingParser, parseAs: 'string' }],
+        },
+      })
+      const mockApp = app._app
+
+      app._setupContentTypeParsers()
+
+      // Get the registered parser function
+      const parserCall = mockApp.addContentTypeParser.mock.calls[0]
+      const registeredParser = parserCall[2]
+
+      // Test that the parser wrapper handles errors
+      await expect(registeredParser({}, 'test body')).rejects.toThrow(
+        'Failed to parse application/xml (parseAs: string): Parser failed'
+      )
+    })
+
+    it('calls string parser with correct body content', async () => {
+      const handler: Handler = async (request, context) => 'test response'
+      const xmlParser = vi.fn((body) => ({ parsed: body }))
+
+      const app = new BedrockAgentCoreApp({
+        handler,
+        config: {
+          contentTypeParsers: [{ contentType: 'application/xml', parser: xmlParser, parseAs: 'string' }],
+        },
+      })
+      const mockApp = app._app
+
+      app._setupContentTypeParsers()
+
+      // Get the registered parser function
+      const parserCall = mockApp.addContentTypeParser.mock.calls[0]
+      const registeredParser = parserCall[2]
+
+      // Test that the parser is called with the body
+      const testBody = '<xml>test</xml>'
+      await registeredParser({}, testBody)
+
+      expect(xmlParser).toHaveBeenCalledWith(testBody)
+    })
+
+    it('calls buffer parser with correct body content', async () => {
+      const handler: Handler = async (request, context) => 'test response'
+      const pdfParser = vi.fn((body) => ({ parsed: 'pdf', size: (body as Buffer).length }))
+
+      const app = new BedrockAgentCoreApp({
+        handler,
+        config: {
+          contentTypeParsers: [{ contentType: 'application/pdf', parser: pdfParser, parseAs: 'buffer' }],
+        },
+      })
+      const mockApp = app._app
+
+      app._setupContentTypeParsers()
+
+      // Get the registered parser function
+      const parserCall = mockApp.addContentTypeParser.mock.calls[0]
+      const registeredParser = parserCall[2]
+
+      // Test that the parser is called with the buffer
+      const testBuffer = Buffer.from('PDF content')
+      await registeredParser({}, testBuffer)
+
+      expect(pdfParser).toHaveBeenCalledWith(testBuffer)
+    })
+
+    it('calls stream parser with correct stream content', async () => {
+      const handler: Handler = async (request, context) => 'test response'
+      const streamParser = vi.fn(async (stream) => ({ parsed: 'stream', processed: true }))
+
+      const app = new BedrockAgentCoreApp({
+        handler,
+        config: {
+          contentTypeParsers: [{ contentType: 'text/csv', parser: streamParser, parseAs: 'stream' }],
+        },
+      })
+      const mockApp = app._app
+
+      app._setupContentTypeParsers()
+
+      // Get the registered parser function (stream parsers have different signature)
+      const parserCall = mockApp.addContentTypeParser.mock.calls[0]
+      const registeredParser = parserCall[1] // Stream parsers don't have options object
+
+      // Create a mock stream
+      const mockStream = { readable: true, pipe: vi.fn() } as any
+
+      // Test that the parser is called with the stream
+      await registeredParser({}, mockStream)
+
+      expect(streamParser).toHaveBeenCalledWith(mockStream)
     })
   })
 

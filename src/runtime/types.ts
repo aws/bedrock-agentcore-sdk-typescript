@@ -1,4 +1,6 @@
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
+import type { Readable } from 'node:stream'
+import { Buffer } from 'buffer'
 import { z } from 'zod'
 
 // =============================================================================
@@ -67,6 +69,70 @@ export type Handler = (
 export type WebSocketHandler = (socket: WebSocket, context: RequestContext) => Promise<void> | void
 
 /**
+ * Content type parser function that processes request body.
+ * The body type depends on the parseAs mode: string, buffer or stream.
+ *
+ * @param body - Request body in the format specified by parseAs
+ * @returns Parsed body data
+ */
+export type ContentTypeParser = (body: string | Buffer | Readable) => unknown | Promise<unknown>
+
+/**
+ * Parse mode for content type parsers.
+ * - parseAs: 'string' → body: string
+ * - parseAs: 'buffer' → body: Buffer
+ * - parseAs: 'stream' → body: NodeJS.ReadableStream
+ */
+export type ParseAsMode = 'string' | 'buffer' | 'stream'
+
+/**
+ * Content type parser configuration.
+ * @example
+ * ```typescript
+ * const app = new BedrockAgentCoreApp({
+ *   handler: myHandler,
+ *   config: {
+ *     contentTypeParsers: [
+ *       {
+ *         contentType: 'application/xml',
+ *         parser: (body) => parseXML(body as string),
+ *         parseAs: 'string'
+ *       },
+ *       {
+ *         contentType: 'application/pdf',
+ *         parser: (body) => parsePDF(body as Buffer),
+ *         parseAs: 'buffer'
+ *       },
+ *       {
+ *         contentType: 'application/large-csv',
+ *         parser: (body) => parseStreamingCSV(body as NodeJS.ReadableStream),
+ *         parseAs: 'stream'
+ *       }
+ *     ]
+ *   }
+ * })
+ * ```
+ */
+export interface ContentTypeParserConfig {
+  /**
+   * Content type to handle (e.g., 'application/xml', 'text/csv').
+   */
+  contentType: string
+
+  /**
+   * Parser function to process the request body.
+   * The body parameter type will match the parseAs mode:
+   */
+  parser: ContentTypeParser
+
+  /**
+   * How to parse the raw request body before passing to the parser function: string, buffer or stream.
+   * Defaults to 'string'.
+   */
+  parseAs?: ParseAsMode
+}
+
+/**
  * Configuration options for BedrockAgentCoreApp.
  */
 export interface BedrockAgentCoreAppConfig {
@@ -77,6 +143,12 @@ export interface BedrockAgentCoreAppConfig {
     enabled?: boolean
     level?: 'debug' | 'info' | 'warn' | 'error'
   }
+
+  /**
+   * Custom content type parsers for handling custom content-types.
+   * 'application/json' and 'text/plain' are natively supported.
+   */
+  contentTypeParsers?: ContentTypeParserConfig[]
 }
 
 /**
