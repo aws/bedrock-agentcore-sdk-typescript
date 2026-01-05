@@ -6,9 +6,7 @@ export { BedrockAgentCoreApp } from './app.js'
 export { RuntimeClient } from './client.js'
 export type {
   BedrockAgentCoreAppConfig,
-  ContentTypeParser,
   ContentTypeParserConfig,
-  ParseAsMode,
   Handler,
   RequestContext,
   HealthStatus,

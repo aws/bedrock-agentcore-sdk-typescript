@@ -1,10 +1,16 @@
-import type { Readable } from 'node:stream'
 import { Buffer } from 'buffer'
 import { createRequire } from 'module'
 import { randomUUID } from 'crypto'
 import Fastify from 'fastify'
 
-import type { FastifyInstance, FastifyLoggerOptions, FastifyRequest, FastifyReply } from 'fastify'
+import type {
+  FastifyInstance,
+  FastifyLoggerOptions,
+  FastifyRequest,
+  FastifyReply,
+  FastifyBodyParser,
+  FastifyContentTypeParser,
+} from 'fastify'
 // Import SSE types to ensure module augmentation is applied
 import type {} from '@fastify/sse'
 import type { WebSocket } from '@fastify/websocket'
@@ -228,29 +234,23 @@ export class BedrockAgentCoreApp {
   }
 
   /**
-   * Register custom content type parsers.
+   * Register custom content type parsers using Fastify's native addContentTypeParser.
    */
   private _setupContentTypeParsers(): void {
     this._config.contentTypeParsers?.forEach((parserConfig) => {
-      const parseAs = parserConfig.parseAs || 'string'
+      const { contentType, parser, parseAs, bodyLimit } = parserConfig
 
-      // Create error-wrapped parser that handles both sync and async parsers
-      const parser = async (_request: FastifyRequest, body: string | Buffer | Readable): Promise<unknown> => {
-        try {
-          const result = parserConfig.parser(body)
-          // Handle both sync and async parsers
-          return result instanceof Promise ? await result : result
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown parsing error'
-          throw new Error(`Failed to parse ${parserConfig.contentType} (parseAs: ${parseAs}): ${errorMessage}`)
-        }
-      }
-
-      // Register parser
       if (parseAs === 'stream') {
-        this._app.addContentTypeParser(parserConfig.contentType, parser)
+        // Use FastifyContentTypeParser for stream mode (raw request payload)
+        const opts = bodyLimit ? { bodyLimit } : {}
+        this._app.addContentTypeParser(contentType, opts, parser as FastifyContentTypeParser)
       } else {
-        this._app.addContentTypeParser(parserConfig.contentType, { parseAs: parseAs as 'string' | 'buffer' }, parser)
+        // Use FastifyBodyParser for string/buffer modes (default to 'string' when parseAs is undefined)
+        const opts = {
+          parseAs: parseAs || 'string',
+          ...(bodyLimit && { bodyLimit }),
+        }
+        this._app.addContentTypeParser(contentType, opts, parser as FastifyBodyParser<string | Buffer>)
       }
     })
   }
