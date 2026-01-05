@@ -413,9 +413,9 @@ describe('BedrockAgentCoreApp Integration', () => {
         config: {
           contentTypeParsers: [
             {
-              // Sync parser for XML content
+              // Async parser for XML content
               contentType: 'application/xml',
-              parser: (body) => {
+              parser: async (request, body) => {
                 const content = body as string
                 return {
                   type: 'xml',
@@ -428,7 +428,7 @@ describe('BedrockAgentCoreApp Integration', () => {
             {
               // Async parser for JSON with validation
               contentType: 'application/custom-json',
-              parser: async (body) => {
+              parser: async (request, body) => {
                 const content = body as string
 
                 // Simulate async validation (e.g., schema validation, external API call)
@@ -448,9 +448,9 @@ describe('BedrockAgentCoreApp Integration', () => {
               parseAs: 'string',
             },
             {
-              // Sync parser for binary data
+              // Async parser for binary data
               contentType: 'application/octet-stream',
-              parser: (body) => {
+              parser: async (request, body) => {
                 const buffer = body as Buffer
                 return {
                   type: 'binary',
@@ -463,8 +463,39 @@ describe('BedrockAgentCoreApp Integration', () => {
             {
               // Parser that throws an error for testing error handling
               contentType: 'application/error-test',
-              parser: () => {
+              parser: async (request, body) => {
                 throw new Error('Parser intentionally failed')
+              },
+              parseAs: 'string',
+            },
+            {
+              // Callback-based parser for CSV content
+              contentType: 'text/csv',
+              parser: (request, body, done) => {
+                try {
+                  const content = (body as string).trim()
+                  if (!content) {
+                    done(null, { type: 'csv', headers: [], rows: [], rowCount: 0, parsed: true })
+                    return
+                  }
+                  
+                  const lines = content.split('\n')
+                  const headers = lines[0]?.split(',') || []
+                  const rows = lines.slice(1).map(line => line.split(','))
+                  
+                  done(null, { type: 'csv', headers, rows, rowCount: rows.length, parsed: true })
+                } catch (error) {
+                  done(error instanceof Error ? error : new Error('CSV parsing failed'))
+                }
+              },
+              parseAs: 'string',
+            },
+            {
+              // Callback-based parser that calls done with error
+              contentType: 'application/callback-error-test',
+              parser: (request, body, done) => {
+                // Simulate some processing then call done with error
+                done(new Error('Callback parser intentionally failed'))
               },
               parseAs: 'string',
             },
@@ -483,7 +514,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       await fastify.close()
     })
 
-    describe('XML Parser (Sync)', () => {
+    describe('XML Parser (Async)', () => {
       it('parses XML content correctly', async () => {
         const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
           <root>
@@ -561,7 +592,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .send(invalidJson)
           .expect(500)
           .expect(function(res) {
-            // Check that we get a parsing error (the actual error message may be wrapped by Fastify)
+            // Fastify wraps parser errors with generic "Internal Server Error"
             expect(res.body.error).toBeDefined()
             expect(typeof res.body.error).toBe('string')
           })
@@ -684,11 +715,25 @@ describe('BedrockAgentCoreApp Integration', () => {
           .send('test content')
           .expect(500)
           .expect(function(res) {
-            // Check that we get a parsing error (the actual error message may be wrapped by Fastify)
+            // Fastify wraps parser errors with generic "Internal Server Error"
             expect(res.body.error).toBeDefined()
             expect(typeof res.body.error).toBe('string')
           })
       })
+
+      it('handles callback-based parser that calls done with error', async () => {
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'application/callback-error-test')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-callback-error')
+          .send('test content')
+          .expect(500)
+          .expect(function(res) {
+            // Fastify wraps parser errors with generic "Internal Server Error"
+            expect(res.body.error).toBeDefined()
+            expect(typeof res.body.error).toBe('string')
+          })
+    
 
       it('handles unsupported content type gracefully', async () => {
         await request(fastify.server)
@@ -700,6 +745,75 @@ describe('BedrockAgentCoreApp Integration', () => {
           .expect(function(res) {
             expect(res.body.error).toBeDefined()
             expect(res.body.message).toContain('Unsupported Media Type')
+          })
+      })
+    })
+
+    describe('Callback-Based Parsers', () => {
+      it('parses CSV content using callback pattern', async () => {
+        const csvContent = `name,age,city
+John Doe,30,New York
+Jane Smith,25,Los Angeles
+Bob Johnson,35,Chicago`
+
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'text/csv')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-csv')
+          .send(csvContent)
+          .expect(200)
+          .expect(function(res) {
+            expect(res.body.message).toBe('Content parsed successfully!')
+            expect(res.body.sessionId).toBe('test-session-csv')
+            expect(res.body.parsedData).toEqual({
+              type: 'csv',
+              headers: ['name', 'age', 'city'],
+              rows: [
+                ['John Doe', '30', 'New York'],
+                ['Jane Smith', '25', 'Los Angeles'],
+                ['Bob Johnson', '35', 'Chicago']
+              ],
+              rowCount: 3,
+              parsed: true,
+            })
+          })
+      })
+
+      it('handles empty CSV content with callback pattern', async () => {
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'text/csv')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-csv-empty')
+          .send('')
+          .expect(200)
+          .expect(function(res) {
+            expect(res.body.parsedData).toEqual({
+              type: 'csv',
+              headers: [],
+              rows: [],
+              rowCount: 0,
+              parsed: true,
+            })
+          })
+      })
+
+      it('handles single header CSV with callback pattern', async () => {
+        const csvContent = 'name,age,city'
+
+        await request(fastify.server)
+          .post('/invocations')
+          .set('Content-Type', 'text/csv')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-csv-header-only')
+          .send(csvContent)
+          .expect(200)
+          .expect(function(res) {
+            expect(res.body.parsedData).toEqual({
+              type: 'csv',
+              headers: ['name', 'age', 'city'],
+              rows: [],
+              rowCount: 0,
+              parsed: true,
+            })
           })
       })
     })

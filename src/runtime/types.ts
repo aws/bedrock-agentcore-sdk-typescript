@@ -1,5 +1,5 @@
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
-import type { Readable } from 'node:stream'
+import type { FastifyBodyParser, FastifyContentTypeParser } from 'fastify'
 import { Buffer } from 'buffer'
 import { z } from 'zod'
 
@@ -69,24 +69,7 @@ export type Handler = (
 export type WebSocketHandler = (socket: WebSocket, context: RequestContext) => Promise<void> | void
 
 /**
- * Content type parser function that processes request body.
- * The body type depends on the parseAs mode: string, buffer or stream.
- *
- * @param body - Request body in the format specified by parseAs
- * @returns Parsed body data
- */
-export type ContentTypeParser = (body: string | Buffer | Readable) => unknown | Promise<unknown>
-
-/**
- * Parse mode for content type parsers.
- * - parseAs: 'string' → body: string
- * - parseAs: 'buffer' → body: Buffer
- * - parseAs: 'stream' → body: NodeJS.ReadableStream
- */
-export type ParseAsMode = 'string' | 'buffer' | 'stream'
-
-/**
- * Content type parser configuration.
+ * Content type parser configuration using Fastify's native types.
  * @example
  * ```typescript
  * const app = new BedrockAgentCoreApp({
@@ -95,18 +78,18 @@ export type ParseAsMode = 'string' | 'buffer' | 'stream'
  *     contentTypeParsers: [
  *       {
  *         contentType: 'application/xml',
- *         parser: (body) => parseXML(body as string),
+ *         parser: (request, body) => parseXML(body as string),
  *         parseAs: 'string'
  *       },
  *       {
  *         contentType: 'application/pdf',
- *         parser: (body) => parsePDF(body as Buffer),
+ *         parser: (request, body) => parsePDF(body as Buffer),
  *         parseAs: 'buffer'
  *       },
  *       {
  *         contentType: 'application/large-csv',
- *         parser: (body) => parseStreamingCSV(body as NodeJS.ReadableStream),
- *         parseAs: 'stream'
+ *         parser: (request, payload) => parseStreamingCSV(payload),
+ *         // parseAs omitted for stream mode (uses FastifyContentTypeParser)
  *       }
  *     ]
  *   }
@@ -116,20 +99,32 @@ export type ParseAsMode = 'string' | 'buffer' | 'stream'
 export interface ContentTypeParserConfig {
   /**
    * Content type to handle (e.g., 'application/xml', 'text/csv').
+   * Can be a string, array of strings, or RegExp.
    */
-  contentType: string
+  contentType: string | string[] | RegExp
 
   /**
    * Parser function to process the request body.
-   * The body parameter type will match the parseAs mode:
+   * Uses Fastify's native FastifyBodyParser for string/buffer modes,
+   * or FastifyContentTypeParser for stream mode.
    */
-  parser: ContentTypeParser
+  parser: FastifyBodyParser<string | Buffer> | FastifyContentTypeParser
 
   /**
-   * How to parse the raw request body before passing to the parser function: string, buffer or stream.
-   * Defaults to 'string'.
+   * How to parse the raw request body before passing to the parser function.
+   * - 'string': body is parsed as string (uses FastifyBodyParser<string>)
+   * - 'buffer': body is parsed as buffer (uses FastifyBodyParser<Buffer>)
+   * - 'stream': body is passed as raw stream (uses FastifyContentTypeParser)
+   *
+   * Defaults to 'string' when not specified.
    */
-  parseAs?: ParseAsMode
+  parseAs?: 'string' | 'buffer' | 'stream'
+
+  /**
+   * The maximum payload size, in bytes, that the custom parser will accept
+   * Defaults to Fastify's global body limit (1MB default)
+   */
+  bodyLimit?: number
 }
 
 /**
