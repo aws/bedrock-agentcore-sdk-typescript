@@ -306,4 +306,198 @@ describe('Identity Integration Tests', () => {
       ).rejects.toThrow();
     });
   });
+
+  describe('Concurrent Request Tests', { timeout: 90000 }, () => {
+    it('handles concurrent OAuth2 token requests', async () => {
+      const { CognitoIdentityProviderClient, CreateUserPoolCommand, CreateResourceServerCommand, CreateUserPoolClientCommand, CreateUserPoolDomainCommand, DeleteUserPoolCommand, DeleteUserPoolDomainCommand } = await import('@aws-sdk/client-cognito-identity-provider');
+      
+      const cognito = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION || 'us-west-2' });
+      const testSuffix = Date.now();
+      let userPoolId: string | undefined;
+      let domainName: string | undefined;
+      let providerName: string | undefined;
+      let workloadName: string | undefined;
+
+      try {
+        // Setup Cognito OAuth2 provider
+        const poolResponse = await cognito.send(new CreateUserPoolCommand({
+          PoolName: `ConcurrentTest-${testSuffix}`,
+        }));
+        userPoolId = poolResponse.UserPool!.Id!;
+
+        domainName = `concurrent-test-${testSuffix}`;
+        await cognito.send(new CreateUserPoolDomainCommand({
+          Domain: domainName,
+          UserPoolId: userPoolId,
+        }));
+
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        await cognito.send(new CreateResourceServerCommand({
+          UserPoolId: userPoolId,
+          Identifier: 'test-api',
+          Name: 'Test API',
+          Scopes: [{ ScopeName: 'read', ScopeDescription: 'Read access' }],
+        }));
+
+        const clientResponse = await cognito.send(new CreateUserPoolClientCommand({
+          UserPoolId: userPoolId,
+          ClientName: 'ConcurrentTestClient',
+          GenerateSecret: true,
+          AllowedOAuthFlows: ['client_credentials'],
+          AllowedOAuthScopes: ['test-api/read'],
+          AllowedOAuthFlowsUserPoolClient: true,
+        }));
+
+        const region = process.env.AWS_REGION || 'us-west-2';
+        const discoveryUrl = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}/.well-known/openid-configuration`;
+        providerName = `concurrent-provider-${testSuffix}`;
+        
+        await client.createOAuth2CredentialProvider({
+          name: providerName,
+          clientId: clientResponse.UserPoolClient!.ClientId!,
+          clientSecret: clientResponse.UserPoolClient!.ClientSecret!,
+          discoveryUrl,
+        });
+
+        workloadName = `concurrent-workload-${testSuffix}`;
+        await client.createWorkloadIdentity(workloadName);
+        const workloadToken = await client.getWorkloadAccessTokenForUserId(workloadName, 'test-user');
+
+        // Make 5 concurrent token requests
+        const numRequests = 5;
+        const promises = [];
+
+        for (let i = 0; i < numRequests; i++) {
+          promises.push(
+            client.getOAuth2Token({
+              providerName,
+              scopes: ['test-api/read'],
+              authFlow: 'M2M',
+              workloadIdentityToken: workloadToken,
+            })
+          );
+        }
+
+        const tokens = await Promise.all(promises);
+
+        // Verify all requests succeeded
+        expect(tokens).toHaveLength(numRequests);
+        tokens.forEach(token => {
+          expect(token).toBeDefined();
+          expect(typeof token).toBe('string');
+          expect(token.length).toBeGreaterThan(0);
+        });
+
+        // Cleanup
+        await client.deleteOAuth2CredentialProvider(providerName);
+        await client.deleteWorkloadIdentity(workloadName);
+      } finally {
+        // Cleanup Cognito resources
+        if (userPoolId) {
+          try {
+            if (domainName) {
+              await cognito.send(new DeleteUserPoolDomainCommand({
+                Domain: domainName,
+                UserPoolId: userPoolId,
+              }));
+            }
+            await cognito.send(new DeleteUserPoolCommand({ UserPoolId: userPoolId }));
+          } catch (e) {
+            console.warn('Failed to cleanup Cognito resources:', e);
+          }
+        }
+      }
+    });
+
+    it('handles concurrent API key requests', async () => {
+      const testSuffix = Date.now();
+      const providerName = `concurrent-apikey-${testSuffix}`;
+      const workloadName = `concurrent-apikey-workload-${testSuffix}`;
+
+      try {
+        // Setup
+        await client.createApiKeyCredentialProvider({
+          name: providerName,
+          apiKey: 'sk-concurrent-test-key',
+        });
+
+        await client.createWorkloadIdentity(workloadName);
+        const workloadToken = await client.getWorkloadAccessTokenForUserId(workloadName, 'test-user');
+
+        // Make 5 concurrent API key requests
+        const numRequests = 5;
+        const promises = [];
+
+        for (let i = 0; i < numRequests; i++) {
+          promises.push(
+            client.getApiKey({
+              providerName,
+              workloadIdentityToken: workloadToken,
+            })
+          );
+        }
+
+        const apiKeys = await Promise.all(promises);
+
+        // Verify all requests succeeded
+        expect(apiKeys).toHaveLength(numRequests);
+        apiKeys.forEach(key => {
+          expect(key).toBeDefined();
+          expect(typeof key).toBe('string');
+          expect(key).toBe('sk-concurrent-test-key');
+        });
+
+        // Cleanup
+        await client.deleteApiKeyCredentialProvider(providerName);
+        await client.deleteWorkloadIdentity(workloadName);
+      } catch (e) {
+        // Cleanup on error
+        try {
+          await client.deleteApiKeyCredentialProvider(providerName);
+        } catch {}
+        try {
+          await client.deleteWorkloadIdentity(workloadName);
+        } catch {}
+        throw e;
+      }
+    });
+
+    it('handles concurrent workload token requests', async () => {
+      const testSuffix = Date.now();
+      const workloadName = `concurrent-token-workload-${testSuffix}`;
+
+      try {
+        await client.createWorkloadIdentity(workloadName);
+
+        // Make 5 concurrent workload token requests
+        const numRequests = 5;
+        const promises = [];
+
+        for (let i = 0; i < numRequests; i++) {
+          promises.push(
+            client.getWorkloadAccessTokenForUserId(workloadName, `user-${i}`)
+          );
+        }
+
+        const tokens = await Promise.all(promises);
+
+        // Verify all requests succeeded
+        expect(tokens).toHaveLength(numRequests);
+        tokens.forEach(token => {
+          expect(token).toBeDefined();
+          expect(typeof token).toBe('string');
+          expect(token.length).toBeGreaterThan(0);
+        });
+
+        // Cleanup
+        await client.deleteWorkloadIdentity(workloadName);
+      } catch (e) {
+        try {
+          await client.deleteWorkloadIdentity(workloadName);
+        } catch {}
+        throw e;
+      }
+    });
+  });
 });
