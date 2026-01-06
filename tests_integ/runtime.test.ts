@@ -195,9 +195,9 @@ describe('BedrockAgentCoreApp Integration', () => {
 
       beforeAll(async () => {
         const streamHandler: Handler = async function* (req, context) {
-          yield { event: 'start', sessionId: context.sessionId }
-          yield { event: 'data', content: 'streaming test' }
-          yield { event: 'end' }
+          yield { event: 'start', data: { sessionId: context.sessionId } }
+          yield { event: 'data', data: { content: 'streaming test' } }
+          yield { event: 'end', data: {} }
         }
 
         const streamApp = new BedrockAgentCoreApp({ handler: streamHandler })
@@ -216,9 +216,122 @@ describe('BedrockAgentCoreApp Integration', () => {
           .expect('Content-Type', 'text/event-stream')
           .expect(200)
           .expect(function(res) {
-            expect(res.text).toContain('data: {"event":"start","sessionId":"stream-session"}')
-            expect(res.text).toContain('data: {"event":"data","content":"streaming test"}')
-            expect(res.text).toContain('data: {"event":"end"}')
+            expect(res.text).toContain('data: {"sessionId":"stream-session"}')
+            expect(res.text).toContain('data: {"content":"streaming test"}')
+            expect(res.text).toContain('event: end')
+          })
+      })
+
+      it('handles string SSE sources', async () => {
+        const stringHandler: Handler = async function* (req, context) {
+          yield 'plain string message'
+          yield 'another string'
+        }
+
+        const stringApp = new BedrockAgentCoreApp({ handler: stringHandler })
+        const stringFastify = (stringApp as any)._app
+        await (stringApp as any)._registerPlugins()
+        ;(stringApp as any)._setupRoutes()
+        await stringFastify.ready()
+
+        await request(stringFastify.server)
+          .post('/invocations')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'string-session')
+          .set('accept', 'text/event-stream')
+          .send({ message: 'test' })
+          .expect('Content-Type', 'text/event-stream')
+          .expect(200)
+          .expect(function(res) {
+            expect(res.text).toContain('data: plain string message')
+            expect(res.text).toContain('data: another string')
+          })
+      })
+
+      it('handles Buffer SSE sources', async () => {
+        const bufferHandler: Handler = async function* (req, context) {
+          yield Buffer.from('buffer message 1')
+          yield Buffer.from('buffer message 2')
+        }
+
+        const bufferApp = new BedrockAgentCoreApp({ handler: bufferHandler })
+        const bufferFastify = (bufferApp as any)._app
+        await (bufferApp as any)._registerPlugins()
+        ;(bufferApp as any)._setupRoutes()
+        await bufferFastify.ready()
+
+        await request(bufferFastify.server)
+          .post('/invocations')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'buffer-session')
+          .set('accept', 'text/event-stream')
+          .send({ message: 'test' })
+          .expect('Content-Type', 'text/event-stream')
+          .expect(200)
+          .expect(function(res) {
+            expect(res.text).toContain('data: buffer message 1')
+            expect(res.text).toContain('data: buffer message 2')
+          })
+      })
+
+      it('handles Readable stream SSE sources', async () => {
+        const { Readable } = await import('stream')
+        
+        const readableHandler: Handler = async function* (req, context) {
+          const stream = new Readable({
+            read() {
+              this.push('stream chunk 1\n')
+              this.push('stream chunk 2\n')
+              this.push(null)
+            }
+          })
+          yield stream
+        }
+
+        const readableApp = new BedrockAgentCoreApp({ handler: readableHandler })
+        const readableFastify = (readableApp as any)._app
+        await (readableApp as any)._registerPlugins()
+        ;(readableApp as any)._setupRoutes()
+        await readableFastify.ready()
+
+        await request(readableFastify.server)
+          .post('/invocations')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'readable-session')
+          .set('accept', 'text/event-stream')
+          .send({ message: 'test' })
+          .expect('Content-Type', 'text/event-stream')
+          .expect(200)
+          .expect(function(res) {
+            expect(res.text).toContain('stream chunk 1')
+            expect(res.text).toContain('stream chunk 2')
+          })
+      })
+
+      it('handles AsyncIterable SSE sources', async () => {
+        const asyncIterableHandler: Handler = async function* (req, context) {
+          async function* createAsyncIterable() {
+            yield 'async item 1'
+            yield Buffer.from('async buffer')
+            yield { event: 'custom', data: { message: 'async message' } }
+          }
+          yield createAsyncIterable()
+        }
+
+        const asyncApp = new BedrockAgentCoreApp({ handler: asyncIterableHandler })
+        const asyncFastify = (asyncApp as any)._app
+        await (asyncApp as any)._registerPlugins()
+        ;(asyncApp as any)._setupRoutes()
+        await asyncFastify.ready()
+
+        await request(asyncFastify.server)
+          .post('/invocations')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'async-session')
+          .set('accept', 'text/event-stream')
+          .send({ message: 'test' })
+          .expect('Content-Type', 'text/event-stream')
+          .expect(200)
+          .expect(function(res) {
+            expect(res.text).toContain('data: async item 1')
+            expect(res.text).toContain('data: async buffer')
+            expect(res.text).toContain('data: {"message":"async message"}')
           })
       })
     })

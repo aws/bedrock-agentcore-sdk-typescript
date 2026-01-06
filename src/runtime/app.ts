@@ -12,7 +12,7 @@ import type {
   FastifyContentTypeParser,
 } from 'fastify'
 // Import SSE types to ensure module augmentation is applied
-import type {} from '@fastify/sse'
+import type { SSESource } from '@fastify/sse'
 import type { WebSocket } from '@fastify/websocket'
 import type {
   BedrockAgentCoreAppParams,
@@ -356,7 +356,7 @@ export class BedrockAgentCoreApp {
    * @param value - Value to check
    * @returns True if the value is an async generator
    */
-  private _isAsyncGenerator(value: unknown): value is AsyncGenerator {
+  private _isAsyncGenerator(value: unknown): value is AsyncGenerator<SSESource> {
     return (
       value !== null &&
       value !== undefined &&
@@ -378,7 +378,7 @@ export class BedrockAgentCoreApp {
    * @param reply - Fastify reply object
    * @param generator - Async generator that yields data chunks
    */
-  private async _handleStreamingResponse(reply: FastifyReply, generator: AsyncGenerator<unknown>): Promise<void> {
+  private async _handleStreamingResponse(reply: FastifyReply, generator: AsyncGenerator<SSESource>): Promise<void> {
     try {
       await reply.sse.keepAlive()
       // Stream data chunks
@@ -389,17 +389,7 @@ export class BedrockAgentCoreApp {
         }
 
         // Send SSE message
-        await reply.sse.send({
-          data: chunk,
-        })
-      }
-
-      // Send done event if still connected
-      if (reply.sse.isConnected) {
-        await reply.sse.send({
-          event: 'done',
-          data: {},
-        })
+        await reply.sse.send(chunk)
       }
     } catch (error) {
       // Send error event if still connected

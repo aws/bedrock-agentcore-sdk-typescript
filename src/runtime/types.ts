@@ -8,6 +8,7 @@ import { z } from 'zod'
 // =============================================================================
 
 import type { WebSocket } from '@fastify/websocket'
+import type { SSESource } from '@fastify/sse'
 /**
  * Context provided to handler functions for each invocation request.
  */
@@ -58,7 +59,7 @@ export interface RequestContext {
 export type Handler = (
   request: unknown,
   context: RequestContext
-) => Promise<unknown> | unknown | AsyncGenerator<unknown, void, unknown>
+) => Promise<unknown> | unknown | AsyncGenerator<SSESource, void, unknown>
 
 /**
  * WebSocket handler function type for processing WebSocket connections.

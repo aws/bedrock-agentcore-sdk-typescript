@@ -50,6 +50,12 @@ describe('BedrockAgentCoreApp', () => {
       expect(app).toBeDefined()
     })
 
+    it('creates instance with synchronous handler', () => {
+      const handler: Handler = (request, context) => 'sync response'
+      const app = new BedrockAgentCoreApp({ handler })
+      expect(app).toBeDefined()
+    })
+
     it('creates instance with websocket handler', () => {
       const handler: Handler = async (request, context) => 'test response'
       const websocketHandler: WebSocketHandler = async (socket, context) => {}
@@ -161,7 +167,7 @@ describe('BedrockAgentCoreApp', () => {
   })
 
   describe('health check handler', () => {
-    it('returns correct response format', async () => {
+    it('defaults returns correct response format', async () => {
       const handler: Handler = async (request, context) => 'test response'
       const app = new BedrockAgentCoreApp({ handler })
       const mockApp = app._app
@@ -392,14 +398,13 @@ describe('BedrockAgentCoreApp', () => {
       expect(mockSSE.keepAlive).toHaveBeenCalled()
 
       // Verify correct number of SSE events (3 data + 1 done)
-      expect(mockSSE.send).toHaveBeenCalledTimes(4)
+      expect(mockSSE.send).toHaveBeenCalledTimes(3)
 
       // Verify the actual SSE event data
       expect(sentEvents).toEqual([
-        { data: { event: 'start', sessionId: 'stream-session' } },
-        { data: { event: 'data', content: 'streaming test' } },
-        { data: { event: 'end' } },
-        { event: 'done', data: {} }, // Final done event
+        { event: 'start', sessionId: 'stream-session' },
+        { event: 'data', content: 'streaming test' },
+        { event: 'end' },
       ])
 
       // Verify connection was closed
