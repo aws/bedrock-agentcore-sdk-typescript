@@ -163,6 +163,10 @@ export interface BedrockAgentCoreAppParams {
    * Additional configuration options.
    */
   config?: BedrockAgentCoreAppConfig
+  /**
+   * Custom ping handler to determine health status.
+   */
+  pingHandler?: () => HealthStatus | Promise<HealthStatus>
 }
 
 /**
