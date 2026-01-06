@@ -1,8 +1,16 @@
+import { Buffer } from 'buffer'
 import { createRequire } from 'module'
 import { randomUUID } from 'crypto'
 import Fastify from 'fastify'
 
-import type { FastifyInstance, FastifyLoggerOptions, FastifyRequest, FastifyReply } from 'fastify'
+import type {
+  FastifyInstance,
+  FastifyLoggerOptions,
+  FastifyRequest,
+  FastifyReply,
+  FastifyBodyParser,
+  FastifyContentTypeParser,
+} from 'fastify'
 // Import SSE types to ensure module augmentation is applied
 import type {} from '@fastify/sse'
 import type { WebSocket } from '@fastify/websocket'
@@ -76,6 +84,7 @@ export class BedrockAgentCoreApp {
     // Wait for Fastify to be ready (all plugins registered), setup routes, and start the server
     Promise.resolve(this._registerPlugins())
       .then(() => {
+        this._setupContentTypeParsers()
         this._setupRoutes()
         return this._app.listen({ port: PORT, host: '0.0.0.0' })
       })
@@ -222,6 +231,28 @@ export class BedrockAgentCoreApp {
     if (this._websocketHandler) {
       this._app.get('/ws', { websocket: true }, this._handleWebSocket.bind(this))
     }
+  }
+
+  /**
+   * Register custom content type parsers using Fastify's native addContentTypeParser.
+   */
+  private _setupContentTypeParsers(): void {
+    this._config.contentTypeParsers?.forEach((parserConfig) => {
+      const { contentType, parser, parseAs, bodyLimit } = parserConfig
+
+      if (parseAs === 'stream') {
+        // Use FastifyContentTypeParser for stream mode (raw request payload)
+        const opts = bodyLimit ? { bodyLimit } : {}
+        this._app.addContentTypeParser(contentType, opts, parser as FastifyContentTypeParser)
+      } else {
+        // Use FastifyBodyParser for string/buffer modes (default to 'string' when parseAs is undefined)
+        const opts = {
+          parseAs: parseAs || 'string',
+          ...(bodyLimit && { bodyLimit }),
+        }
+        this._app.addContentTypeParser(contentType, opts, parser as FastifyBodyParser<string | Buffer>)
+      }
+    })
   }
 
   /**

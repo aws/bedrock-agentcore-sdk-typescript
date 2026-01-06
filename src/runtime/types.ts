@@ -1,4 +1,6 @@
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
+import type { FastifyBodyParser, FastifyContentTypeParser } from 'fastify'
+import { Buffer } from 'buffer'
 import { z } from 'zod'
 
 // =============================================================================
@@ -67,6 +69,65 @@ export type Handler = (
 export type WebSocketHandler = (socket: WebSocket, context: RequestContext) => Promise<void> | void
 
 /**
+ * Content type parser configuration using Fastify's native types.
+ * @example
+ * ```typescript
+ * const app = new BedrockAgentCoreApp({
+ *   handler: myHandler,
+ *   config: {
+ *     contentTypeParsers: [
+ *       {
+ *         contentType: 'application/xml',
+ *         parser: (request, body) => parseXML(body as string),
+ *         parseAs: 'string'
+ *       },
+ *       {
+ *         contentType: 'application/pdf',
+ *         parser: (request, body) => parsePDF(body as Buffer),
+ *         parseAs: 'buffer'
+ *       },
+ *       {
+ *         contentType: 'application/large-csv',
+ *         parser: (request, payload) => parseStreamingCSV(payload),
+ *         // parseAs omitted for stream mode (uses FastifyContentTypeParser)
+ *       }
+ *     ]
+ *   }
+ * })
+ * ```
+ */
+export interface ContentTypeParserConfig {
+  /**
+   * Content type to handle (e.g., 'application/xml', 'text/csv').
+   * Can be a string, array of strings, or RegExp.
+   */
+  contentType: string | string[] | RegExp
+
+  /**
+   * Parser function to process the request body.
+   * Uses Fastify's native FastifyBodyParser for string/buffer modes,
+   * or FastifyContentTypeParser for stream mode.
+   */
+  parser: FastifyBodyParser<string | Buffer> | FastifyContentTypeParser
+
+  /**
+   * How to parse the raw request body before passing to the parser function.
+   * - 'string': body is parsed as string (uses FastifyBodyParser<string>)
+   * - 'buffer': body is parsed as buffer (uses FastifyBodyParser<Buffer>)
+   * - 'stream': body is passed as raw stream (uses FastifyContentTypeParser)
+   *
+   * Defaults to 'string' when not specified.
+   */
+  parseAs?: 'string' | 'buffer' | 'stream'
+
+  /**
+   * The maximum payload size, in bytes, that the custom parser will accept
+   * Defaults to Fastify's global body limit (1MB default)
+   */
+  bodyLimit?: number
+}
+
+/**
  * Configuration options for BedrockAgentCoreApp.
  */
 export interface BedrockAgentCoreAppConfig {
@@ -77,6 +138,12 @@ export interface BedrockAgentCoreAppConfig {
     enabled?: boolean
     level?: 'debug' | 'info' | 'warn' | 'error'
   }
+
+  /**
+   * Custom content type parsers for handling custom content-types.
+   * 'application/json' and 'text/plain' are natively supported.
+   */
+  contentTypeParsers?: ContentTypeParserConfig[]
 }
 
 /**
