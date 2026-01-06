@@ -89,10 +89,10 @@ describe('BedrockAgentCoreApp Integration', () => {
       const handler: Handler = async (req, context) => {
         return { message: 'test' }
       }
-      const testApp = new BedrockAgentCoreApp(handler)
-
-      // Register custom handler
-      testApp.ping(() => 'HealthyBusy')
+      const testApp = new BedrockAgentCoreApp({
+        handler,
+        pingHandler: () => 'HealthyBusy',
+      })
 
       // Setup routes
       await testApp._registerPlugins()
@@ -846,6 +846,7 @@ describe('BedrockAgentCoreApp Integration', () => {
             expect(res.body.error).toBeDefined()
             expect(typeof res.body.error).toBe('string')
           })
+      })
     
 
       it('handles unsupported content type gracefully', async () => {

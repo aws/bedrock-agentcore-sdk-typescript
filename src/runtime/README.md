@@ -236,12 +236,12 @@ app.completeAsyncTask(taskId)
 Implement custom health check logic based on your application's needs:
 
 ```typescript
-const app = new BedrockAgentCoreApp(handler)
-
-// Custom health check
-app.ping(() => {
-  // Check database connection, external dependencies, etc.
-  return databaseConnected ? 'Healthy' : 'HealthyBusy'
+const app = new BedrockAgentCoreApp({
+  handler,
+  pingHandler: () => {
+    // Check database connection, external dependencies, etc.
+    return databaseConnected ? 'Healthy' : 'HealthyBusy'
+  },
 })
 
 app.run()
