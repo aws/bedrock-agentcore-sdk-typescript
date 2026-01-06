@@ -54,7 +54,7 @@ export class BedrockAgentCoreApp {
   private _websocketHandler: WebSocketHandler | undefined
   private readonly _activeTasksMap: Map<number, AsyncTaskInfo> = new Map()
   private _taskCounter: number = 0
-  private _pingHandler?: () => HealthStatus | Promise<HealthStatus>
+  private _pingHandler: (() => HealthStatus | Promise<HealthStatus>) | undefined
   private _forcedPingStatus?: HealthStatus
   private _lastStatusUpdateTime: number = Date.now()
   private _lastKnownStatus?: HealthStatus
@@ -68,6 +68,7 @@ export class BedrockAgentCoreApp {
     this._handler = params.handler
     this._websocketHandler = params.websocketHandler ?? undefined
     this._config = params.config ?? {}
+    this._pingHandler = params.pingHandler ?? undefined
 
     // Configure Fastify logger based on BedrockAgentCoreAppConfig
     const loggerConfig = this._getLoggerConfig()
@@ -160,15 +161,6 @@ export class BedrockAgentCoreApp {
     }
 
     return status
-  }
-
-  /**
-   * Register a custom ping status handler.
-   *
-   * @param handler - Function that returns health status
-   */
-  public ping(handler: () => HealthStatus | Promise<HealthStatus>): void {
-    this._pingHandler = handler
   }
 
   /**

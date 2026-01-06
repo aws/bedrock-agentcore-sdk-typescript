@@ -683,9 +683,11 @@ describe('BedrockAgentCoreApp', () => {
   describe('status priority', () => {
     it('custom handler used when provided', () => {
       const handler: Handler = async (request, context) => 'test'
-      const app = new BedrockAgentCoreApp(handler)
+      const app = new BedrockAgentCoreApp({
+        handler,
+        pingHandler: () => 'HealthyBusy',
+      })
 
-      app.ping(() => 'HealthyBusy')
       expect(app.getCurrentPingStatus()).toBe('HealthyBusy')
     })
 
@@ -701,10 +703,12 @@ describe('BedrockAgentCoreApp', () => {
 
     it('custom handler overrides automatic status', () => {
       const handler: Handler = async (request, context) => 'test'
-      const app = new BedrockAgentCoreApp(handler)
+      const app = new BedrockAgentCoreApp({
+        handler,
+        pingHandler: () => 'Healthy',
+      })
 
       app.addAsyncTask('test-task')
-      app.ping(() => 'Healthy')
 
       expect(app.getCurrentPingStatus()).toBe('Healthy')
     })
