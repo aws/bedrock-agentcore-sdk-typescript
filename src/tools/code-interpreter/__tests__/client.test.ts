@@ -546,9 +546,9 @@ describe('CodeInterpreter', () => {
       expect(response).toBeDefined()
       expect(response.items).toBeInstanceOf(Array)
       expect(response.items.length).toBeGreaterThan(0)
-      expect(response.items[0].sessionId).toBeDefined()
-      expect(response.items[0].name).toBeDefined()
-      expect(response.items[0].status).toBeDefined()
+      expect(response.items[0]!.sessionId).toBeDefined()
+      expect(response.items[0]!.name).toBeDefined()
+      expect(response.items[0]!.status).toBeDefined()
     })
 
     it('filters sessions by status', async () => {
@@ -573,7 +573,7 @@ describe('CodeInterpreter', () => {
 
       const secondPage = await interpreter.listSessions({
         maxResults: 1,
-        nextToken: firstPage.nextToken,
+        nextToken: firstPage.nextToken!,
       })
 
       expect(secondPage).toBeDefined()

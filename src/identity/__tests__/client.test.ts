@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { IdentityClient } from '../client'
+import { IdentityClient } from '../client.js'
 
 describe('IdentityClient', () => {
   let originalEnv: string | undefined

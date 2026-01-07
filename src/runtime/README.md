@@ -201,7 +201,7 @@ The `/ping` endpoint returns dynamic health status based on your application's w
 Track async operations automatically with the `asyncTask` decorator:
 
 ```typescript
-const app = new BedrockAgentCoreApp(handler)
+const app = new BedrockAgentCoreApp({ handler })
 
 // Wrap your async function
 const processData = app.asyncTask(async (data: string) => {
@@ -219,7 +219,7 @@ await processData('input')
 For more control, manually register and complete tasks:
 
 ```typescript
-const app = new BedrockAgentCoreApp(handler)
+const app = new BedrockAgentCoreApp({ handler })
 
 // Register a task
 const taskId = app.addAsyncTask('background-job', { priority: 'high' })

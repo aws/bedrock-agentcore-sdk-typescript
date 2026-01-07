@@ -4,6 +4,263 @@
 
 This document contains comprehensive testing guidelines for the Strands TypeScript SDK. For general development guidance, see [AGENTS.md](../AGENTS.md).
 
+## Core Testing Principles
+
+### Black-Box Testing Philosophy
+
+**Rule**: Tests MUST validate behavior through the public API only. Do NOT access private members, internal state, or implementation details.
+
+**Why black-box testing:**
+- Tests remain valid when implementation changes
+- Tests document the public contract
+- Tests catch real user-facing bugs
+- Refactoring is safer and easier
+
+**✅ DO:**
+- Test public methods and their return values
+- Test observable side effects (HTTP responses, file changes, etc.)
+- Test error conditions through public API
+- Use dependency injection for testability
+
+**❌ DON'T:**
+- Access private properties or methods directly (use bracket notation if needed)
+- Test internal state directly
+- Use `any` type to bypass type checking unnecessarily
+- Use `@ts-expect-error` to access private members
+
+### Examples
+
+**❌ Bad: White-box testing (accessing internals)**
+```typescript
+it('registers routes correctly', () => {
+  const app = new BedrockAgentCoreApp({ handler })
+  
+  // ❌ Accessing private members
+  const mockApp = app._app
+  app._setupRoutes()
+  
+  // ❌ Testing internal implementation
+  expect(mockApp.get).toHaveBeenCalledWith('/ping')
+})
+```
+
+**✅ Good: Black-box testing (testing behavior)**
+```typescript
+it('responds to health check requests', async () => {
+  const app = new BedrockAgentCoreApp({ handler })
+  app.run()
+  
+  // ✅ Testing through public API
+  const response = await request(app).get('/ping')
+  
+  expect(response.status).toBe(200)
+  expect(response.body).toEqual({
+    status: 'Healthy',
+    activeTaskCount: 0
+  })
+})
+```
+
+**❌ Bad: Testing internal state**
+```typescript
+it('tracks tasks internally', () => {
+  const app = new BedrockAgentCoreApp({ handler })
+  
+  // ❌ Accessing private state
+  expect(app._activeTasksMap.size).toBe(0)
+  
+  app.addAsyncTask('test')
+  
+  // ❌ Verifying internal state
+  expect(app._activeTasksMap.size).toBe(1)
+})
+```
+
+**✅ Good: Testing observable behavior**
+```typescript
+it('reports active task count', () => {
+  const app = new BedrockAgentCoreApp({ handler })
+  
+  // ✅ Using public API
+  expect(app.getAsyncTaskInfo().activeCount).toBe(0)
+  
+  app.addAsyncTask('test')
+  
+  // ✅ Verifying through public method
+  expect(app.getAsyncTaskInfo().activeCount).toBe(1)
+})
+```
+
+### When You Need to Test Internals
+
+If you find yourself needing to test internal behavior, consider:
+
+1. **Make it public** - If it's important enough to test, it might belong in the public API
+2. **Test through side effects** - Internal behavior should have observable effects
+3. **Add test utilities** - Create public methods specifically for testing (e.g., `getStateForTesting()`)
+
+### Bracket Notation for Private Access (Pragmatic Approach)
+
+In cases where testing requires accessing private members and no public API exists, bracket notation can be used as a pragmatic solution:
+
+```typescript
+// Accessing private properties
+const server = app['_app']
+
+// Calling private methods  
+app['_setupRoutes']()
+
+// With type casting when needed
+const mockApp = app['_app'] as any
+mockApp.get.mock.calls // Access mock properties
+```
+
+**When this is acceptable:**
+- Testing integrations with dependencies
+- Testing specific error codes or internal behavior that can't be tested through public API
+- Temporary solution while refactoring to more black-box approaches
+
+**Best practices:**
+- Use sparingly - prefer public API testing
+- Document why private access is needed
+- Consider if the behavior could be tested through side effects instead
+
+### Type-Checking Tests
+
+**Rule**: All test files MUST be type-checked to catch errors at compile time.
+
+The project uses `tsconfig.test.json` to type-check test files separately from production code. This ensures test code has the same type safety as production code.
+
+**Running type checks:**
+```bash
+npm run type-check        # Check production code only
+npm run type-check:tests  # Check test files only
+npm run type-check:all    # Check both (used in CI)
+```
+
+**Common type issues in tests:**
+
+1. **Missing `.js` extensions in imports**
+   ```typescript
+   // ❌ Wrong
+   import { Client } from '../client'
+   
+   // ✅ Correct
+   import { Client } from '../client.js'
+   ```
+
+2. **Generic type inference failures**
+   ```typescript
+   // ❌ TypeScript can't infer types
+   const wrapped = withAccessToken(config)(fn)
+   
+   // ✅ Provide explicit type parameters
+   const wrapped = withAccessToken<[string], { result: string }>(config)(fn)
+   ```
+
+3. **Array access returns `T | undefined`**
+   ```typescript
+   // ❌ items[0] is possibly undefined
+   expect(response.items[0].id).toBe('123')
+   
+   // ✅ Use non-null assertion after verifying length
+   expect(response.items.length).toBeGreaterThan(0)
+   expect(response.items[0]!.id).toBe('123')
+   ```
+
+4. **Mock objects don't match real types**
+   ```typescript
+   // When accessing mock-specific properties
+   const mockApp = app['_app'] as any
+   const calls = mockApp.get.mock.calls
+   
+   // When passing incomplete mock objects
+   const mockRequest = { headers: {...}, body: {} }
+   handler(mockRequest as any)
+   ```
+
+### Testing with Mocked Dependencies
+
+**When mocking is acceptable:**
+- ✅ External dependencies (AWS SDK, databases, third-party APIs)
+- ✅ Handler functions to verify they're called with correct parameters
+- ✅ Expensive operations in unit tests (network calls, file I/O)
+
+**When mocking is NOT acceptable:**
+- ❌ The class/function you're testing (test the real implementation)
+- ❌ Internal implementation details (test behavior, not implementation)
+- ❌ In integration tests (defeats the purpose of end-to-end testing)
+
+**Example: Good use of mocking**
+```typescript
+it('invokes handler with correct context', async () => {
+  // ✅ Mock the handler to verify it receives correct parameters
+  const mockHandler = vi.fn(async (request, context) => ({ result: 'success' }))
+  const app = new BedrockAgentCoreApp({ handler: mockHandler })
+  
+  // Test the real app behavior
+  const mockApp = app['_app'] as any
+  app['_setupRoutes']()
+  
+  const postCall = mockApp.post.mock.calls.find(call => call[0] === '/invocations')
+  const invocationHandler = postCall[2]
+  await invocationHandler(mockReq, mockReply)
+  
+  // Verify handler was called correctly
+  expect(mockHandler).toHaveBeenCalledWith(
+    { test: 'data' },
+    expect.objectContaining({ sessionId: 'session-123' })
+  )
+})
+```
+
+### Write Lean, Focused Tests
+
+Tests should be **minimal and focused** on exactly what you're testing. Avoid unnecessary complexity, boilerplate, or setup that doesn't directly contribute to validating the behavior under test.
+
+**Key principles:**
+- **Reuse expensive resources** - Don't recreate resources (like AWS services, database connections, or test infrastructure) if they can be shared across tests
+- **Batch related assertions** - When setup cost exceeds test logic cost, combine related assertions into a single test
+- **Minimize boilerplate** - Use fixtures, helpers, and shared setup to reduce repetitive code
+- **Test one thing well** - Each test should validate a specific behavior or scenario clearly
+
+**Example of lean vs bloated testing:**
+
+```typescript
+// ❌ BAD - Recreating expensive resource for each test
+it('validates user input', async () => {
+  const pool = await createCognitoUserPool() // Expensive!
+  const client = await createAppClient(pool)
+  // ... test logic
+  await deleteUserPool(pool)
+})
+
+it('handles authentication', async () => {
+  const pool = await createCognitoUserPool() // Recreating same resource!
+  const client = await createAppClient(pool)
+  // ... test logic
+  await deleteUserPool(pool)
+})
+
+// ✅ GOOD - Reuse shared resource
+let sharedPool: UserPool
+let sharedClient: AppClient
+
+beforeAll(async () => {
+  // Check if pool exists, create only if needed
+  sharedPool = await getOrCreateUserPool('test-pool')
+  sharedClient = await getOrCreateAppClient(sharedPool)
+})
+
+it('validates user input', async () => {
+  // Test logic only - no expensive setup
+})
+
+it('handles authentication', async () => {
+  // Test logic only - no expensive setup
+})
+```
+
 ## Test Fixtures Quick Reference
 
 All test fixtures are located in `src/__fixtures__/`. Use these helpers to reduce boilerplate and ensure consistency.
@@ -54,6 +311,81 @@ tests_integ/
 ## Integration Test Guidelines
 
 Integration tests validate end-to-end functionality with real external services. They test the **public API** against actual AWS services, not mocked implementations.
+
+### Resource Management in Integration Tests
+
+**Rule**: Reuse expensive resources across tests. Don't recreate resources that can be shared.
+
+**✅ Good: Reuse shared resources**
+
+```typescript
+describe('Identity Integration Tests', () => {
+  let client: IdentityClient
+  let sharedCognitoPool: CognitoUserPool
+  
+  beforeAll(async () => {
+    client = new IdentityClient('us-west-2')
+    
+    // Check if pool exists, create only if needed
+    sharedCognitoPool = await getOrCreateUserPool('test-pool-name')
+  })
+  
+  // Don't delete shared resources in afterAll - reuse on next run
+  
+  it('performs OAuth2 M2M flow', async () => {
+    // Use shared pool - no expensive setup
+    const token = await client.getOAuth2Token({
+      providerName: sharedCognitoPool.providerName,
+      // ...
+    })
+    expect(token).toBeDefined()
+  })
+  
+  it('handles concurrent token requests', async () => {
+    // Reuse same pool - fast test execution
+    const promises = Array(5).fill(null).map(() => 
+      client.getOAuth2Token({ /* ... */ })
+    )
+    const tokens = await Promise.all(promises)
+    expect(tokens).toHaveLength(5)
+  })
+})
+```
+
+**❌ Bad: Recreate expensive resources**
+
+```typescript
+describe('Identity Integration Tests', () => {
+  it('performs OAuth2 M2M flow', async () => {
+    // ❌ Creates new pool every time - slow and wasteful
+    const pool = await createCognitoUserPool(`test-${Date.now()}`)
+    const domain = await createDomain(pool)
+    await waitForDomainActive(domain) // 5+ seconds!
+    
+    // Test logic...
+    
+    // ❌ Deletes pool - next test will recreate it
+    await deleteUserPool(pool)
+  })
+  
+  it('handles concurrent token requests', async () => {
+    // ❌ Recreates everything again!
+    const pool = await createCognitoUserPool(`test-${Date.now()}`)
+    const domain = await createDomain(pool)
+    await waitForDomainActive(domain) // Another 5+ seconds!
+    
+    // Test logic...
+    
+    await deleteUserPool(pool)
+  })
+})
+```
+
+**Key principles:**
+- Use stable resource names (not `Date.now()` suffixes)
+- Check if resource exists before creating
+- Don't delete shared resources after tests
+- Clean up only test-specific resources (like temporary identities or providers)
 
 ### What to Include in Integration Tests
 
@@ -208,13 +540,50 @@ npm run test:integ -- --reporter=verbose
 
 ### Integration Test Best Practices
 
-1. **Use longer timeouts** (30-60 seconds) for real service calls
-2. **Clean up resources** in `afterAll` or `afterEach` hooks
+1. **Use longer timeouts** (30-60 seconds) for real service calls - add explicit timeout to each test: `it('test name', async () => { ... }, 30000)`
+2. **Clean up test-specific resources** in `afterAll` or `afterEach` hooks, but reuse shared infrastructure
 3. **Test realistic scenarios** that users would actually perform
-4. **Validate complete response structures** not just existence
-5. **Handle flaky network conditions** with appropriate retries
-6. **Use environment variables** for configuration
+4. **Validate complete response structures** using object assertions, not just existence checks
+5. **Handle flaky network conditions** with appropriate retries where needed
+6. **Use environment variables** for configuration (AWS_REGION, credentials)
 7. **Document prerequisites** clearly in test file comments
+8. **Avoid unnecessary boilerplate** - don't add comments that restate what the code already says
+
+**❌ Bad: Unnecessary boilerplate and comments**
+
+```typescript
+afterAll(async () => {
+  // Cleanup - delete test resources
+  try {
+    await client.deleteProvider(providerName)
+  } catch (e) {
+    // Ignore if doesn't exist
+  }
+  try {
+    await client.deleteIdentity(identityName)
+  } catch (e) {
+    // Ignore if doesn't exist
+  }
+  try {
+    await client.deleteWorkload(workloadName)
+  } catch (e) {
+    // Ignore if doesn't exist
+  }
+})
+```
+
+**✅ Good: Clean, self-explanatory code**
+
+```typescript
+afterAll(async () => {
+  // Cleanup test-specific resources
+  await Promise.allSettled([
+    client.deleteProvider(providerName),
+    client.deleteIdentity(identityName),
+    client.deleteWorkload(workloadName),
+  ])
+})
+```
 
 ## Test Structure Pattern
 
@@ -275,13 +644,13 @@ describe('ClassName', () => {
 
 - Top-level `describe` uses the function/class name
 - Nested `describe` blocks group related test scenarios
-- Use descriptive test names without "should" prefix
+- **Use descriptive test names WITHOUT "should" prefix** - Write `it('returns the sum', ...)` not `it('should return the sum', ...)`
 - Group tests by functionality or scenario
 
 ## Writing Effective Tests
 
 ```typescript
-// Good: Clear, specific test
+// Good: Clear, specific test without "should" prefix
 describe('calculateTotal', () => {
   describe('when given valid numbers', () => {
     it('returns the sum', () => {
@@ -296,10 +665,14 @@ describe('calculateTotal', () => {
   })
 })
 
-// Bad: Vague, unclear test
+// Bad: Uses "should" prefix (violates guideline)
 describe('calculateTotal', () => {
-  it('works', () => {
+  it('should work', () => {
     expect(calculateTotal([1, 2, 3])).toBeTruthy()
+  })
+  
+  it('should return the sum', () => { // ❌ Don't use "should"
+    expect(calculateTotal([1, 2, 3])).toBe(6)
   })
 })
 ```
@@ -312,7 +685,7 @@ describe('calculateTotal', () => {
 
 - Setup complexity > test logic complexity
 - Multiple assertions verify the same object state
-- Related behaviors share expensive context
+- Related behaviors share expensive context (AWS service calls, database connections, browser sessions, etc.)
 
 **You SHOULD keep separate tests for**:
 
@@ -320,34 +693,56 @@ describe('calculateTotal', () => {
 - Error conditions
 - Different input scenarios
 
-**Bad - Redundant setup**:
+**Bad - Redundant expensive setup**:
 
 ```typescript
-it('has correct tool name', () => {
-  const tool = createComplexTool({
-    /* expensive setup */
-  })
-  expect(tool.toolName).toBe('testTool')
-})
+// ❌ Each test creates expensive browser session
+it('navigates to page', async () => {
+  await browser.navigate({ url: 'https://example.com' }) // Expensive!
+  const html = await browser.getHtml()
+  expect(html).toContain('Example')
+}, 90000)
 
-it('has correct description', () => {
-  const tool = createComplexTool({
-    /* same expensive setup */
-  })
-  expect(tool.description).toBe('Test description')
-})
+it('extracts page title', async () => {
+  await browser.navigate({ url: 'https://example.com' }) // Recreating same state!
+  const title = await browser.getText({ selector: 'h1' })
+  expect(title).toBeTruthy()
+}, 90000)
+
+it('takes screenshot', async () => {
+  await browser.navigate({ url: 'https://example.com' }) // Again!
+  const screenshot = await browser.screenshot()
+  expect(screenshot).toBeDefined()
+}, 90000)
 ```
 
-**Good - Batched properties**:
+**Good - Batched related operations**:
 
 ```typescript
-it('creates tool with correct properties', () => {
-  const tool = createComplexTool({
-    /* setup once */
-  })
-  expect(tool.toolName).toBe('testTool')
-  expect(tool.description).toBe('Test description')
-  expect(tool.toolSpec.name).toBe('testTool')
+// ✅ Single expensive setup, multiple related assertions
+it('performs navigation and content extraction', async () => {
+  await browser.navigate({ url: 'https://example.com' })
+  
+  const html = await browser.getHtml()
+  expect(html).toContain('Example')
+  
+  const title = await browser.getText({ selector: 'h1' })
+  expect(title).toBeTruthy()
+  
+  const screenshot = await browser.screenshot()
+  expect(screenshot).toBeDefined()
+}, 90000)
+```
+
+**Good - Batched error cases**:
+
+```typescript
+// ✅ Batch related error scenarios
+it('throws errors for invalid ARN formats', () => {
+  expect(() => parseArn('invalid')).toThrow('Invalid ARN format')
+  expect(() => parseArn('arn:aws:wrong::')).toThrow('Wrong service')
+  expect(() => parseArn('arn:aws:service:::')).toThrow('Missing region')
+  expect(() => parseArn('arn:aws:service:region::')).toThrow('Missing account')
 })
 ```
 
@@ -387,13 +782,14 @@ it('returns expected user object', () => {
   expect(user.isActive).toBe(true)
 })
 
-// ❌ Bad: Testing array elements individually in a loop
+// ❌ Bad: Testing array elements individually
 it('yields expected stream events', async () => {
   const events = await collectIterator(stream)
-  for (const event of events) {
-    expect(event.type).toBe('streamEvent')
-    expect(event).toHaveProperty('data')
-  }
+  expect(events[0].type).toBe('streamEvent')
+  expect(events[0].data).toBe('Starting...')
+  expect(events[1].type).toBe('streamEvent')
+  expect(events[1].data).toBe('Processing...')
+  // ...
 })
 ```
 
@@ -409,29 +805,46 @@ it('yields expected stream events', async () => {
 - Always use `toEqual()` for object and array comparisons
 - Use `toBe()` only for primitive values and reference equality
 - When testing error objects, verify the entire structure including message and type
+- Use `expect.any(Type)` for dynamic values like timestamps or IDs
 
 ## What to Test
 
 **Testing Approach:**
 
 - You **MUST** write tests for implementations (functions, classes, methods)
-- You **SHOULD NOT** write tests for interfaces since TypeScript compiler already enforces type correctness
+- You **SHOULD NOT** write tests for interfaces or TypeScript types - the TypeScript compiler already enforces type correctness
 - You **SHOULD** write Vitest type tests (`*.test-d.ts`) for complex types to ensure backwards compatibility
 
-**Example Implementation Test:**
+**❌ Don't test TypeScript types:**
 
 ```typescript
-describe('BedrockModel', () => {
-  it('streams messages correctly', async () => {
-    const provider = new BedrockModel(config)
-    const stream = provider.stream(messages)
+// ❌ Bad: Unnecessary type testing
+it('exports correct types', () => {
+  const _request: OAuth2TokenRequest = {
+    providerName: 'test',
+    scopes: ['read'],
+    authFlow: 'M2M',
+  }
+  const _response: OAuth2TokenResponse = { token: 'abc' }
+  expect(true).toBe(true) // Meaningless assertion
+})
+```
 
-    for await (const event of stream) {
-      if (event.type === 'modelMessageStartEvent') {
-        expect(event.role).toBe('assistant')
-      }
-    }
+**✅ Do test implementations:**
+
+```typescript
+// ✅ Good: Test actual behavior
+it('retrieves OAuth2 token', async () => {
+  const client = new IdentityClient('us-west-2')
+  const token = await client.getOAuth2Token({
+    providerName: 'test-provider',
+    scopes: ['read'],
+    authFlow: 'M2M',
+    workloadIdentityToken: 'token-123',
   })
+  
+  expect(token).toBeDefined()
+  expect(typeof token).toBe('string')
 })
 ```
 
@@ -696,8 +1109,16 @@ For detailed command usage, see [CONTRIBUTING.md - Testing Instructions](../CONT
 
 ## Checklist Items
 
+Before submitting tests, verify:
+
 - [ ] Do the tests use relevant helpers from `src/__fixtures__/` as noted in the "Test Fixtures Quick Reference" table above?
 - [ ] Are recurring code or patterns extracted to functions for better usability/readability?
 - [ ] Are tests focused on verifying one or two things only?
-- [ ] Are tests written concisely enough that the bulk of each test is important to the test instead of boilerplate code?
+- [ ] Are tests written concisely with minimal boilerplate?
 - [ ] Are tests asserting on the entire object instead of specific fields?
+- [ ] Do test names avoid the "should" prefix? (Use `it('returns the sum', ...)` not `it('should return the sum', ...)`)
+- [ ] Are expensive resources (AWS services, browser sessions, etc.) reused across tests instead of recreated?
+- [ ] Are related assertions batched into single tests when setup cost exceeds test logic cost?
+- [ ] Do integration tests document prerequisites clearly?
+- [ ] Do integration tests use explicit timeouts (30-60s) for real service calls?
+- [ ] Are unnecessary comments and boilerplate removed?

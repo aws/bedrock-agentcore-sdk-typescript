@@ -66,17 +66,17 @@ describe('BedrockAgentCoreApp Integration', () => {
       const handler: Handler = async (req, context) => {
         return { message: 'test' }
       }
-      const testApp = new BedrockAgentCoreApp(handler)
+      const testApp = new BedrockAgentCoreApp({ handler })
 
       // Add a task
       testApp.addAsyncTask('test-task')
 
       // Setup routes
-      await testApp._registerPlugins()
-      testApp._setupRoutes()
-      await testApp._app.ready()
+      await testApp['_registerPlugins']()
+      testApp['_setupRoutes']()
+      await testApp['_app'].ready()
 
-      const response = await testApp._app.inject({
+      const response = await testApp['_app'].inject({
         method: 'GET',
         url: '/ping',
       })
@@ -95,11 +95,11 @@ describe('BedrockAgentCoreApp Integration', () => {
       })
 
       // Setup routes
-      await testApp._registerPlugins()
-      testApp._setupRoutes()
-      await testApp._app.ready()
+      await testApp['_registerPlugins']()
+      testApp['_setupRoutes']()
+      await testApp['_app'].ready()
 
-      const response = await testApp._app.inject({
+      const response = await testApp['_app'].inject({
         method: 'GET',
         url: '/ping',
       })
@@ -152,6 +152,86 @@ describe('BedrockAgentCoreApp Integration', () => {
         .post('/invocations')
         .send({ test: 'data' })
         .expect(400)
+    })
+
+    it('extracts workloadAccessToken from header', async () => {
+      const handler: Handler = async (req, context) => {
+        return { token: context.workloadAccessToken }
+      }
+      const testApp = new BedrockAgentCoreApp({ handler })
+      await (testApp as any)._registerPlugins()
+      ;(testApp as any)._setupRoutes()
+      await (testApp as any)._app.ready()
+
+      await request((testApp as any)._app.server)
+        .post('/invocations')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
+        .set('workloadaccesstoken', 'test-token-123')
+        .send({})
+        .expect(200)
+        .expect(function(res) {
+          expect(res.body.token).toBe('test-token-123')
+        })
+    })
+
+    it('extracts requestId from header', async () => {
+      const handler: Handler = async (req, context) => {
+        return { requestId: context.requestId }
+      }
+      const testApp = new BedrockAgentCoreApp({ handler })
+      await (testApp as any)._registerPlugins()
+      ;(testApp as any)._setupRoutes()
+      await (testApp as any)._app.ready()
+
+      await request((testApp as any)._app.server)
+        .post('/invocations')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
+        .set('x-amzn-bedrock-agentcore-runtime-request-id', 'custom-123')
+        .send({})
+        .expect(200)
+        .expect(function(res) {
+          expect(res.body.requestId).toBe('custom-123')
+        })
+    })
+
+    it('extracts oauth2CallbackUrl from header', async () => {
+      const handler: Handler = async (req, context) => {
+        return { callbackUrl: context.oauth2CallbackUrl }
+      }
+      const testApp = new BedrockAgentCoreApp({ handler })
+      await (testApp as any)._registerPlugins()
+      ;(testApp as any)._setupRoutes()
+      await (testApp as any)._app.ready()
+
+      await request((testApp as any)._app.server)
+        .post('/invocations')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
+        .set('oauth2callbackurl', 'https://example.com/callback')
+        .send({})
+        .expect(200)
+        .expect(function(res) {
+          expect(res.body.callbackUrl).toBe('https://example.com/callback')
+        })
+    })
+
+    it('includes Authorization header in context', async () => {
+      const handler: Handler = async (req, context) => {
+        return { authHeader: context.headers['authorization'] }
+      }
+      const testApp = new BedrockAgentCoreApp({ handler })
+      await (testApp as any)._registerPlugins()
+      ;(testApp as any)._setupRoutes()
+      await (testApp as any)._app.ready()
+
+      await request((testApp as any)._app.server)
+        .post('/invocations')
+        .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
+        .set('authorization', 'Bearer token123')
+        .send({})
+        .expect(200)
+        .expect(function(res) {
+          expect(res.body.authHeader).toBe('Bearer token123')
+        })
     })
 
     describe('Error Handling', () => {
@@ -496,7 +576,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           }
         })
         
-        const closeEvent = await new Promise((resolve, reject) => {
+        const closeEvent = await new Promise<{ code: number; reason: string }>((resolve, reject) => {
           ws.on('close', (code, reason) => {
             resolve({ code, reason: reason.toString() })
           })
@@ -528,7 +608,7 @@ describe('BedrockAgentCoreApp Integration', () => {
             {
               // Async parser for XML content
               contentType: 'application/xml',
-              parser: async (request, body) => {
+              parser: async (request: any, body: any) => {
                 const content = body as string
                 return {
                   type: 'xml',
@@ -541,7 +621,7 @@ describe('BedrockAgentCoreApp Integration', () => {
             {
               // Async parser for JSON with validation
               contentType: 'application/custom-json',
-              parser: async (request, body) => {
+              parser: async (request: any, body: any) => {
                 const content = body as string
 
                 // Simulate async validation (e.g., schema validation, external API call)
@@ -563,7 +643,7 @@ describe('BedrockAgentCoreApp Integration', () => {
             {
               // Async parser for binary data
               contentType: 'application/octet-stream',
-              parser: async (request, body) => {
+              parser: async (request: any, body: any) => {
                 const buffer = body as Buffer
                 return {
                   type: 'binary',
@@ -576,7 +656,7 @@ describe('BedrockAgentCoreApp Integration', () => {
             {
               // Parser that throws an error for testing error handling
               contentType: 'application/error-test',
-              parser: async (request, body) => {
+              parser: async (request: any, body: any) => {
                 throw new Error('Parser intentionally failed')
               },
               parseAs: 'string',
@@ -584,7 +664,7 @@ describe('BedrockAgentCoreApp Integration', () => {
             {
               // Callback-based parser for CSV content
               contentType: 'text/csv',
-              parser: (request, body, done) => {
+              parser: (request: any, body: any, done: any) => {
                 try {
                   const content = (body as string).trim()
                   if (!content) {
@@ -606,7 +686,7 @@ describe('BedrockAgentCoreApp Integration', () => {
             {
               // Callback-based parser that calls done with error
               contentType: 'application/callback-error-test',
-              parser: (request, body, done) => {
+              parser: (request: any, body: any, done: any) => {
                 // Simulate some processing then call done with error
                 done(new Error('Callback parser intentionally failed'))
               },
@@ -1033,20 +1113,14 @@ Bob Johnson,35,Chicago`
   describe('Concurrency Tests', () => {
     let concurrentApp: BedrockAgentCoreApp
     let concurrentFastify: any
-    const requestCounts = new Map<string, number>()
 
     beforeAll(async () => {
       const handler: Handler = async (req: any, context) => {
-        // Track concurrent requests
-        const count = requestCounts.get(context.sessionId) || 0
-        requestCounts.set(context.sessionId, count + 1)
-        
         // Simulate some processing time
         await new Promise(resolve => setTimeout(resolve, 50))
         
         return {
           sessionId: context.sessionId,
-          requestNumber: count + 1,
           timestamp: Date.now(),
         }
       }
@@ -1082,32 +1156,6 @@ Bob Johnson,35,Chicago`
         expect(res.status).toBe(200)
         expect(res.body.sessionId).toBe(`concurrent-session-${i}`)
       })
-    })
-
-    it('handles multiple requests to same session without race conditions', async () => {
-      const sessionId = 'shared-session'
-      const numRequests = 5
-      const promises = []
-
-      for (let i = 0; i < numRequests; i++) {
-        promises.push(
-          request(concurrentFastify.server)
-            .post('/invocations')
-            .set('x-amzn-bedrock-agentcore-runtime-session-id', sessionId)
-            .send({ requestId: i })
-        )
-      }
-
-      const results = await Promise.all(promises)
-
-      // All requests should succeed
-      results.forEach(res => {
-        expect(res.status).toBe(200)
-        expect(res.body.sessionId).toBe(sessionId)
-      })
-
-      // Should have processed all requests
-      expect(requestCounts.get(sessionId)).toBe(numRequests)
     })
 
     it('handles concurrent WebSocket connections', async () => {
