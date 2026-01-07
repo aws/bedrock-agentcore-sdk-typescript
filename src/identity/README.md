@@ -26,7 +26,7 @@ The Identity SDK is designed to work with BedrockAgentCoreApp. The runtime autom
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
 import { withAccessToken } from 'bedrock-agentcore/identity'
 
-const app = new BedrockAgentCoreApp(async (request, context) => {
+const app = new BedrockAgentCoreApp({ handler: async (request, context) => {
   const githubTool = withAccessToken({
     workloadIdentityToken: context.workloadAccessToken!,
     providerName: 'github',
@@ -51,7 +51,7 @@ app.run()
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
 import { withApiKey } from 'bedrock-agentcore/identity'
 
-const app = new BedrockAgentCoreApp(async (request, context) => {
+const app = new BedrockAgentCoreApp({ handler: async (request, context) => {
   const openaiTool = withApiKey({
     workloadIdentityToken: context.workloadAccessToken!,
     providerName: 'openai',

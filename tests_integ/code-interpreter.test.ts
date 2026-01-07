@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { CodeInterpreter } from '../src/tools/code-interpreter/client'
+import { CodeInterpreter } from '../src/tools/code-interpreter/client.js'
 
 /**
  * Integration tests for CodeInterpreter.
@@ -363,7 +363,7 @@ with open('output.txt', 'w') as f:
       expect(response.items).toBeInstanceOf(Array)
       expect(response.items.length).toBeGreaterThan(0)
 
-      const session = response.items[0]
+      const session = response.items[0]!
       expect(session.sessionId).toBeDefined()
       // Name field may not always be present in list responses
       if (session.name) {
@@ -386,7 +386,7 @@ with open('output.txt', 'w') as f:
       expect(response).toBeDefined()
       expect(response.items).toBeInstanceOf(Array)
       // All returned sessions should have READY status
-      expect(response.items.every((item) => item.status === 'READY')).toBe(true)
+      expect(response.items.every((item: any) => item.status === 'READY')).toBe(true)
 
       await testInterpreter.stopSession()
     }, 30000)

@@ -331,7 +331,7 @@ describe('PlaywrightBrowser Wikipedia Integration', () => {
       expect(response.items).toBeInstanceOf(Array)
       expect(response.items.length).toBeGreaterThan(0)
 
-      const session = response.items[0]
+      const session = response.items[0]!
       expect(session.sessionId).toBeDefined()
       expect(session.name).toBeDefined()
       expect(session.status).toMatch(/READY|TERMINATED/)

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { IdentityClient, withAccessToken, withApiKey } from '../index'
-import type { OAuth2TokenRequest, ApiKeyRequest, OAuth2WrapperConfig, ApiKeyWrapperConfig } from '../index'
+import { IdentityClient, withAccessToken, withApiKey } from '../index.js'
+import type { OAuth2TokenRequest, ApiKeyRequest, OAuth2WrapperConfig, ApiKeyWrapperConfig } from '../index.js'
 
 describe('Identity Module Exports', () => {
   let originalRegion: string | undefined
@@ -17,49 +17,22 @@ describe('Identity Module Exports', () => {
       delete process.env.AWS_REGION
     }
   })
-  it('should export IdentityClient', () => {
+  it('exports IdentityClient', () => {
     expect(IdentityClient).toBeDefined()
     expect(typeof IdentityClient).toBe('function')
   })
 
-  it('should export withAccessToken', () => {
+  it('exports withAccessToken', () => {
     expect(withAccessToken).toBeDefined()
     expect(typeof withAccessToken).toBe('function')
   })
 
-  it('should export withApiKey', () => {
+  it('exports withApiKey', () => {
     expect(withApiKey).toBeDefined()
     expect(typeof withApiKey).toBe('function')
   })
 
-  it('should export types', () => {
-    // Type-only test - if this compiles, types are exported
-    const _oauth2Request: OAuth2TokenRequest = {
-      providerName: 'test',
-      scopes: ['read'],
-      authFlow: 'M2M',
-      workloadIdentityToken: 'token',
-    }
-
-    const _apiKeyRequest: ApiKeyRequest = {
-      providerName: 'test',
-      workloadIdentityToken: 'token',
-    }
-
-    const _oauth2Config: OAuth2WrapperConfig = {
-      providerName: 'test',
-      scopes: ['read'],
-      authFlow: 'M2M',
-    }
-
-    const _apiKeyConfig: ApiKeyWrapperConfig = {
-      providerName: 'test',
-    }
-
-    expect(true).toBe(true)
-  })
-
-  it('should allow creating IdentityClient instance', () => {
+  it('allows creating IdentityClient instance', () => {
     const client = new IdentityClient()
     expect(client).toBeDefined()
   })

@@ -39,9 +39,11 @@ const fastifyWebsocket = require('@fastify/websocket')
  *
  * @example
  * ```typescript
- * const app = new BedrockAgentCoreApp(async (request, context) => {
- *   console.log(`Processing request with session ${context.sessionId}`)
- *   return "Hello from BedrockAgentCore!"
+ * const app = new BedrockAgentCoreApp({
+ *   handler: async (request, context) => {
+ *     console.log(`Processing request with session ${context.sessionId}`)
+ *     return "Hello from BedrockAgentCore!"
+ *   }
  * })
  *
  * app.run()
@@ -65,6 +67,14 @@ export class BedrockAgentCoreApp {
    * @param params - Configuration including handler and optional settings
    */
   constructor(params: BedrockAgentCoreAppParams) {
+    // Runtime validation for defense in depth
+    if (!params || typeof params !== 'object' || typeof params.handler !== 'function') {
+      throw new Error(
+        'BedrockAgentCoreApp constructor requires an object with a handler property. ' +
+          'Usage: new BedrockAgentCoreApp({ handler })'
+      )
+    }
+
     this._handler = params.handler
     this._websocketHandler = params.websocketHandler ?? undefined
     this._config = params.config ?? {}

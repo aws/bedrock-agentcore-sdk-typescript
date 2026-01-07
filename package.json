@@ -45,11 +45,11 @@
   },
   "scripts": {
     "build": "tsc",
-    "check": "npm run lint && npm run format && npm run type-check && npm run test:coverage",
+    "check": "npm run lint && npm run format && npm run type-check:all && npm run test:coverage",
     "clean": "rm -rf node_modules dist package-lock.json",
     "test": "vitest run --project unit-node",
     "test:all": "vitest run --project unit-node && vitest run --project integ",
-    "ci": "npm run lint && npm run format:check && npm run type-check && npm run build && npm run test:all",
+    "ci": "npm run lint && npm run format:check && npm run type-check:all && npm run build && npm run test:all",
     "test:watch": "vitest --project unit-node",
     "test:coverage": "vitest run --coverage --project unit-node",
     "test:integ": "vitest run --project integ",
@@ -58,6 +58,8 @@
     "format": "prettier --write src examples",
     "format:check": "prettier --check src examples",
     "type-check": "tsc --noEmit",
+    "type-check:tests": "tsc --noEmit -p tsconfig.test.json",
+    "type-check:all": "npm run type-check && npm run type-check:tests",
     "type-check:watch": "tsc --noEmit --watch",
     "prepare": "npm run build && husky || true"
   },

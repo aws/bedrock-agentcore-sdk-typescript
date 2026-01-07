@@ -1,19 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { withAccessToken, withApiKey } from '../wrappers'
-import { IdentityClient } from '../client'
+import { withAccessToken, withApiKey } from '../wrappers.js'
+import { IdentityClient } from '../client.js'
 
-vi.mock('../client')
+vi.mock('../client.js')
 
 describe('withAccessToken', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('should inject OAuth2 token as last parameter', async () => {
+  it('injects OAuth2 token as last parameter', async () => {
     const mockGetOAuth2Token = vi.fn().mockResolvedValue('oauth2-token-123')
     vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockImplementation(mockGetOAuth2Token)
 
-    const wrappedFn = withAccessToken({
+    const wrappedFn = withAccessToken<[string], { input: string; token: string }>({
       workloadIdentityToken: 'workload-token',
       providerName: 'github',
       scopes: ['repo'],
@@ -39,8 +39,8 @@ describe('withAccessToken', () => {
     })
   })
 
-  it('should throw error if workload token not provided', async () => {
-    const wrappedFn = withAccessToken({
+  it('throws error if workload token not provided', async () => {
+    const wrappedFn = withAccessToken<[string], { input: string; token: string }>({
       workloadIdentityToken: '', // Empty token
       providerName: 'github',
       scopes: ['repo'],
@@ -54,12 +54,12 @@ describe('withAccessToken', () => {
     await expect(wrappedFn('test')).rejects.toThrow('Invalid token')
   })
 
-  it('should pass all configuration options to getOAuth2Token', async () => {
+  it('passes all configuration options to getOAuth2Token', async () => {
     const mockGetOAuth2Token = vi.fn().mockResolvedValue('oauth2-token')
     vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockImplementation(mockGetOAuth2Token)
 
     const onAuthUrl = vi.fn()
-    const wrappedFn = withAccessToken({
+    const wrappedFn = withAccessToken<[string], string>({
       workloadIdentityToken: 'workload-token',
       providerName: 'github',
       scopes: ['repo', 'user'],
@@ -88,10 +88,10 @@ describe('withAccessToken', () => {
     })
   })
 
-  it('should preserve function parameter types', async () => {
+  it('preserves function parameter types', async () => {
     vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockResolvedValue('token')
 
-    const wrappedFn = withAccessToken({
+    const wrappedFn = withAccessToken<[number, string], { num: number; str: string; token: string }>({
       workloadIdentityToken: 'workload-token',
       providerName: 'test',
       scopes: ['read'],
@@ -113,11 +113,11 @@ describe('withApiKey', () => {
     vi.clearAllMocks()
   })
 
-  it('should inject API key as last parameter', async () => {
+  it('injects API key as last parameter', async () => {
     const mockGetApiKey = vi.fn().mockResolvedValue('api-key-123')
     vi.spyOn(IdentityClient.prototype, 'getApiKey').mockImplementation(mockGetApiKey)
 
-    const wrappedFn = withApiKey({
+    const wrappedFn = withApiKey<[string], { input: string; apiKey: string }>({
       workloadIdentityToken: 'workload-token',
       providerName: 'openai',
     })(async (input: string, apiKey: string) => {
@@ -134,8 +134,8 @@ describe('withApiKey', () => {
     })
   })
 
-  it('should throw error if workload token not provided', async () => {
-    const wrappedFn = withApiKey({
+  it('throws error if workload token not provided', async () => {
+    const wrappedFn = withApiKey<[string], { input: string; apiKey: string }>({
       workloadIdentityToken: '',
       providerName: 'openai',
     })(async (input: string, apiKey: string) => {
@@ -146,10 +146,10 @@ describe('withApiKey', () => {
     await expect(wrappedFn('test')).rejects.toThrow('Invalid token')
   })
 
-  it('should preserve function parameter types', async () => {
+  it('preserves function parameter types', async () => {
     vi.spyOn(IdentityClient.prototype, 'getApiKey').mockResolvedValue('api-key')
 
-    const wrappedFn = withApiKey({
+    const wrappedFn = withApiKey<[number, string], { num: number; str: string; apiKey: string }>({
       workloadIdentityToken: 'workload-token',
       providerName: 'openai',
     })(async (num: number, str: string, apiKey: string) => {

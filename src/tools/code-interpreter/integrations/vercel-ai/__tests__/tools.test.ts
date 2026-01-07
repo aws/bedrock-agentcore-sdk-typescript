@@ -103,10 +103,13 @@ describe('CodeInterpreterTools', () => {
     it('executes Python code successfully', async () => {
       mockCodeInterpreter.executeCode.mockResolvedValue('Hello World')
 
-      const result = await codeInterpreterTools.executeCode.execute({
-        language: 'python',
-        code: 'print("Hello World")',
-      })
+      const result = await codeInterpreterTools.executeCode.execute!(
+        {
+          language: 'python',
+          code: 'print("Hello World")',
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )
 
       expect(result).toBe('Hello World')
       expect(mockCodeInterpreter.executeCode).toHaveBeenCalledWith({
@@ -118,10 +121,13 @@ describe('CodeInterpreterTools', () => {
     it('executes JavaScript code', async () => {
       mockCodeInterpreter.executeCode.mockResolvedValue('42')
 
-      const result = await codeInterpreterTools.executeCode.execute({
-        language: 'javascript',
-        code: 'console.log(42)',
-      })
+      const result = await codeInterpreterTools.executeCode.execute!(
+        {
+          language: 'javascript',
+          code: 'console.log(42)',
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )
 
       expect(result).toBe('42')
       expect(mockCodeInterpreter.executeCode).toHaveBeenCalledWith({
@@ -134,10 +140,13 @@ describe('CodeInterpreterTools', () => {
       mockCodeInterpreter.executeCode.mockRejectedValue(new Error('Execution failed'))
 
       await expect(
-        codeInterpreterTools.executeCode.execute({
-          language: 'python',
-          code: 'invalid syntax',
-        })
+        codeInterpreterTools.executeCode.execute!(
+          {
+            language: 'python',
+            code: 'invalid syntax',
+          },
+          { toolCallId: 'test-call', messages: [] }
+        )
       ).rejects.toThrow('Execution failed')
     })
   })
@@ -146,9 +155,12 @@ describe('CodeInterpreterTools', () => {
     it('executes shell command successfully', async () => {
       mockCodeInterpreter.executeCommand.mockResolvedValue('file.txt\n')
 
-      const result = await codeInterpreterTools.executeCommand.execute({
-        command: 'ls',
-      })
+      const result = await codeInterpreterTools.executeCommand.execute!(
+        {
+          command: 'ls',
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )
 
       expect(result).toBe('file.txt\n')
       expect(mockCodeInterpreter.executeCommand).toHaveBeenCalledWith({
@@ -160,9 +172,12 @@ describe('CodeInterpreterTools', () => {
       mockCodeInterpreter.executeCommand.mockRejectedValue(new Error('Command not found'))
 
       await expect(
-        codeInterpreterTools.executeCommand.execute({
-          command: 'invalid-command',
-        })
+        codeInterpreterTools.executeCommand.execute!(
+          {
+            command: 'invalid-command',
+          },
+          { toolCallId: 'test-call', messages: [] }
+        )
       ).rejects.toThrow('Command not found')
     })
   })
@@ -171,10 +186,14 @@ describe('CodeInterpreterTools', () => {
     it('reads files successfully', async () => {
       mockCodeInterpreter.readFiles.mockResolvedValue('file contents')
 
-      const result = await codeInterpreterTools.fileOperations.execute({
-        operation: 'read',
-        paths: ['test.txt'],
-      })
+      const result = await codeInterpreterTools.fileOperations.execute!(
+        {
+          operation: 'read',
+          paths: ['test.txt'],
+          path: '.',
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )
 
       expect(result).toBe('file contents')
       expect(mockCodeInterpreter.readFiles).toHaveBeenCalledWith({
@@ -185,10 +204,14 @@ describe('CodeInterpreterTools', () => {
     it('writes files successfully', async () => {
       mockCodeInterpreter.writeFiles.mockResolvedValue('files written')
 
-      const result = await codeInterpreterTools.fileOperations.execute({
-        operation: 'write',
-        files: [{ path: 'test.txt', content: 'Hello' }],
-      })
+      const result = await codeInterpreterTools.fileOperations.execute!(
+        {
+          operation: 'write',
+          files: [{ path: 'test.txt', content: 'Hello' }],
+          path: '.',
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )
 
       expect(result).toBe('files written')
       expect(mockCodeInterpreter.writeFiles).toHaveBeenCalledWith({
@@ -199,10 +222,13 @@ describe('CodeInterpreterTools', () => {
     it('lists files successfully', async () => {
       mockCodeInterpreter.listFiles.mockResolvedValue('file list')
 
-      const result = await codeInterpreterTools.fileOperations.execute({
-        operation: 'list',
-        path: '/',
-      })
+      const result = await codeInterpreterTools.fileOperations.execute!(
+        {
+          operation: 'list',
+          path: '/',
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )
 
       expect(result).toBe('file list')
       expect(mockCodeInterpreter.listFiles).toHaveBeenCalledWith({
@@ -213,10 +239,14 @@ describe('CodeInterpreterTools', () => {
     it('removes files successfully', async () => {
       mockCodeInterpreter.removeFiles.mockResolvedValue('files removed')
 
-      const result = await codeInterpreterTools.fileOperations.execute({
-        operation: 'remove',
-        paths: ['test.txt'],
-      })
+      const result = await codeInterpreterTools.fileOperations.execute!(
+        {
+          operation: 'remove',
+          paths: ['test.txt'],
+          path: '.',
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )
 
       expect(result).toBe('files removed')
       expect(mockCodeInterpreter.removeFiles).toHaveBeenCalledWith({
@@ -225,10 +255,14 @@ describe('CodeInterpreterTools', () => {
     })
 
     it('handles missing files parameter in write operation', async () => {
-      const result = await codeInterpreterTools.fileOperations.execute({
-        operation: 'write',
-        files: [],
-      })
+      const result = await codeInterpreterTools.fileOperations.execute!(
+        {
+          operation: 'write',
+          files: [],
+          path: '.',
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )
 
       expect(result).toContain('error')
     })
@@ -237,10 +271,14 @@ describe('CodeInterpreterTools', () => {
       mockCodeInterpreter.readFiles.mockRejectedValue(new Error('File not found'))
 
       await expect(
-        codeInterpreterTools.fileOperations.execute({
-          operation: 'read',
-          paths: ['missing.txt'],
-        })
+        codeInterpreterTools.fileOperations.execute!(
+          {
+            operation: 'read',
+            paths: ['missing.txt'],
+            path: '.',
+          },
+          { toolCallId: 'test-call', messages: [] }
+        )
       ).rejects.toThrow('File not found')
     })
   })
