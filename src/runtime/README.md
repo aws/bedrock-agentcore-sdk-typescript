@@ -27,7 +27,9 @@ const handler = async (request, context) => {
 }
 
 // Create and start the server
-const app = new BedrockAgentCoreApp({ handler })
+const app = new BedrockAgentCoreApp({
+  invocationHandler: { process: handler },
+})
 app.run()
 ```
 
@@ -35,6 +37,44 @@ The server will start on port 8080 and expose two endpoints:
 
 - `GET /ping` - Health check endpoint
 - `POST /invocations` - Handler invocation endpoint
+
+## Request Validation with Zod
+
+The runtime supports automatic request validation using Zod schemas. When a schema is provided, the request body is validated before being passed to your handler:
+
+```typescript
+import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
+import { z } from 'zod'
+
+// Define request schema
+const requestSchema = z.object({
+  message: z.string(),
+  userId: z.number().optional(),
+  metadata: z.record(z.string()).optional(),
+})
+
+const handler = async (request, context) => {
+  // request is now typed as { message: string; userId?: number; metadata?: Record<string, string> }
+  return {
+    echo: request.message,
+    sessionId: context.sessionId,
+  }
+}
+
+const app = new BedrockAgentCoreApp({
+  invocationHandler: {
+    process: handler,
+    requestSchema, // Validates and types the request
+  },
+})
+app.run()
+```
+
+### Validation Benefits
+
+- **Type Safety**: Request is automatically typed based on your Zod schema
+- **Runtime Validation**: Invalid requests are rejected with 400 status code
+- **Optional**: Validation is opt-in - omit `requestSchema` for untyped requests
 
 ## Handler Function
 
@@ -75,7 +115,9 @@ const streamingHandler = async function* (request, context) {
   yield { event: 'complete', result: 'done' }
 }
 
-const app = new BedrockAgentCoreApp({ handler: streamingHandler })
+const app = new BedrockAgentCoreApp({
+  invocationHandler: { process: streamingHandler },
+})
 app.run()
 ```
 
@@ -93,7 +135,7 @@ Optional configuration can be passed in the config parameter:
 
 ```typescript
 const app = new BedrockAgentCoreApp({
-  handler,
+  invocationHandler: { process: handler },
   config: {
     logging: {
       enabled: true,
@@ -165,14 +207,20 @@ import {
   RequestContext,
   BedrockAgentCoreAppConfig,
 } from 'bedrock-agentcore/runtime'
+import { z } from 'zod'
 
 // Handler with full typing
-const handler: Handler = async (
-  request: unknown, // Accept any JSON payload
+const requestSchema = z.object({
+  message: z.string(),
+  userId: z.number(),
+})
+
+const handler: Handler<z.infer<typeof requestSchema>> = async (
+  request, // Typed as { message: string; userId: number }
   context: RequestContext
 ): Promise<unknown> => {
   // Your logic here
-  return { result: 'success' }
+  return { result: 'success', message: request.message }
 }
 
 const websocketHandler: WebSocketHandler = async (socket, context) => {
@@ -183,7 +231,11 @@ const config: BedrockAgentCoreAppConfig = {
   logging: { enabled: true, level: 'info' },
 }
 
-const app = new BedrockAgentCoreApp({ handler, websocketHandler, config })
+const app = new BedrockAgentCoreApp({
+  invocationHandler: { process: handler, requestSchema },
+  websocketHandler,
+  config,
+})
 app.run()
 ```
 
@@ -201,7 +253,9 @@ The `/ping` endpoint returns dynamic health status based on your application's w
 Track async operations automatically with the `asyncTask` decorator:
 
 ```typescript
-const app = new BedrockAgentCoreApp({ handler })
+const app = new BedrockAgentCoreApp({
+  invocationHandler: { process: handler },
+})
 
 // Wrap your async function
 const processData = app.asyncTask(async (data: string) => {
@@ -219,7 +273,9 @@ await processData('input')
 For more control, manually register and complete tasks:
 
 ```typescript
-const app = new BedrockAgentCoreApp({ handler })
+const app = new BedrockAgentCoreApp({
+  invocationHandler: { process: handler },
+})
 
 // Register a task
 const taskId = app.addAsyncTask('background-job', { priority: 'high' })
@@ -237,7 +293,7 @@ Implement custom health check logic based on your application's needs:
 
 ```typescript
 const app = new BedrockAgentCoreApp({
-  handler,
+  invocationHandler: { process: handler },
   pingHandler: () => {
     // Check database connection, external dependencies, etc.
     return databaseConnected ? 'Healthy' : 'HealthyBusy'
@@ -283,8 +339,10 @@ The server supports WebSocket connections for real-time bidirectional communicat
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
 
 const app = new BedrockAgentCoreApp({
-  handler: async (request, context) => {
-    return { message: 'HTTP response', sessionId: context.sessionId }
+  invocationHandler: {
+    process: async (request, context) => {
+      return { message: 'HTTP response', sessionId: context.sessionId }
+    },
   },
   websocketHandler: async (socket, context) => {
     // Send welcome message
@@ -356,12 +414,14 @@ This package handles all these requirements automatically.
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
 
 const app = new BedrockAgentCoreApp({
-  handler: async (request, context) => {
-    return {
-      echo: request,
-      sessionId: context.sessionId,
-      timestamp: new Date().toISOString(),
-    }
+  invocationHandler: {
+    process: async (request, context) => {
+      return {
+        echo: request,
+        sessionId: context.sessionId,
+        timestamp: new Date().toISOString(),
+      }
+    },
   },
 })
 
@@ -372,21 +432,24 @@ app.run()
 
 ```typescript
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
+import { z } from 'zod'
+
+const requestSchema = z.object({
+  data: z.array(z.number()),
+})
 
 const app = new BedrockAgentCoreApp({
-  handler: async (request: any, context) => {
-    // Type guard for expected structure
-    if (!request || typeof request !== 'object' || !('data' in request)) {
-      throw new Error('Invalid request format')
-    }
+  invocationHandler: {
+    requestSchema,
+    process: async (request, context) => {
+      // request.data is typed as number[]
+      const processed = request.data.map((x) => x * 2)
 
-    // Process the data
-    const processed = processData(request.data)
-
-    return {
-      result: processed,
-      sessionId: context.sessionId,
-    }
+      return {
+        result: processed,
+        sessionId: context.sessionId,
+      }
+    },
   },
 })
 
@@ -399,20 +462,22 @@ app.run()
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
 
 const app = new BedrockAgentCoreApp({
-  handler: async function* (request: any, context) {
-    yield { status: 'started', sessionId: context.sessionId }
+  invocationHandler: {
+    process: async function* (request: any, context) {
+      yield { status: 'started', sessionId: context.sessionId }
 
-    // Perform analysis in steps
-    const steps = ['load', 'analyze', 'summarize', 'complete']
+      // Perform analysis in steps
+      const steps = ['load', 'analyze', 'summarize', 'complete']
 
-    for (const step of steps) {
-      const result = await performStep(step, request)
-      yield {
-        step,
-        result,
-        timestamp: new Date().toISOString(),
+      for (const step of steps) {
+        const result = await performStep(step, request)
+        yield {
+          step,
+          result,
+          timestamp: new Date().toISOString(),
+        }
       }
-    }
+    },
   },
 })
 

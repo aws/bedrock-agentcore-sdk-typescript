@@ -8,14 +8,14 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import request from 'supertest'
 import WebSocket from 'ws'
 import { BedrockAgentCoreApp } from '../src/runtime/app.js'
-import type { Handler } from '../src/runtime/types.js'
+import type { InvocationHandler } from '../src/runtime/types.js'
 
 describe('BedrockAgentCoreApp Integration', () => {
   let app: BedrockAgentCoreApp
   let fastify: any
 
   beforeAll(async () => {
-    const handler: Handler = async (req, context) => {
+    const handler: InvocationHandler = async (req, context) => {
       return {
         message: 'Hello from BedrockAgentCore!',
         receivedData: req,
@@ -23,7 +23,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       }
     }
 
-    app = new BedrockAgentCoreApp({ handler })
+    app = new BedrockAgentCoreApp({ invocationHandler : { process: handler }  })
     fastify = (app as any)._app
     await (app as any)._registerPlugins()
     ;(app as any)._setupRoutes()
@@ -63,10 +63,10 @@ describe('BedrockAgentCoreApp Integration', () => {
 
     it('returns HealthyBusy with active tasks', async () => {
       // Create app with task tracking
-      const handler: Handler = async (req, context) => {
+      const handler: InvocationHandler = async (req, context) => {
         return { message: 'test' }
       }
-      const testApp = new BedrockAgentCoreApp({ handler })
+      const testApp = new BedrockAgentCoreApp({ invocationHandler : { process: handler }  })
 
       // Add a task
       testApp.addAsyncTask('test-task')
@@ -86,11 +86,11 @@ describe('BedrockAgentCoreApp Integration', () => {
     })
 
     it('custom ping handler works', async () => {
-      const handler: Handler = async (req, context) => {
+      const handler: InvocationHandler = async (req, context) => {
         return { message: 'test' }
       }
       const testApp = new BedrockAgentCoreApp({
-        handler,
+        invocationHandler: { process: handler },
         pingHandler: () => 'HealthyBusy',
       })
 
@@ -155,10 +155,10 @@ describe('BedrockAgentCoreApp Integration', () => {
     })
 
     it('extracts workloadAccessToken from header', async () => {
-      const handler: Handler = async (req, context) => {
+      const handler: InvocationHandler = async (req, context) => {
         return { token: context.workloadAccessToken }
       }
-      const testApp = new BedrockAgentCoreApp({ handler })
+      const testApp = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       await (testApp as any)._registerPlugins()
       ;(testApp as any)._setupRoutes()
       await (testApp as any)._app.ready()
@@ -175,10 +175,10 @@ describe('BedrockAgentCoreApp Integration', () => {
     })
 
     it('extracts requestId from header', async () => {
-      const handler: Handler = async (req, context) => {
+      const handler: InvocationHandler = async (req, context) => {
         return { requestId: context.requestId }
       }
-      const testApp = new BedrockAgentCoreApp({ handler })
+      const testApp = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       await (testApp as any)._registerPlugins()
       ;(testApp as any)._setupRoutes()
       await (testApp as any)._app.ready()
@@ -195,10 +195,10 @@ describe('BedrockAgentCoreApp Integration', () => {
     })
 
     it('extracts oauth2CallbackUrl from header', async () => {
-      const handler: Handler = async (req, context) => {
+      const handler: InvocationHandler = async (req, context) => {
         return { callbackUrl: context.oauth2CallbackUrl }
       }
-      const testApp = new BedrockAgentCoreApp({ handler })
+      const testApp = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       await (testApp as any)._registerPlugins()
       ;(testApp as any)._setupRoutes()
       await (testApp as any)._app.ready()
@@ -215,10 +215,10 @@ describe('BedrockAgentCoreApp Integration', () => {
     })
 
     it('includes Authorization header in context', async () => {
-      const handler: Handler = async (req, context) => {
+      const handler: InvocationHandler = async (req, context) => {
         return { authHeader: context.headers['authorization'] }
       }
-      const testApp = new BedrockAgentCoreApp({ handler })
+      const testApp = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       await (testApp as any)._registerPlugins()
       ;(testApp as any)._setupRoutes()
       await (testApp as any)._app.ready()
@@ -238,11 +238,11 @@ describe('BedrockAgentCoreApp Integration', () => {
       let errorFastify: any
 
       beforeAll(async () => {
-        const errorHandler: Handler = async (req, context) => {
+        const errorHandler: InvocationHandler = async (req, context) => {
           throw new Error('Handler failed')
         }
 
-        const errorApp = new BedrockAgentCoreApp({ handler: errorHandler })
+        const errorApp = new BedrockAgentCoreApp({ invocationHandler : { process: errorHandler }  })
         errorFastify = (errorApp as any)._app
         await (errorApp as any)._registerPlugins()
         ;(errorApp as any)._setupRoutes()
@@ -274,13 +274,13 @@ describe('BedrockAgentCoreApp Integration', () => {
       let streamFastify: any
 
       beforeAll(async () => {
-        const streamHandler: Handler = async function* (req, context) {
+        const streamHandler: InvocationHandler = async function* (req, context) {
           yield { event: 'start', data: { sessionId: context.sessionId } }
           yield { event: 'data', data: { content: 'streaming test' } }
           yield { event: 'end', data: {} }
         }
 
-        const streamApp = new BedrockAgentCoreApp({ handler: streamHandler })
+        const streamApp = new BedrockAgentCoreApp({ invocationHandler : { process: streamHandler }  })
         streamFastify = (streamApp as any)._app
         await (streamApp as any)._registerPlugins()
         ;(streamApp as any)._setupRoutes()
@@ -303,12 +303,12 @@ describe('BedrockAgentCoreApp Integration', () => {
       })
 
       it('handles string SSE sources', async () => {
-        const stringHandler: Handler = async function* (req, context) {
+        const stringHandler: InvocationHandler = async function* (req, context) {
           yield 'plain string message'
           yield 'another string'
         }
 
-        const stringApp = new BedrockAgentCoreApp({ handler: stringHandler })
+        const stringApp = new BedrockAgentCoreApp({ invocationHandler : { process: stringHandler }  })
         const stringFastify = (stringApp as any)._app
         await (stringApp as any)._registerPlugins()
         ;(stringApp as any)._setupRoutes()
@@ -328,12 +328,12 @@ describe('BedrockAgentCoreApp Integration', () => {
       })
 
       it('handles Buffer SSE sources', async () => {
-        const bufferHandler: Handler = async function* (req, context) {
+        const bufferHandler: InvocationHandler = async function* (req, context) {
           yield Buffer.from('buffer message 1')
           yield Buffer.from('buffer message 2')
         }
 
-        const bufferApp = new BedrockAgentCoreApp({ handler: bufferHandler })
+        const bufferApp = new BedrockAgentCoreApp({ invocationHandler : { process: bufferHandler }  })
         const bufferFastify = (bufferApp as any)._app
         await (bufferApp as any)._registerPlugins()
         ;(bufferApp as any)._setupRoutes()
@@ -355,7 +355,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       it('handles Readable stream SSE sources', async () => {
         const { Readable } = await import('stream')
         
-        const readableHandler: Handler = async function* (req, context) {
+        const readableHandler: InvocationHandler = async function* (req, context) {
           const stream = new Readable({
             read() {
               this.push('stream chunk 1\n')
@@ -366,7 +366,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           yield stream
         }
 
-        const readableApp = new BedrockAgentCoreApp({ handler: readableHandler })
+        const readableApp = new BedrockAgentCoreApp({ invocationHandler : { process: readableHandler }  })
         const readableFastify = (readableApp as any)._app
         await (readableApp as any)._registerPlugins()
         ;(readableApp as any)._setupRoutes()
@@ -386,7 +386,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       })
 
       it('handles AsyncIterable SSE sources', async () => {
-        const asyncIterableHandler: Handler = async function* (req, context) {
+        const asyncIterableHandler: InvocationHandler = async function* (req, context) {
           async function* createAsyncIterable() {
             yield 'async item 1'
             yield Buffer.from('async buffer')
@@ -395,7 +395,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           yield createAsyncIterable()
         }
 
-        const asyncApp = new BedrockAgentCoreApp({ handler: asyncIterableHandler })
+        const asyncApp = new BedrockAgentCoreApp({ invocationHandler : { process: asyncIterableHandler }  })
         const asyncFastify = (asyncApp as any)._app
         await (asyncApp as any)._registerPlugins()
         ;(asyncApp as any)._setupRoutes()
@@ -422,7 +422,7 @@ describe('BedrockAgentCoreApp Integration', () => {
     let server: any
 
     beforeAll(async () => {
-      const wsHandler: Handler = async (req, context) => {
+      const wsHandler: InvocationHandler = async (req, context) => {
         return { message: 'HTTP handler', sessionId: context.sessionId }
       }
 
@@ -443,7 +443,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       }
 
       wsApp = new BedrockAgentCoreApp({ 
-        handler: wsHandler, 
+        invocationHandler : { process: wsHandler }  , 
         websocketHandler 
       })
       
@@ -542,7 +542,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         }
 
         const errorApp = new BedrockAgentCoreApp({ 
-          handler: async () => ({}), 
+          invocationHandler: { process: async () => ({}) }, 
           websocketHandler: errorWebsocketHandler 
         })
         
@@ -593,7 +593,7 @@ describe('BedrockAgentCoreApp Integration', () => {
     let fastify: any
 
     beforeAll(async () => {
-      const handler: Handler = async (req, context) => {
+      const handler: InvocationHandler = async (req, context) => {
         return {
           message: 'Content parsed successfully!',
           sessionId: context.sessionId,
@@ -602,7 +602,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       }
 
       app = new BedrockAgentCoreApp({
-        handler,
+        invocationHandler: {process: handler},
         config: {
           contentTypeParsers: [
             {
@@ -1019,12 +1019,12 @@ Bob Johnson,35,Chicago`
     let capturedContext: any
 
     beforeAll(async () => {
-      const handler: Handler = async (req, context) => {
+      const handler: InvocationHandler = async (req, context) => {
         capturedContext = context
         return { success: true, context }
       }
 
-      testApp = new BedrockAgentCoreApp({ handler })
+      testApp = new BedrockAgentCoreApp({ invocationHandler: { process: handler }} )
       testFastify = (testApp as any)._app
       await (testApp as any)._registerPlugins()
       ;(testApp as any)._setupRoutes()
@@ -1113,19 +1113,24 @@ Bob Johnson,35,Chicago`
   describe('Concurrency Tests', () => {
     let concurrentApp: BedrockAgentCoreApp
     let concurrentFastify: any
+    const requestCounts = new Map<string, number>()
 
     beforeAll(async () => {
-      const handler: Handler = async (req: any, context) => {
+      const handler: InvocationHandler = async (req: any, context) => {
+        // Track concurrent requests
+        const count = requestCounts.get(context.sessionId) || 0
+        requestCounts.set(context.sessionId, count + 1)
+
         // Simulate some processing time
-        await new Promise(resolve => setTimeout(resolve, 50))
-        
+        await new Promise((resolve) => setTimeout(resolve, 50))
+
         return {
           sessionId: context.sessionId,
           timestamp: Date.now(),
         }
       }
 
-      concurrentApp = new BedrockAgentCoreApp({ handler })
+      concurrentApp = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       concurrentFastify = (concurrentApp as any)._app
       await (concurrentApp as any)._registerPlugins()
       ;(concurrentApp as any)._setupRoutes()
@@ -1159,12 +1164,12 @@ Bob Johnson,35,Chicago`
     })
 
     it('handles concurrent WebSocket connections', async () => {
-      const wsHandler: Handler = async () => ({ message: 'test' })
+      const wsHandler: InvocationHandler = async () => ({ message: 'test' })
       const websocketHandler = async (socket: any, context: any) => {
         socket.send(JSON.stringify({ type: 'connected', sessionId: context.sessionId }))
       }
 
-      const wsTestApp = new BedrockAgentCoreApp({ handler: wsHandler, websocketHandler })
+      const wsTestApp = new BedrockAgentCoreApp({ invocationHandler: {process:wsHandler}, websocketHandler })
       const wsFastify = (wsTestApp as any)._app
       await (wsTestApp as any)._registerPlugins()
       ;(wsTestApp as any)._setupRoutes()
@@ -1215,7 +1220,7 @@ Bob Johnson,35,Chicago`
     })
 
     it('handles mixed HTTP and WebSocket traffic concurrently', async () => {
-      const mixedHandler: Handler = async (req: any, context) => {
+      const mixedHandler: InvocationHandler = async (req: any, context) => {
         await new Promise(resolve => setTimeout(resolve, 20))
         return { type: 'http', sessionId: context.sessionId }
       }
@@ -1225,7 +1230,7 @@ Bob Johnson,35,Chicago`
       }
 
       const mixedApp = new BedrockAgentCoreApp({ 
-        handler: mixedHandler, 
+        invocationHandler: {process: mixedHandler}, 
         websocketHandler: mixedWsHandler 
       })
       const mixedFastify = (mixedApp as any)._app
