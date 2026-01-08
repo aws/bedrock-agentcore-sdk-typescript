@@ -2,7 +2,7 @@ import { Buffer } from 'buffer'
 import { createRequire } from 'module'
 import { randomUUID } from 'crypto'
 import Fastify from 'fastify'
-
+import { z } from 'zod'
 import type {
   FastifyInstance,
   FastifyLoggerOptions,
@@ -17,7 +17,7 @@ import type { WebSocket } from '@fastify/websocket'
 import type {
   BedrockAgentCoreAppParams,
   BedrockAgentCoreAppConfig,
-  Handler,
+  InvocationHandler,
   WebSocketHandler,
   RequestContext,
   HealthCheckResponse,
@@ -40,19 +40,22 @@ const fastifyWebsocket = require('@fastify/websocket')
  * @example
  * ```typescript
  * const app = new BedrockAgentCoreApp({
- *   handler: async (request, context) => {
- *     console.log(`Processing request with session ${context.sessionId}`)
- *     return "Hello from BedrockAgentCore!"
+ *   invocationHandler: {
+ *     requestSchema: z.object({ message: z.string() }),
+ *     handler: async (request, context) => {
+ *       console.log(`Processing request with session ${context.sessionId}`)
+ *       return `Hello ${request.message}!`
+ *     }
  *   }
  * })
  *
  * app.run()
  * ```
  */
-export class BedrockAgentCoreApp {
+export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unknown>> {
   private readonly _app: FastifyInstance
   private readonly _config: BedrockAgentCoreAppConfig
-  private readonly _handler: Handler
+  private readonly _handler: { process: InvocationHandler<z.infer<TSchema>>; requestSchema?: TSchema }
   private _websocketHandler: WebSocketHandler | undefined
   private readonly _activeTasksMap: Map<number, AsyncTaskInfo> = new Map()
   private _taskCounter: number = 0
@@ -66,16 +69,19 @@ export class BedrockAgentCoreApp {
    *
    * @param params - Configuration including handler and optional settings
    */
-  constructor(params: BedrockAgentCoreAppParams) {
-    // Runtime validation for defense in depth
-    if (!params || typeof params !== 'object' || typeof params.handler !== 'function') {
+  constructor(params: BedrockAgentCoreAppParams<TSchema>) {
+    if (
+      !params ||
+      typeof params !== 'object' ||
+      !params.invocationHandler ||
+      typeof params.invocationHandler.process !== 'function'
+    ) {
       throw new Error(
         'BedrockAgentCoreApp constructor requires an object with a handler property. ' +
-          'Usage: new BedrockAgentCoreApp({ handler })'
+          'Usage: new BedrockAgentCoreApp({ invocationHandler: { process: handler } })'
       )
     }
-
-    this._handler = params.handler
+    this._handler = params.invocationHandler
     this._websocketHandler = params.websocketHandler ?? undefined
     this._config = params.config ?? {}
     this._pingHandler = params.pingHandler ?? undefined
@@ -326,8 +332,27 @@ export class BedrockAgentCoreApp {
         return
       }
 
+      // Validate request body with schema if provided
+      let handlerRequest: z.infer<TSchema>
+      if (this._handler.requestSchema) {
+        try {
+          handlerRequest = await this._handler.requestSchema.parseAsync(request.body)
+        } catch (error) {
+          if (error instanceof z.ZodError) {
+            await reply.status(400).send({
+              error: 'Invalid request body format',
+              details: error.issues,
+            })
+            return
+          }
+          throw error
+        }
+      } else {
+        handlerRequest = request.body as z.infer<TSchema>
+      }
+
       // Invoke handler
-      const result = await this._handler(request.body as unknown, context)
+      const result = await this._handler.process(handlerRequest, context)
 
       // Check if result is an async generator (streaming response)
       if (this._isAsyncGenerator(result)) {
