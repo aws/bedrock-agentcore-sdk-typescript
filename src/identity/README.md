@@ -4,11 +4,8 @@ TypeScript SDK for Amazon Bedrock AgentCore Identity - identity and credential m
 
 ## Features
 
-- **OAuth2 Authentication**: Fetch OAuth2 tokens for external services (M2M and USER_FEDERATION flows)
-- **API Key Authentication**: Retrieve API keys from secure token vault
-- **Workload Identity Management**: Create, read, and delete agent identities
-- **Credential Provider Management**: Manage OAuth2 and API key providers
-- **Runtime Integration**: Works with BedrockAgentCoreApp for automatic token handling
+- **OAuth2 Authentication**: Automatic token fetching for external services (M2M and USER_FEDERATION flows)
+- **API Key Authentication**: Automatic API key retrieval from secure token vault
 
 ## Installation
 
@@ -70,35 +67,9 @@ const app = new BedrockAgentCoreApp({ handler: async (request, context) => {
 app.run()
 ```
 
-## Direct Client Usage
-
-The IdentityClient provides credential retrieval methods with added conveniences like automatic polling for 3LO flows:
-
-```typescript
-import { IdentityClient } from 'bedrock-agentcore/identity'
-
-const identity = new IdentityClient('us-west-2')
-
-// Get OAuth2 token (handles M2M and USER_FEDERATION with automatic polling)
-const token = await identity.getOAuth2Token({
-  workloadIdentityToken: 'your-workload-token',
-  providerName: 'github',
-  scopes: ['repo'],
-  authFlow: 'M2M',
-})
-
-// Get API key
-const apiKey = await identity.getApiKey({
-  workloadIdentityToken: 'your-workload-token',
-  providerName: 'openai',
-})
-```
-
-For management operations (creating identities and providers), use the AWS SDK directly. See [examples/identity-direct-client-example.ts](../../examples/identity-direct-client-example.ts) for a complete example.
-
 ## Setup
 
-Before using the Identity SDK, you need to create workload identities and credential providers. Use the AWS SDK directly for these management operations:
+Before using the Identity SDK, you need to create workload identities and credential providers using the AWS SDK:
 
 ```bash
 npm install @aws-sdk/client-bedrock-agentcore @aws-sdk/client-bedrock-agentcore-control
@@ -107,28 +78,6 @@ npm install @aws-sdk/client-bedrock-agentcore @aws-sdk/client-bedrock-agentcore-
 See the [AWS SDK documentation](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/Welcome.html) for creating workload identities and credential providers.
 
 ## API Reference
-
-### IdentityClient
-
-The IdentityClient provides runtime credential retrieval with added conveniences:
-
-#### Credential Retrieval
-
-- `getOAuth2Token(request)` - Fetch OAuth2 access token
-  - Handles both M2M (immediate) and USER_FEDERATION (polling) flows
-  - Automatically polls for 3LO authorization completion
-  - Invokes callback for authorization URLs
-- `getApiKey(request)` - Fetch API key from token vault
-  - Validates response and provides clear error messages
-
-#### Management Operations
-
-For creating, updating, and deleting identities and providers, use the AWS SDK:
-
-- `@aws-sdk/client-bedrock-agentcore-control` - Control plane operations
-- `@aws-sdk/client-bedrock-agentcore` - Data plane operations
-
-See [AWS SDK documentation](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/Welcome.html) for details.
 
 ### Higher-Order Functions
 
