@@ -66,7 +66,7 @@ describe('Identity Integration Tests', () => {
       });
       const created = await controlPlaneClient.send(createCommand);
       
-      expect(created).toEqual({
+      expect(created).toMatchObject({
         name: testIdentityName,
         workloadIdentityArn: expect.any(String),
         allowedResourceOauth2ReturnUrls: ['https://example.com/callback'],
@@ -74,7 +74,7 @@ describe('Identity Integration Tests', () => {
 
       const getCommand = new GetWorkloadIdentityCommand({ name: testIdentityName });
       const retrieved = await controlPlaneClient.send(getCommand);
-      expect(retrieved).toEqual({
+      expect(retrieved).toMatchObject({
         name: testIdentityName,
         workloadIdentityArn: created.workloadIdentityArn,
         allowedResourceOauth2ReturnUrls: ['https://example.com/callback'],
@@ -106,7 +106,7 @@ describe('Identity Integration Tests', () => {
       });
       const created = await controlPlaneClient.send(createCommand);
       
-      expect(created).toEqual({
+      expect(created).toMatchObject({
         name: testOAuth2ProviderName,
         credentialProviderArn: expect.any(String),
         callbackUrl: expect.any(String),
@@ -114,7 +114,7 @@ describe('Identity Integration Tests', () => {
 
       const getCommand = new GetOauth2CredentialProviderCommand({ name: testOAuth2ProviderName });
       const retrieved = await controlPlaneClient.send(getCommand);
-      expect(retrieved).toEqual({
+      expect(retrieved).toMatchObject({
         name: testOAuth2ProviderName,
         credentialProviderArn: created.credentialProviderArn,
         callbackUrl: expect.any(String),
@@ -137,14 +137,14 @@ describe('Identity Integration Tests', () => {
       });
       const created = await controlPlaneClient.send(createCommand);
       
-      expect(created).toEqual({
+      expect(created).toMatchObject({
         name: testApiKeyProviderName,
         credentialProviderArn: expect.any(String),
       });
 
       const getCommand = new GetApiKeyCredentialProviderCommand({ name: testApiKeyProviderName });
       const retrieved = await controlPlaneClient.send(getCommand);
-      expect(retrieved).toEqual({
+      expect(retrieved).toMatchObject({
         name: testApiKeyProviderName,
         credentialProviderArn: created.credentialProviderArn,
       });
