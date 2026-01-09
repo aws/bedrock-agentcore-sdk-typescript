@@ -12,7 +12,8 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { IdentityClient, withAccessToken, withApiKey } from '../src/identity/index.js';
+import { IdentityClient } from '../src/identity/client.js';
+import { withAccessToken, withApiKey } from '../src/identity/index.js';
 import {
   BedrockAgentCoreClient,
   GetWorkloadAccessTokenForUserIdCommand,

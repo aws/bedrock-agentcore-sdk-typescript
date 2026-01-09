@@ -4,19 +4,6 @@
  * Provides identity and credential management for AI agents.
  * Supports inbound authentication (SigV4, JWT) and outbound authentication (OAuth2, API keys).
  *
- * @example Direct client usage
- * ```typescript
- * import { IdentityClient } from '@aws/bedrock-agentcore-sdk';
- *
- * const identity = new IdentityClient();
- * const token = await identity.getOAuth2Token({
- *   providerName: 'github',
- *   scopes: ['repo'],
- *   authFlow: 'M2M',
- *   workloadIdentityToken: 'xxx',
- * });
- * ```
- *
  * @example HOF wrapper usage
  * ```typescript
  * import { withAccessToken } from '@aws/bedrock-agentcore-sdk';
@@ -30,9 +17,6 @@
  * });
  * ```
  */
-
-// Client for direct API access
-export { IdentityClient } from './client.js'
 
 // Higher-order functions for wrapping tools
 export { withAccessToken, withApiKey } from './wrappers.js'
