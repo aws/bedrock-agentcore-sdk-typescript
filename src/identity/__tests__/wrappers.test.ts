@@ -134,7 +134,23 @@ describe('withApiKey', () => {
     })
   })
 
+  it('throws error if no API key returned', async () => {
+    const mockGetApiKey = vi.fn().mockRejectedValue(new Error('No API key returned for provider: openai'))
+    vi.spyOn(IdentityClient.prototype, 'getApiKey').mockImplementation(mockGetApiKey)
+
+    const wrappedFn = withApiKey<[string], { input: string; apiKey: string }>({
+      workloadIdentityToken: 'workload-token',
+      providerName: 'openai',
+    })(async (input: string, apiKey: string) => {
+      return { input, apiKey }
+    })
+
+    await expect(wrappedFn('test')).rejects.toThrow('No API key returned for provider: openai')
+  })
+
   it('throws error if workload token not provided', async () => {
+    vi.spyOn(IdentityClient.prototype, 'getApiKey').mockRejectedValue(new Error('Invalid token'))
+
     const wrappedFn = withApiKey<[string], { input: string; apiKey: string }>({
       workloadIdentityToken: '',
       providerName: 'openai',
@@ -142,7 +158,6 @@ describe('withApiKey', () => {
       return { input, apiKey }
     })
 
-    vi.spyOn(IdentityClient.prototype, 'getApiKey').mockRejectedValue(new Error('Invalid token'))
     await expect(wrappedFn('test')).rejects.toThrow('Invalid token')
   })
 

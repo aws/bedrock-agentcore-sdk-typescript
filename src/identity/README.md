@@ -4,11 +4,8 @@ TypeScript SDK for Amazon Bedrock AgentCore Identity - identity and credential m
 
 ## Features
 
-- **OAuth2 Authentication**: Fetch OAuth2 tokens for external services (M2M and USER_FEDERATION flows)
-- **API Key Authentication**: Retrieve API keys from secure token vault
-- **Workload Identity Management**: Create, read, and delete agent identities
-- **Credential Provider Management**: Manage OAuth2 and API key providers
-- **Runtime Integration**: Works with BedrockAgentCoreApp for automatic token handling
+- **OAuth2 Authentication**: Automatic token fetching for external services (M2M and USER_FEDERATION flows)
+- **API Key Authentication**: Automatic API key retrieval from secure token vault
 
 ## Installation
 
@@ -70,95 +67,17 @@ const app = new BedrockAgentCoreApp({ handler: async (request, context) => {
 app.run()
 ```
 
-## Direct Client Usage
-
-For advanced use cases, you can use IdentityClient directly:
-
-```typescript
-import { IdentityClient } from 'bedrock-agentcore/identity'
-
-const identity = new IdentityClient('us-west-2')
-
-// Get OAuth2 token
-const token = await identity.getOAuth2Token({
-  workloadIdentityToken: 'your-workload-token',
-  providerName: 'github',
-  scopes: ['repo'],
-  authFlow: 'M2M',
-})
-
-// Get API key
-const apiKey = await identity.getApiKey({
-  workloadIdentityToken: 'your-workload-token',
-  providerName: 'openai',
-})
-```
-
 ## Setup
 
-Before using the Identity SDK, you need to:
+Before using the Identity SDK, you need to create workload identities and credential providers using the AWS SDK:
 
-1. **Create a workload identity**
-2. **Create credential providers** (OAuth2 or API key)
-3. **Configure IAM permissions** for token vault access
-
-### Create Workload Identity
-
-```typescript
-const identity = new IdentityClient('us-west-2')
-
-const workloadIdentity = await identity.createWorkloadIdentity('my-agent', ['https://myapp.com/oauth/callback'])
+```bash
+npm install @aws-sdk/client-bedrock-agentcore @aws-sdk/client-bedrock-agentcore-control
 ```
 
-### Create OAuth2 Provider
-
-```typescript
-const provider = await identity.createOAuth2CredentialProvider({
-  name: 'github',
-  clientId: 'your-client-id',
-  clientSecret: 'your-client-secret',
-  discoveryUrl: 'https://github.com/.well-known/openid-configuration',
-})
-```
-
-### Create API Key Provider
-
-```typescript
-const provider = await identity.createApiKeyCredentialProvider({
-  name: 'openai',
-  apiKey: 'sk-your-api-key',
-})
-```
+See the [AWS SDK documentation](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/Welcome.html) for creating workload identities and credential providers.
 
 ## API Reference
-
-### IdentityClient
-
-#### Runtime Operations
-
-- `getOAuth2Token(request)` - Fetch OAuth2 access token
-- `getApiKey(request)` - Fetch API key
-- `getWorkloadAccessToken(workloadName)` - Get workload token (base)
-- `getWorkloadAccessTokenForJWT(workloadName, userToken)` - Exchange JWT for workload token
-- `getWorkloadAccessTokenForUserId(workloadName, userId)` - Get token for user ID
-
-#### Workload Identity CRUD
-
-- `createWorkloadIdentity(name, callbackUrls?)` - Create identity
-- `getWorkloadIdentity(name)` - Get identity details
-- `deleteWorkloadIdentity(name)` - Delete identity
-
-#### OAuth2 Provider CRUD
-
-- `createOAuth2CredentialProvider(config)` - Create OAuth2 provider
-- `getOAuth2CredentialProvider(name)` - Get provider details
-- `deleteOAuth2CredentialProvider(name)` - Delete provider
-
-#### API Key Provider CRUD
-
-- `createApiKeyCredentialProvider(config)` - Create API key provider
-- `getApiKeyCredentialProvider(name)` - Get provider details
-- `deleteApiKeyCredentialProvider(name)` - Delete provider
 
 ### Higher-Order Functions
 

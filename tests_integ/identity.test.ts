@@ -9,108 +9,153 @@
  * For OAuth2 token tests:
  * - Set OAUTH2_PROVIDER_NAME env var to test OAuth2 M2M flow
  * - Set OAUTH2_SCOPES env var (comma-separated)
- * 
- * For API key tests:
- * - Set APIKEY_PROVIDER_NAME env var to test API key retrieval
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { IdentityClient, withAccessToken, withApiKey } from '../src/identity/index.js';
+import { IdentityClient } from '../src/identity/client.js';
+import { withAccessToken, withApiKey } from '../src/identity/index.js';
+import {
+  BedrockAgentCoreClient,
+  GetWorkloadAccessTokenForUserIdCommand,
+} from '@aws-sdk/client-bedrock-agentcore';
+import {
+  BedrockAgentCoreControlClient,
+  CreateWorkloadIdentityCommand,
+  GetWorkloadIdentityCommand,
+  DeleteWorkloadIdentityCommand,
+  CreateOauth2CredentialProviderCommand,
+  GetOauth2CredentialProviderCommand,
+  DeleteOauth2CredentialProviderCommand,
+  CreateApiKeyCredentialProviderCommand,
+  GetApiKeyCredentialProviderCommand,
+  DeleteApiKeyCredentialProviderCommand,
+} from '@aws-sdk/client-bedrock-agentcore-control';
 
 describe('Identity Integration Tests', () => {
   const testIdentityName = `test-identity-${Date.now()}`;
   const testOAuth2ProviderName = `test-oauth2-${Date.now()}`;
   const testApiKeyProviderName = `test-apikey-${Date.now()}`;
   let client: IdentityClient;
+  let dataPlaneClient: BedrockAgentCoreClient;
+  let controlPlaneClient: BedrockAgentCoreControlClient;
 
   beforeAll(async () => {
-    client = new IdentityClient(process.env.AWS_REGION || 'us-west-2');
+    const region = process.env.AWS_REGION || 'us-west-2';
+    client = new IdentityClient(region);
+    dataPlaneClient = new BedrockAgentCoreClient({ region });
+    controlPlaneClient = new BedrockAgentCoreControlClient({ region });
   });
 
   afterAll(async () => {
-    // Cleanup test-specific resources
+    // Cleanup test-specific resources using AWS SDK directly
     await Promise.allSettled([
-      client.deleteOAuth2CredentialProvider(testOAuth2ProviderName),
-      client.deleteApiKeyCredentialProvider(testApiKeyProviderName),
-      client.deleteWorkloadIdentity(testIdentityName),
+      controlPlaneClient.send(new DeleteOauth2CredentialProviderCommand({ name: testOAuth2ProviderName })),
+      controlPlaneClient.send(new DeleteApiKeyCredentialProviderCommand({ name: testApiKeyProviderName })),
+      controlPlaneClient.send(new DeleteWorkloadIdentityCommand({ name: testIdentityName })),
     ]);
   });
 
   describe('Workload Identity Lifecycle', () => {
     it('creates, gets, and deletes workload identity', async () => {
       try {
-        await client.deleteWorkloadIdentity(testIdentityName);
+        await controlPlaneClient.send(new DeleteWorkloadIdentityCommand({ name: testIdentityName }));
       } catch {}
 
-      const created = await client.createWorkloadIdentity(testIdentityName, [
-        'https://example.com/callback',
-      ]);
+      const createCommand = new CreateWorkloadIdentityCommand({
+        name: testIdentityName,
+        allowedResourceOauth2ReturnUrls: ['https://example.com/callback'],
+      });
+      const created = await controlPlaneClient.send(createCommand);
       
-      expect(created).toEqual({
+      expect(created).toMatchObject({
         name: testIdentityName,
         workloadIdentityArn: expect.any(String),
         allowedResourceOauth2ReturnUrls: ['https://example.com/callback'],
       });
 
-      const retrieved = await client.getWorkloadIdentity(testIdentityName);
-      expect(retrieved).toEqual({
+      const getCommand = new GetWorkloadIdentityCommand({ name: testIdentityName });
+      const retrieved = await controlPlaneClient.send(getCommand);
+      expect(retrieved).toMatchObject({
         name: testIdentityName,
         workloadIdentityArn: created.workloadIdentityArn,
         allowedResourceOauth2ReturnUrls: ['https://example.com/callback'],
       });
 
-      await client.deleteWorkloadIdentity(testIdentityName);
-      await expect(client.getWorkloadIdentity(testIdentityName)).rejects.toThrow();
+      const deleteCommand = new DeleteWorkloadIdentityCommand({ name: testIdentityName });
+      await controlPlaneClient.send(deleteCommand);
+      
+      await expect(
+        controlPlaneClient.send(new GetWorkloadIdentityCommand({ name: testIdentityName }))
+      ).rejects.toThrow();
     }, 30000);
   });
 
   describe('OAuth2 Provider Lifecycle', () => {
     it('creates, gets, and deletes OAuth2 provider', async () => {
-      const created = await client.createOAuth2CredentialProvider({
+      const createCommand = new CreateOauth2CredentialProviderCommand({
         name: testOAuth2ProviderName,
-        clientId: 'test-client-id',
-        clientSecret: 'test-client-secret',
-        discoveryUrl: 'https://accounts.google.com/.well-known/openid-configuration',
+        credentialProviderVendor: 'CustomOauth2',
+        oauth2ProviderConfigInput: {
+          customOauth2ProviderConfig: {
+            clientId: 'test-client-id',
+            clientSecret: 'test-client-secret',
+            oauthDiscovery: {
+              discoveryUrl: 'https://accounts.google.com/.well-known/openid-configuration',
+            },
+          },
+        },
       });
+      const created = await controlPlaneClient.send(createCommand);
       
-      expect(created).toEqual({
+      expect(created).toMatchObject({
         name: testOAuth2ProviderName,
         credentialProviderArn: expect.any(String),
         callbackUrl: expect.any(String),
       });
 
-      const retrieved = await client.getOAuth2CredentialProvider(testOAuth2ProviderName);
-      expect(retrieved).toEqual({
+      const getCommand = new GetOauth2CredentialProviderCommand({ name: testOAuth2ProviderName });
+      const retrieved = await controlPlaneClient.send(getCommand);
+      expect(retrieved).toMatchObject({
         name: testOAuth2ProviderName,
         credentialProviderArn: created.credentialProviderArn,
         callbackUrl: expect.any(String),
       });
 
-      await client.deleteOAuth2CredentialProvider(testOAuth2ProviderName);
-      await expect(client.getOAuth2CredentialProvider(testOAuth2ProviderName)).rejects.toThrow();
+      const deleteCommand = new DeleteOauth2CredentialProviderCommand({ name: testOAuth2ProviderName });
+      await controlPlaneClient.send(deleteCommand);
+      
+      await expect(
+        controlPlaneClient.send(new GetOauth2CredentialProviderCommand({ name: testOAuth2ProviderName }))
+      ).rejects.toThrow();
     }, 30000);
   });
 
   describe('API Key Provider Lifecycle', () => {
     it('creates, gets, and deletes API key provider', async () => {
-      const created = await client.createApiKeyCredentialProvider({
+      const createCommand = new CreateApiKeyCredentialProviderCommand({
         name: testApiKeyProviderName,
         apiKey: 'sk-test-key-123456789',
       });
+      const created = await controlPlaneClient.send(createCommand);
       
-      expect(created).toEqual({
+      expect(created).toMatchObject({
         name: testApiKeyProviderName,
         credentialProviderArn: expect.any(String),
       });
 
-      const retrieved = await client.getApiKeyCredentialProvider(testApiKeyProviderName);
-      expect(retrieved).toEqual({
+      const getCommand = new GetApiKeyCredentialProviderCommand({ name: testApiKeyProviderName });
+      const retrieved = await controlPlaneClient.send(getCommand);
+      expect(retrieved).toMatchObject({
         name: testApiKeyProviderName,
         credentialProviderArn: created.credentialProviderArn,
       });
 
-      await client.deleteApiKeyCredentialProvider(testApiKeyProviderName);
-      await expect(client.getApiKeyCredentialProvider(testApiKeyProviderName)).rejects.toThrow();
+      const deleteCommand = new DeleteApiKeyCredentialProviderCommand({ name: testApiKeyProviderName });
+      await controlPlaneClient.send(deleteCommand);
+      
+      await expect(
+        controlPlaneClient.send(new GetApiKeyCredentialProviderCommand({ name: testApiKeyProviderName }))
+      ).rejects.toThrow();
     }, 30000);
   });
 
@@ -245,15 +290,28 @@ describe('Identity Integration Tests', () => {
       const workloadName = `test-m2m-workload-${Date.now()}`;
       
       try {
-        await client.createOAuth2CredentialProvider({
+        const createProviderCommand = new CreateOauth2CredentialProviderCommand({
           name: providerName,
-          clientId,
-          clientSecret,
-          discoveryUrl,
+          credentialProviderVendor: 'CustomOauth2',
+          oauth2ProviderConfigInput: {
+            customOauth2ProviderConfig: {
+              clientId,
+              clientSecret,
+              oauthDiscovery: { discoveryUrl },
+            },
+          },
         });
+        await controlPlaneClient.send(createProviderCommand);
 
-        await client.createWorkloadIdentity(workloadName);
-        const workloadToken = await client.getWorkloadAccessTokenForUserId(workloadName, 'test-user');
+        const createIdentityCommand = new CreateWorkloadIdentityCommand({ name: workloadName });
+        await controlPlaneClient.send(createIdentityCommand);
+        
+        const getTokenCommand = new GetWorkloadAccessTokenForUserIdCommand({
+          workloadName,
+          userId: 'test-user',
+        });
+        const tokenResponse = await dataPlaneClient.send(getTokenCommand);
+        const workloadToken = tokenResponse.workloadAccessToken!;
 
         const token = await client.getOAuth2Token({
           providerName,
@@ -267,8 +325,12 @@ describe('Identity Integration Tests', () => {
         expect(token.length).toBeGreaterThan(0);
       } finally {
         // Cleanup AgentCore resources only (not Cognito pool)
-        try { await client.deleteOAuth2CredentialProvider(providerName); } catch {}
-        try { await client.deleteWorkloadIdentity(workloadName); } catch {}
+        try { 
+          await controlPlaneClient.send(new DeleteOauth2CredentialProviderCommand({ name: providerName }));
+        } catch {}
+        try { 
+          await controlPlaneClient.send(new DeleteWorkloadIdentityCommand({ name: workloadName }));
+        } catch {}
       }
     });
   });
@@ -276,25 +338,25 @@ describe('Identity Integration Tests', () => {
   describe('Error Scenarios', () => {
     it('throws error when getting non-existent workload identity', async () => {
       await expect(
-        client.getWorkloadIdentity('non-existent-identity-12345')
+        controlPlaneClient.send(new GetWorkloadIdentityCommand({ name: 'non-existent-identity-12345' }))
       ).rejects.toThrow();
     });
 
     it('throws error when getting non-existent OAuth2 provider', async () => {
       await expect(
-        client.getOAuth2CredentialProvider('non-existent-provider-12345')
+        controlPlaneClient.send(new GetOauth2CredentialProviderCommand({ name: 'non-existent-provider-12345' }))
       ).rejects.toThrow();
     });
 
     it('throws error when getting non-existent API key provider', async () => {
       await expect(
-        client.getApiKeyCredentialProvider('non-existent-provider-12345')
+        controlPlaneClient.send(new GetApiKeyCredentialProviderCommand({ name: 'non-existent-provider-12345' }))
       ).rejects.toThrow();
     });
 
     it('throws error when deleting non-existent workload identity', async () => {
       await expect(
-        client.deleteWorkloadIdentity('non-existent-identity-12345')
+        controlPlaneClient.send(new DeleteWorkloadIdentityCommand({ name: 'non-existent-identity-12345' }))
       ).rejects.toThrow();
     });
 
@@ -412,15 +474,28 @@ describe('Identity Integration Tests', () => {
       const workloadName = `concurrent-workload-${Date.now()}`;
 
       try {
-        await client.createOAuth2CredentialProvider({
+        const createProviderCommand = new CreateOauth2CredentialProviderCommand({
           name: providerName,
-          clientId,
-          clientSecret,
-          discoveryUrl,
+          credentialProviderVendor: 'CustomOauth2',
+          oauth2ProviderConfigInput: {
+            customOauth2ProviderConfig: {
+              clientId,
+              clientSecret,
+              oauthDiscovery: { discoveryUrl },
+            },
+          },
         });
+        await controlPlaneClient.send(createProviderCommand);
 
-        await client.createWorkloadIdentity(workloadName);
-        const workloadToken = await client.getWorkloadAccessTokenForUserId(workloadName, 'test-user');
+        const createIdentityCommand = new CreateWorkloadIdentityCommand({ name: workloadName });
+        await controlPlaneClient.send(createIdentityCommand);
+        
+        const getTokenCommand = new GetWorkloadAccessTokenForUserIdCommand({
+          workloadName,
+          userId: 'test-user',
+        });
+        const tokenResponse = await dataPlaneClient.send(getTokenCommand);
+        const workloadToken = tokenResponse.workloadAccessToken!;
 
         // Make 5 concurrent token requests
         const numRequests = 5;
@@ -447,8 +522,12 @@ describe('Identity Integration Tests', () => {
         });
       } finally {
         // Cleanup AgentCore resources only (not Cognito pool)
-        try { await client.deleteOAuth2CredentialProvider(providerName); } catch {}
-        try { await client.deleteWorkloadIdentity(workloadName); } catch {}
+        try { 
+          await controlPlaneClient.send(new DeleteOauth2CredentialProviderCommand({ name: providerName }));
+        } catch {}
+        try { 
+          await controlPlaneClient.send(new DeleteWorkloadIdentityCommand({ name: workloadName }));
+        } catch {}
       }
     });
 
@@ -459,13 +538,21 @@ describe('Identity Integration Tests', () => {
 
       try {
         // Setup
-        await client.createApiKeyCredentialProvider({
+        const createProviderCommand = new CreateApiKeyCredentialProviderCommand({
           name: providerName,
           apiKey: 'sk-concurrent-test-key',
         });
+        await controlPlaneClient.send(createProviderCommand);
 
-        await client.createWorkloadIdentity(workloadName);
-        const workloadToken = await client.getWorkloadAccessTokenForUserId(workloadName, 'test-user');
+        const createIdentityCommand = new CreateWorkloadIdentityCommand({ name: workloadName });
+        await controlPlaneClient.send(createIdentityCommand);
+        
+        const getTokenCommand = new GetWorkloadAccessTokenForUserIdCommand({
+          workloadName,
+          userId: 'test-user',
+        });
+        const tokenResponse = await dataPlaneClient.send(getTokenCommand);
+        const workloadToken = tokenResponse.workloadAccessToken!;
 
         // Make 5 concurrent API key requests
         const numRequests = 5;
@@ -484,22 +571,22 @@ describe('Identity Integration Tests', () => {
 
         // Verify all requests succeeded
         expect(apiKeys).toHaveLength(numRequests);
-        apiKeys.forEach(key => {
-          expect(key).toBeDefined();
-          expect(typeof key).toBe('string');
-          expect(key).toBe('sk-concurrent-test-key');
+        apiKeys.forEach(apiKey => {
+          expect(apiKey).toBeDefined();
+          expect(typeof apiKey).toBe('string');
+          expect(apiKey).toBe('sk-concurrent-test-key');
         });
 
         // Cleanup
-        await client.deleteApiKeyCredentialProvider(providerName);
-        await client.deleteWorkloadIdentity(workloadName);
+        await controlPlaneClient.send(new DeleteApiKeyCredentialProviderCommand({ name: providerName }));
+        await controlPlaneClient.send(new DeleteWorkloadIdentityCommand({ name: workloadName }));
       } catch (e) {
         // Cleanup on error
         try {
-          await client.deleteApiKeyCredentialProvider(providerName);
+          await controlPlaneClient.send(new DeleteApiKeyCredentialProviderCommand({ name: providerName }));
         } catch {}
         try {
-          await client.deleteWorkloadIdentity(workloadName);
+          await controlPlaneClient.send(new DeleteWorkloadIdentityCommand({ name: workloadName }));
         } catch {}
         throw e;
       }
@@ -510,7 +597,8 @@ describe('Identity Integration Tests', () => {
       const workloadName = `concurrent-token-workload-${testSuffix}`;
 
       try {
-        await client.createWorkloadIdentity(workloadName);
+        const createCommand = new CreateWorkloadIdentityCommand({ name: workloadName });
+        await controlPlaneClient.send(createCommand);
 
         // Make 5 concurrent workload token requests
         const numRequests = 5;
@@ -518,25 +606,28 @@ describe('Identity Integration Tests', () => {
 
         for (let i = 0; i < numRequests; i++) {
           promises.push(
-            client.getWorkloadAccessTokenForUserId(workloadName, `user-${i}`)
+            dataPlaneClient.send(new GetWorkloadAccessTokenForUserIdCommand({
+              workloadName,
+              userId: `user-${i}`,
+            }))
           );
         }
 
-        const tokens = await Promise.all(promises);
+        const responses = await Promise.all(promises);
 
         // Verify all requests succeeded
-        expect(tokens).toHaveLength(numRequests);
-        tokens.forEach(token => {
-          expect(token).toBeDefined();
-          expect(typeof token).toBe('string');
-          expect(token.length).toBeGreaterThan(0);
+        expect(responses).toHaveLength(numRequests);
+        responses.forEach(response => {
+          expect(response.workloadAccessToken).toBeDefined();
+          expect(typeof response.workloadAccessToken).toBe('string');
+          expect(response.workloadAccessToken!.length).toBeGreaterThan(0);
         });
 
         // Cleanup
-        await client.deleteWorkloadIdentity(workloadName);
+        await controlPlaneClient.send(new DeleteWorkloadIdentityCommand({ name: workloadName }));
       } catch (e) {
         try {
-          await client.deleteWorkloadIdentity(workloadName);
+          await controlPlaneClient.send(new DeleteWorkloadIdentityCommand({ name: workloadName }));
         } catch {}
         throw e;
       }
