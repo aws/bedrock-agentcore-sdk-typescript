@@ -13,7 +13,7 @@ describe('withAccessToken', () => {
     const mockGetOAuth2Token = vi.fn().mockResolvedValue('oauth2-token-123')
     vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockImplementation(mockGetOAuth2Token)
 
-    const wrappedFn = withAccessToken<[string], { input: string; token: string }>({
+    const wrappedFn = withAccessToken({
       workloadIdentityToken: 'workload-token',
       providerName: 'github',
       scopes: ['repo'],
@@ -40,7 +40,7 @@ describe('withAccessToken', () => {
   })
 
   it('throws error if workload token not provided', async () => {
-    const wrappedFn = withAccessToken<[string], { input: string; token: string }>({
+    const wrappedFn = withAccessToken({
       workloadIdentityToken: '', // Empty token
       providerName: 'github',
       scopes: ['repo'],
@@ -59,7 +59,7 @@ describe('withAccessToken', () => {
     vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockImplementation(mockGetOAuth2Token)
 
     const onAuthUrl = vi.fn()
-    const wrappedFn = withAccessToken<[string], string>({
+    const wrappedFn = withAccessToken({
       workloadIdentityToken: 'workload-token',
       providerName: 'github',
       scopes: ['repo', 'user'],
@@ -91,7 +91,7 @@ describe('withAccessToken', () => {
   it('preserves function parameter types', async () => {
     vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockResolvedValue('token')
 
-    const wrappedFn = withAccessToken<[number, string], { num: number; str: string; token: string }>({
+    const wrappedFn = withAccessToken({
       workloadIdentityToken: 'workload-token',
       providerName: 'test',
       scopes: ['read'],
@@ -117,7 +117,7 @@ describe('withApiKey', () => {
     const mockGetApiKey = vi.fn().mockResolvedValue('api-key-123')
     vi.spyOn(IdentityClient.prototype, 'getApiKey').mockImplementation(mockGetApiKey)
 
-    const wrappedFn = withApiKey<[string], { input: string; apiKey: string }>({
+    const wrappedFn = withApiKey({
       workloadIdentityToken: 'workload-token',
       providerName: 'openai',
     })(async (input: string, apiKey: string) => {
@@ -138,7 +138,7 @@ describe('withApiKey', () => {
     const mockGetApiKey = vi.fn().mockRejectedValue(new Error('No API key returned for provider: openai'))
     vi.spyOn(IdentityClient.prototype, 'getApiKey').mockImplementation(mockGetApiKey)
 
-    const wrappedFn = withApiKey<[string], { input: string; apiKey: string }>({
+    const wrappedFn = withApiKey({
       workloadIdentityToken: 'workload-token',
       providerName: 'openai',
     })(async (input: string, apiKey: string) => {
@@ -151,7 +151,7 @@ describe('withApiKey', () => {
   it('throws error if workload token not provided', async () => {
     vi.spyOn(IdentityClient.prototype, 'getApiKey').mockRejectedValue(new Error('Invalid token'))
 
-    const wrappedFn = withApiKey<[string], { input: string; apiKey: string }>({
+    const wrappedFn = withApiKey({
       workloadIdentityToken: '',
       providerName: 'openai',
     })(async (input: string, apiKey: string) => {
@@ -164,7 +164,7 @@ describe('withApiKey', () => {
   it('preserves function parameter types', async () => {
     vi.spyOn(IdentityClient.prototype, 'getApiKey').mockResolvedValue('api-key')
 
-    const wrappedFn = withApiKey<[number, string], { num: number; str: string; apiKey: string }>({
+    const wrappedFn = withApiKey({
       workloadIdentityToken: 'workload-token',
       providerName: 'openai',
     })(async (num: number, str: string, apiKey: string) => {
