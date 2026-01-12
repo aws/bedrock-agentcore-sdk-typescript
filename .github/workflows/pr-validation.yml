@@ -88,4 +88,4 @@ jobs:
       - name: Label by changed files
         uses: actions/labeler@v6
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}

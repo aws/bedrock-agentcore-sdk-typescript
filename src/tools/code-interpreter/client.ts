@@ -449,7 +449,7 @@ export class CodeInterpreter {
         sessionId: this._session!.sessionId,
         name: 'listFiles',
         arguments: {
-          path: params?.path ?? '.',
+          directoryPath: params?.path ?? '.',
         },
       })
 
