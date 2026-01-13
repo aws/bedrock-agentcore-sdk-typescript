@@ -61,6 +61,21 @@ vi.mock('@aws-sdk/client-bedrock-agentcore', () => {
             isError: true,
           })
         }
+        // Return binary blob format for .bin files
+        if (args.paths.some((p: string) => p.endsWith('.bin'))) {
+          const content = args.paths.map((path: string) => ({
+            type: 'resource',
+            resource: {
+              uri: `file://${path}`,
+              mimeType: 'application/octet-stream',
+              blob: new Uint8Array([0x48, 0x65, 0x6c, 0x6c, 0x6f]), // "Hello"
+            },
+          }))
+          return Promise.resolve({
+            result: { content },
+            isError: false,
+          })
+        }
         const files = args.paths.map((path: string) => ({
           path,
           text: `Content of ${path}`,
@@ -392,6 +407,18 @@ describe('CodeInterpreter', () => {
 
       expect(result).toBeDefined()
       expect(result).toContain('File not found')
+    })
+
+    it('handles binary blob content', async () => {
+      const result = await interpreter.readFiles({
+        paths: ['data.bin'],
+      })
+
+      expect(result).toBeDefined()
+      const parsed = JSON.parse(result)
+      expect(parsed.uri).toBe('file://data.bin')
+      expect(parsed.mimeType).toBe('application/octet-stream')
+      expect(parsed.blob).toBe('SGVsbG8=') // "Hello" in base64
     })
   })
 
