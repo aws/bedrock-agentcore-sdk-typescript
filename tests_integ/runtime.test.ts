@@ -23,7 +23,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       }
     }
 
-    app = new BedrockAgentCoreApp({ invocationHandler : { process: handler }  })
+    app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
     fastify = (app as any)._app
     await (app as any)._registerPlugins()
     ;(app as any)._setupRoutes()
@@ -36,7 +36,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         .get('/ping')
         .expect('Content-Type', /json/)
         .expect(200)
-        .expect(function(res) {
+        .expect(function (res) {
           expect(res.body).toHaveProperty('status')
           expect(res.body).toHaveProperty('time_of_last_update')
         })
@@ -46,7 +46,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       await request(fastify.server)
         .get('/ping')
         .expect(200)
-        .expect(function(res) {
+        .expect(function (res) {
           expect(res.body.status).toBe('Healthy')
         })
     })
@@ -55,7 +55,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       await request(fastify.server)
         .get('/ping')
         .expect(200)
-        .expect(function(res) {
+        .expect(function (res) {
           const timestamp = new Date(res.body.time_of_last_update)
           expect(timestamp.toISOString()).toBe(res.body.time_of_last_update)
         })
@@ -63,10 +63,10 @@ describe('BedrockAgentCoreApp Integration', () => {
 
     it('returns HealthyBusy with active tasks', async () => {
       // Create app with task tracking
-      const handler: InvocationHandler = async (req, context) => {
+      const handler: InvocationHandler = async (_req, _context) => {
         return { message: 'test' }
       }
-      const testApp = new BedrockAgentCoreApp({ invocationHandler : { process: handler }  })
+      const testApp = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
 
       // Add a task
       testApp.addAsyncTask('test-task')
@@ -86,7 +86,7 @@ describe('BedrockAgentCoreApp Integration', () => {
     })
 
     it('custom ping handler works', async () => {
-      const handler: InvocationHandler = async (req, context) => {
+      const handler: InvocationHandler = async (_req, _context) => {
         return { message: 'test' }
       }
       const testApp = new BedrockAgentCoreApp({
@@ -117,7 +117,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         .send({ test: 'data', value: 42 })
         .expect('Content-Type', /json/)
         .expect(200)
-        .expect(function(res) {
+        .expect(function (res) {
           expect(res.body).toEqual({
             message: 'Hello from BedrockAgentCore!',
             receivedData: { test: 'data', value: 42 },
@@ -132,7 +132,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         .set('x-amzn-bedrock-agentcore-runtime-session-id', 'my-session-id')
         .send({})
         .expect(200)
-        .expect(function(res) {
+        .expect(function (res) {
           expect(res.body.sessionId).toBe('my-session-id')
         })
     })
@@ -142,16 +142,13 @@ describe('BedrockAgentCoreApp Integration', () => {
         .post('/invocations')
         .send({ sessionId: 'body-session-id' })
         .expect(200)
-        .expect(function(res) {
+        .expect(function (res) {
           expect(res.body.sessionId).toBe('body-session-id')
         })
     })
 
     it('returns 400 when sessionId missing', async () => {
-      await request(fastify.server)
-        .post('/invocations')
-        .send({ test: 'data' })
-        .expect(400)
+      await request(fastify.server).post('/invocations').send({ test: 'data' }).expect(400)
     })
 
     it('extracts workloadAccessToken from header', async () => {
@@ -169,7 +166,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         .set('workloadaccesstoken', 'test-token-123')
         .send({})
         .expect(200)
-        .expect(function(res) {
+        .expect(function (res) {
           expect(res.body.token).toBe('test-token-123')
         })
     })
@@ -189,7 +186,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         .set('x-amzn-bedrock-agentcore-runtime-request-id', 'custom-123')
         .send({})
         .expect(200)
-        .expect(function(res) {
+        .expect(function (res) {
           expect(res.body.requestId).toBe('custom-123')
         })
     })
@@ -209,7 +206,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         .set('oauth2callbackurl', 'https://example.com/callback')
         .send({})
         .expect(200)
-        .expect(function(res) {
+        .expect(function (res) {
           expect(res.body.callbackUrl).toBe('https://example.com/callback')
         })
     })
@@ -229,7 +226,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         .set('authorization', 'Bearer token123')
         .send({})
         .expect(200)
-        .expect(function(res) {
+        .expect(function (res) {
           expect(res.body.authHeader).toBe('Bearer token123')
         })
     })
@@ -238,11 +235,11 @@ describe('BedrockAgentCoreApp Integration', () => {
       let errorFastify: any
 
       beforeAll(async () => {
-        const errorHandler: InvocationHandler = async (req, context) => {
+        const errorHandler: InvocationHandler = async (_req, _context) => {
           throw new Error('Handler failed')
         }
 
-        const errorApp = new BedrockAgentCoreApp({ invocationHandler : { process: errorHandler }  })
+        const errorApp = new BedrockAgentCoreApp({ invocationHandler: { process: errorHandler } })
         errorFastify = (errorApp as any)._app
         await (errorApp as any)._registerPlugins()
         ;(errorApp as any)._setupRoutes()
@@ -263,7 +260,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
           .send({})
           .expect(500)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.body).toHaveProperty('error')
             expect(res.body.error).toBe('Handler failed')
           })
@@ -274,13 +271,13 @@ describe('BedrockAgentCoreApp Integration', () => {
       let streamFastify: any
 
       beforeAll(async () => {
-        const streamHandler: InvocationHandler = async function* (req, context) {
+        const streamHandler: InvocationHandler = async function* (_req, context) {
           yield { event: 'start', data: { sessionId: context.sessionId } }
           yield { event: 'data', data: { content: 'streaming test' } }
           yield { event: 'end', data: {} }
         }
 
-        const streamApp = new BedrockAgentCoreApp({ invocationHandler : { process: streamHandler }  })
+        const streamApp = new BedrockAgentCoreApp({ invocationHandler: { process: streamHandler } })
         streamFastify = (streamApp as any)._app
         await (streamApp as any)._registerPlugins()
         ;(streamApp as any)._setupRoutes()
@@ -295,7 +292,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .send({ message: 'test' })
           .expect('Content-Type', 'text/event-stream')
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.text).toContain('data: {"sessionId":"stream-session"}')
             expect(res.text).toContain('data: {"content":"streaming test"}')
             expect(res.text).toContain('event: end')
@@ -303,12 +300,12 @@ describe('BedrockAgentCoreApp Integration', () => {
       })
 
       it('handles string SSE sources', async () => {
-        const stringHandler: InvocationHandler = async function* (req, context) {
+        const stringHandler: InvocationHandler = async function* (_req, _context) {
           yield 'plain string message'
           yield 'another string'
         }
 
-        const stringApp = new BedrockAgentCoreApp({ invocationHandler : { process: stringHandler }  })
+        const stringApp = new BedrockAgentCoreApp({ invocationHandler: { process: stringHandler } })
         const stringFastify = (stringApp as any)._app
         await (stringApp as any)._registerPlugins()
         ;(stringApp as any)._setupRoutes()
@@ -321,19 +318,19 @@ describe('BedrockAgentCoreApp Integration', () => {
           .send({ message: 'test' })
           .expect('Content-Type', 'text/event-stream')
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.text).toContain('data: plain string message')
             expect(res.text).toContain('data: another string')
           })
       })
 
       it('handles Buffer SSE sources', async () => {
-        const bufferHandler: InvocationHandler = async function* (req, context) {
+        const bufferHandler: InvocationHandler = async function* (_req, _context) {
           yield Buffer.from('buffer message 1')
           yield Buffer.from('buffer message 2')
         }
 
-        const bufferApp = new BedrockAgentCoreApp({ invocationHandler : { process: bufferHandler }  })
+        const bufferApp = new BedrockAgentCoreApp({ invocationHandler: { process: bufferHandler } })
         const bufferFastify = (bufferApp as any)._app
         await (bufferApp as any)._registerPlugins()
         ;(bufferApp as any)._setupRoutes()
@@ -346,7 +343,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .send({ message: 'test' })
           .expect('Content-Type', 'text/event-stream')
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.text).toContain('data: buffer message 1')
             expect(res.text).toContain('data: buffer message 2')
           })
@@ -354,19 +351,19 @@ describe('BedrockAgentCoreApp Integration', () => {
 
       it('handles Readable stream SSE sources', async () => {
         const { Readable } = await import('stream')
-        
-        const readableHandler: InvocationHandler = async function* (req, context) {
+
+        const readableHandler: InvocationHandler = async function* (_req, _context) {
           const stream = new Readable({
             read() {
               this.push('stream chunk 1\n')
               this.push('stream chunk 2\n')
               this.push(null)
-            }
+            },
           })
           yield stream
         }
 
-        const readableApp = new BedrockAgentCoreApp({ invocationHandler : { process: readableHandler }  })
+        const readableApp = new BedrockAgentCoreApp({ invocationHandler: { process: readableHandler } })
         const readableFastify = (readableApp as any)._app
         await (readableApp as any)._registerPlugins()
         ;(readableApp as any)._setupRoutes()
@@ -379,14 +376,14 @@ describe('BedrockAgentCoreApp Integration', () => {
           .send({ message: 'test' })
           .expect('Content-Type', 'text/event-stream')
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.text).toContain('stream chunk 1')
             expect(res.text).toContain('stream chunk 2')
           })
       })
 
       it('handles AsyncIterable SSE sources', async () => {
-        const asyncIterableHandler: InvocationHandler = async function* (req, context) {
+        const asyncIterableHandler: InvocationHandler = async function* (_req, _context) {
           async function* createAsyncIterable() {
             yield 'async item 1'
             yield Buffer.from('async buffer')
@@ -395,7 +392,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           yield createAsyncIterable()
         }
 
-        const asyncApp = new BedrockAgentCoreApp({ invocationHandler : { process: asyncIterableHandler }  })
+        const asyncApp = new BedrockAgentCoreApp({ invocationHandler: { process: asyncIterableHandler } })
         const asyncFastify = (asyncApp as any)._app
         await (asyncApp as any)._registerPlugins()
         ;(asyncApp as any)._setupRoutes()
@@ -408,7 +405,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .send({ message: 'test' })
           .expect('Content-Type', 'text/event-stream')
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.text).toContain('data: async item 1')
             expect(res.text).toContain('data: async buffer')
             expect(res.text).toContain('data: {"message":"async message"}')
@@ -427,26 +424,30 @@ describe('BedrockAgentCoreApp Integration', () => {
       }
 
       const websocketHandler = async (socket: any, context: any) => {
-        socket.send(JSON.stringify({ 
-          type: 'connected', 
-          sessionId: context.sessionId 
-        }))
-        
+        socket.send(
+          JSON.stringify({
+            type: 'connected',
+            sessionId: context.sessionId,
+          })
+        )
+
         socket.on('message', (message: string) => {
           const data = JSON.parse(message)
-          socket.send(JSON.stringify({ 
-            type: 'echo', 
-            received: data,
-            sessionId: context.sessionId 
-          }))
+          socket.send(
+            JSON.stringify({
+              type: 'echo',
+              received: data,
+              sessionId: context.sessionId,
+            })
+          )
         })
       }
 
-      wsApp = new BedrockAgentCoreApp({ 
-        invocationHandler : { process: wsHandler }  , 
-        websocketHandler 
+      wsApp = new BedrockAgentCoreApp({
+        invocationHandler: { process: wsHandler },
+        websocketHandler,
       })
-      
+
       // Get the underlying Fastify server and start it manually
       const fastify = (wsApp as any)._app
       await (wsApp as any)._registerPlugins()
@@ -467,12 +468,12 @@ describe('BedrockAgentCoreApp Integration', () => {
     it('establishes websocket connection', async () => {
       const port = server.address().port
       const ws = new WebSocket(`ws://localhost:${port}/ws`)
-      
+
       await new Promise((resolve, reject) => {
         ws.on('open', resolve)
         ws.on('error', reject)
       })
-      
+
       ws.close()
     })
 
@@ -480,22 +481,22 @@ describe('BedrockAgentCoreApp Integration', () => {
       const port = server.address().port
       const ws = new WebSocket(`ws://localhost:${port}/ws`, {
         headers: {
-          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session-123'
-        }
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session-123',
+        },
       })
-      
+
       const message = await new Promise((resolve, reject) => {
         ws.on('message', (data) => {
           resolve(JSON.parse(data.toString()))
         })
         ws.on('error', reject)
       })
-      
+
       expect(message).toEqual({
         type: 'connected',
-        sessionId: 'test-session-123'
+        sessionId: 'test-session-123',
       })
-      
+
       ws.close()
     })
 
@@ -503,19 +504,19 @@ describe('BedrockAgentCoreApp Integration', () => {
       const port = server.address().port
       const ws = new WebSocket(`ws://localhost:${port}/ws`, {
         headers: {
-          'x-amzn-bedrock-agentcore-runtime-session-id': 'echo-session'
-        }
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'echo-session',
+        },
       })
-      
+
       // Wait for connection and skip connected message
       await new Promise((resolve, reject) => {
         ws.on('message', resolve)
         ws.on('error', reject)
       })
-      
+
       // Send test message
       ws.send(JSON.stringify({ test: 'hello', value: 42 }))
-      
+
       // Receive echo response
       const response = await new Promise((resolve, reject) => {
         ws.on('message', (data) => {
@@ -523,13 +524,13 @@ describe('BedrockAgentCoreApp Integration', () => {
         })
         ws.on('error', reject)
       })
-      
+
       expect(response).toEqual({
         type: 'echo',
         received: { test: 'hello', value: 42 },
-        sessionId: 'echo-session'
+        sessionId: 'echo-session',
       })
-      
+
       ws.close()
     })
 
@@ -537,15 +538,15 @@ describe('BedrockAgentCoreApp Integration', () => {
       let errorServer: any
 
       beforeAll(async () => {
-        const errorWebsocketHandler = async (socket: any, context: any) => {
+        const errorWebsocketHandler = async (_socket: any, _context: any) => {
           throw new Error('WebSocket handler failed')
         }
 
-        const errorApp = new BedrockAgentCoreApp({ 
-          invocationHandler: { process: async () => ({}) }, 
-          websocketHandler: errorWebsocketHandler 
+        const errorApp = new BedrockAgentCoreApp({
+          invocationHandler: { process: async () => ({}) },
+          websocketHandler: errorWebsocketHandler,
         })
-        
+
         const errorFastify = (errorApp as any)._app
         await (errorApp as any)._registerPlugins()
         ;(errorApp as any)._setupRoutes()
@@ -563,26 +564,24 @@ describe('BedrockAgentCoreApp Integration', () => {
       })
 
       it('rejects non-websocket requests to /ws endpoint', async () => {
-        await request(server)
-          .get('/ws')
-          .expect(404) // WebSocket route not found for HTTP requests
+        await request(server).get('/ws').expect(404) // WebSocket route not found for HTTP requests
       })
 
       it('closes connection when handler throws error', async () => {
         const port = errorServer.address().port
         const ws = new WebSocket(`ws://localhost:${port}/ws`, {
           headers: {
-            'x-amzn-bedrock-agentcore-runtime-session-id': 'error-session'
-          }
+            'x-amzn-bedrock-agentcore-runtime-session-id': 'error-session',
+          },
         })
-        
+
         const closeEvent = await new Promise<{ code: number; reason: string }>((resolve, reject) => {
           ws.on('close', (code, reason) => {
             resolve({ code, reason: reason.toString() })
           })
           ws.on('error', reject)
         })
-        
+
         expect(closeEvent.code).toBe(1011) // Internal server error
       })
     })
@@ -597,18 +596,18 @@ describe('BedrockAgentCoreApp Integration', () => {
         return {
           message: 'Content parsed successfully!',
           sessionId: context.sessionId,
-          parsedData: req
+          parsedData: req,
         }
       }
 
       app = new BedrockAgentCoreApp({
-        invocationHandler: {process: handler},
+        invocationHandler: { process: handler },
         config: {
           contentTypeParsers: [
             {
               // Async parser for XML content
               contentType: 'application/xml',
-              parser: async (request: any, body: any) => {
+              parser: async (_request: any, body: any) => {
                 const content = body as string
                 return {
                   type: 'xml',
@@ -621,11 +620,11 @@ describe('BedrockAgentCoreApp Integration', () => {
             {
               // Async parser for JSON with validation
               contentType: 'application/custom-json',
-              parser: async (request: any, body: any) => {
+              parser: async (_request: any, body: any) => {
                 const content = body as string
 
                 // Simulate async validation (e.g., schema validation, external API call)
-                await new Promise(resolve => setTimeout(resolve, 10))
+                await new Promise((resolve) => setTimeout(resolve, 10))
 
                 try {
                   const parsed = JSON.parse(content)
@@ -643,7 +642,7 @@ describe('BedrockAgentCoreApp Integration', () => {
             {
               // Async parser for binary data
               contentType: 'application/octet-stream',
-              parser: async (request: any, body: any) => {
+              parser: async (_request: any, body: any) => {
                 const buffer = body as Buffer
                 return {
                   type: 'binary',
@@ -656,7 +655,7 @@ describe('BedrockAgentCoreApp Integration', () => {
             {
               // Parser that throws an error for testing error handling
               contentType: 'application/error-test',
-              parser: async (request: any, body: any) => {
+              parser: async (_request: any, _body: any) => {
                 throw new Error('Parser intentionally failed')
               },
               parseAs: 'string',
@@ -664,18 +663,18 @@ describe('BedrockAgentCoreApp Integration', () => {
             {
               // Callback-based parser for CSV content
               contentType: 'text/csv',
-              parser: (request: any, body: any, done: any) => {
+              parser: (_request: any, body: any, done: any) => {
                 try {
                   const content = (body as string).trim()
                   if (!content) {
                     done(null, { type: 'csv', headers: [], rows: [], rowCount: 0, parsed: true })
                     return
                   }
-                  
+
                   const lines = content.split('\n')
                   const headers = lines[0]?.split(',') || []
-                  const rows = lines.slice(1).map(line => line.split(','))
-                  
+                  const rows = lines.slice(1).map((line) => line.split(','))
+
                   done(null, { type: 'csv', headers, rows, rowCount: rows.length, parsed: true })
                 } catch (error) {
                   done(error instanceof Error ? error : new Error('CSV parsing failed'))
@@ -686,7 +685,7 @@ describe('BedrockAgentCoreApp Integration', () => {
             {
               // Callback-based parser that calls done with error
               contentType: 'application/callback-error-test',
-              parser: (request: any, body: any, done: any) => {
+              parser: (_request: any, _body: any, done: any) => {
                 // Simulate some processing then call done with error
                 done(new Error('Callback parser intentionally failed'))
               },
@@ -721,7 +720,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-xml')
           .send(xmlContent)
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.body.message).toBe('Content parsed successfully!')
             expect(res.body.sessionId).toBe('test-session-xml')
             expect(res.body.parsedData).toEqual({
@@ -739,7 +738,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-xml-empty')
           .send('')
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.body.parsedData).toEqual({
               type: 'xml',
               content: '',
@@ -755,7 +754,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           name: 'John Doe',
           age: 30,
           city: 'New York',
-          hobbies: ['reading', 'coding', 'hiking']
+          hobbies: ['reading', 'coding', 'hiking'],
         }
 
         await request(fastify.server)
@@ -764,7 +763,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-json')
           .send(JSON.stringify(jsonData))
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.body.message).toBe('Content parsed successfully!')
             expect(res.body.sessionId).toBe('test-session-json')
             expect(res.body.parsedData).toEqual({
@@ -784,7 +783,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-invalid-json')
           .send(invalidJson)
           .expect(500)
-          .expect(function(res) {
+          .expect(function (res) {
             // Fastify wraps parser errors with generic "Internal Server Error"
             expect(res.body.error).toBeDefined()
             expect(typeof res.body.error).toBe('string')
@@ -798,7 +797,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-json-empty')
           .send('{}')
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.body.parsedData).toEqual({
               type: 'custom-json',
               data: {},
@@ -818,7 +817,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-binary')
           .send(binaryData)
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.body.message).toBe('Content parsed successfully!')
             expect(res.body.sessionId).toBe('test-session-binary')
             expect(res.body.parsedData).toEqual({
@@ -838,7 +837,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-binary-empty')
           .send(emptyBuffer)
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.body.parsedData).toEqual({
               type: 'binary',
               size: 0,
@@ -857,7 +856,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-binary-large')
           .send(largeBuffer)
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.body.parsedData).toEqual({
               type: 'binary',
               size: 1024,
@@ -877,7 +876,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-default-json')
           .send(jsonData)
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.body.message).toBe('Content parsed successfully!')
             expect(res.body.parsedData).toEqual(jsonData)
           })
@@ -892,7 +891,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-text')
           .send(textData)
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.body.message).toBe('Content parsed successfully!')
             expect(res.body.parsedData).toBe(textData)
           })
@@ -907,7 +906,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-error')
           .send('test content')
           .expect(500)
-          .expect(function(res) {
+          .expect(function (res) {
             // Fastify wraps parser errors with generic "Internal Server Error"
             expect(res.body.error).toBeDefined()
             expect(typeof res.body.error).toBe('string')
@@ -921,13 +920,12 @@ describe('BedrockAgentCoreApp Integration', () => {
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-callback-error')
           .send('test content')
           .expect(500)
-          .expect(function(res) {
+          .expect(function (res) {
             // Fastify wraps parser errors with generic "Internal Server Error"
             expect(res.body.error).toBeDefined()
             expect(typeof res.body.error).toBe('string')
           })
       })
-    
 
       it('handles unsupported content type gracefully', async () => {
         await request(fastify.server)
@@ -936,7 +934,7 @@ describe('BedrockAgentCoreApp Integration', () => {
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-unsupported')
           .send('some content')
           .expect(415) // Fastify returns 415 for unsupported media types
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.body.error).toBeDefined()
             expect(res.body.message).toContain('Unsupported Media Type')
           })
@@ -956,7 +954,7 @@ Bob Johnson,35,Chicago`
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-csv')
           .send(csvContent)
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.body.message).toBe('Content parsed successfully!')
             expect(res.body.sessionId).toBe('test-session-csv')
             expect(res.body.parsedData).toEqual({
@@ -965,7 +963,7 @@ Bob Johnson,35,Chicago`
               rows: [
                 ['John Doe', '30', 'New York'],
                 ['Jane Smith', '25', 'Los Angeles'],
-                ['Bob Johnson', '35', 'Chicago']
+                ['Bob Johnson', '35', 'Chicago'],
               ],
               rowCount: 3,
               parsed: true,
@@ -980,7 +978,7 @@ Bob Johnson,35,Chicago`
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-csv-empty')
           .send('')
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.body.parsedData).toEqual({
               type: 'csv',
               headers: [],
@@ -1000,7 +998,7 @@ Bob Johnson,35,Chicago`
           .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session-csv-header-only')
           .send(csvContent)
           .expect(200)
-          .expect(function(res) {
+          .expect(function (res) {
             expect(res.body.parsedData).toEqual({
               type: 'csv',
               headers: ['name', 'age', 'city'],
@@ -1024,7 +1022,7 @@ Bob Johnson,35,Chicago`
         return { success: true, context }
       }
 
-      testApp = new BedrockAgentCoreApp({ invocationHandler: { process: handler }} )
+      testApp = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       testFastify = (testApp as any)._app
       await (testApp as any)._registerPlugins()
       ;(testApp as any)._setupRoutes()
@@ -1169,7 +1167,7 @@ Bob Johnson,35,Chicago`
         socket.send(JSON.stringify({ type: 'connected', sessionId: context.sessionId }))
       }
 
-      const wsTestApp = new BedrockAgentCoreApp({ invocationHandler: {process:wsHandler}, websocketHandler })
+      const wsTestApp = new BedrockAgentCoreApp({ invocationHandler: { process: wsHandler }, websocketHandler })
       const wsFastify = (wsTestApp as any)._app
       await (wsTestApp as any)._registerPlugins()
       ;(wsTestApp as any)._setupRoutes()
@@ -1187,8 +1185,8 @@ Bob Johnson,35,Chicago`
         for (let i = 0; i < numConnections; i++) {
           const ws = new WebSocket(`ws://localhost:${port}/ws`, {
             headers: {
-              'x-amzn-bedrock-agentcore-runtime-session-id': `ws-session-${i}`
-            }
+              'x-amzn-bedrock-agentcore-runtime-session-id': `ws-session-${i}`,
+            },
           })
           connections.push(ws)
 
@@ -1211,7 +1209,7 @@ Bob Johnson,35,Chicago`
         })
 
         // Close all connections
-        connections.forEach(ws => ws.close())
+        connections.forEach((ws) => ws.close())
       } finally {
         await new Promise<void>((resolve) => {
           wsServer.close(() => resolve())
@@ -1221,7 +1219,7 @@ Bob Johnson,35,Chicago`
 
     it('handles mixed HTTP and WebSocket traffic concurrently', async () => {
       const mixedHandler: InvocationHandler = async (req: any, context) => {
-        await new Promise(resolve => setTimeout(resolve, 20))
+        await new Promise((resolve) => setTimeout(resolve, 20))
         return { type: 'http', sessionId: context.sessionId }
       }
 
@@ -1229,9 +1227,9 @@ Bob Johnson,35,Chicago`
         socket.send(JSON.stringify({ type: 'ws', sessionId: context.sessionId }))
       }
 
-      const mixedApp = new BedrockAgentCoreApp({ 
-        invocationHandler: {process: mixedHandler}, 
-        websocketHandler: mixedWsHandler 
+      const mixedApp = new BedrockAgentCoreApp({
+        invocationHandler: { process: mixedHandler },
+        websocketHandler: mixedWsHandler,
       })
       const mixedFastify = (mixedApp as any)._app
       await (mixedApp as any)._registerPlugins()
@@ -1251,7 +1249,7 @@ Bob Johnson,35,Chicago`
               .post('/invocations')
               .set('x-amzn-bedrock-agentcore-runtime-session-id', `http-${i}`)
               .send({})
-              .then(res => ({ source: 'http', body: res.body }))
+              .then((res) => ({ source: 'http', body: res.body }))
           )
         }
 
@@ -1259,8 +1257,8 @@ Bob Johnson,35,Chicago`
         for (let i = 0; i < 3; i++) {
           const ws = new WebSocket(`ws://localhost:${port}/ws`, {
             headers: {
-              'x-amzn-bedrock-agentcore-runtime-session-id': `ws-${i}`
-            }
+              'x-amzn-bedrock-agentcore-runtime-session-id': `ws-${i}`,
+            },
           })
 
           const wsPromise = new Promise((resolve, reject) => {
@@ -1276,16 +1274,16 @@ Bob Johnson,35,Chicago`
         const results = await Promise.all(promises)
 
         // Verify HTTP responses
-        const httpResults = results.filter(r => r.source === 'http')
+        const httpResults = results.filter((r) => r.source === 'http')
         expect(httpResults).toHaveLength(3)
-        httpResults.forEach(r => {
+        httpResults.forEach((r) => {
           expect(r.body.type).toBe('http')
         })
 
         // Verify WebSocket responses
-        const wsResults = results.filter(r => r.source === 'ws')
+        const wsResults = results.filter((r) => r.source === 'ws')
         expect(wsResults).toHaveLength(3)
-        wsResults.forEach(r => {
+        wsResults.forEach((r) => {
           expect(r.body.type).toBe('ws')
         })
       } finally {

@@ -5,11 +5,12 @@ import tsdoc from 'eslint-plugin-tsdoc'
 
 export default [
   {
-    ignores: ['**/.next/**', '**/node_modules/**', '**/dist/**', '**/__tests__/**', '**/next-env.d.ts'],
+    ignores: ['**/.next/**', '**/node_modules/**', '**/dist/**', '**/next-env.d.ts'],
   },
   eslint.configs.recommended,
   {
     files: ['src/**/*.ts'],
+    ignores: ['src/**/__tests__/**'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
@@ -38,7 +39,7 @@ export default [
     },
   },
   {
-    files: ['src/**/__tests__/**/*.ts', 'examples/**/*.ts'],
+    files: ['src/**/__tests__/**/*.ts', 'tests_integ/**/*.ts'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
@@ -49,6 +50,9 @@ export default [
         process: 'readonly',
         console: 'readonly',
         fetch: 'readonly',
+        setTimeout: 'readonly',
+        Buffer: 'readonly',
+        URL: 'readonly',
       },
     },
     plugins: {

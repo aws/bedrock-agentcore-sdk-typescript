@@ -94,9 +94,7 @@ describe('CodeInterpreter Integration Tests', () => {
       const testInterpreter = new CodeInterpreter({ region: testRegion })
       await testInterpreter.startSession({ sessionName: 'test-session' })
 
-      await expect(testInterpreter.startSession({ sessionName: 'another-session' })).rejects.toThrow(
-        /already active/
-      )
+      await expect(testInterpreter.startSession({ sessionName: 'another-session' })).rejects.toThrow(/already active/)
 
       await testInterpreter.stopSession()
     }, 30000)

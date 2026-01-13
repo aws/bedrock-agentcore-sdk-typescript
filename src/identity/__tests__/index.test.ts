@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { IdentityClient } from '../client.js'
 import { withAccessToken, withApiKey } from '../index.js'
-import type { OAuth2TokenRequest, ApiKeyRequest, OAuth2WrapperConfig, ApiKeyWrapperConfig } from '../index.js'
 
 describe('Identity Module Exports', () => {
   let originalRegion: string | undefined

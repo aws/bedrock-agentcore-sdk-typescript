@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { z } from 'zod'
-import type { FastifyPluginAsync } from 'fastify'
 import type { InvocationHandler, WebSocketHandler } from '../types.js'
 import { BedrockAgentCoreApp } from '../app.js'
 
@@ -44,26 +43,26 @@ describe('BedrockAgentCoreApp', () => {
 
   describe('constructor', () => {
     it('creates instance with handler', () => {
-      const handler: InvocationHandler = async (request, context) => 'test response'
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       expect(app).toBeDefined()
     })
 
     it('creates instance with synchronous handler', () => {
-      const handler: InvocationHandler = (request, context) => 'sync response'
+      const handler: InvocationHandler = (_request, _context) => 'sync response'
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       expect(app).toBeDefined()
     })
 
     it('creates instance with websocket handler', () => {
-      const handler: InvocationHandler = async (request, context) => 'test response'
-      const websocketHandler: WebSocketHandler = async (socket, context) => {}
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
+      const websocketHandler: WebSocketHandler = async (_socket, _context) => {}
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler }, websocketHandler })
       expect(app).toBeDefined()
     })
 
     it('creates instance with handler and logging config', () => {
-      const handler: InvocationHandler = async (request, context) => 'test response'
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
       const app = new BedrockAgentCoreApp({
         invocationHandler: { process: handler },
         config: {
@@ -74,19 +73,19 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('initializes Fastify app', () => {
-      const handler: InvocationHandler = async (request, context) => 'test response'
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
       new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       expect(Fastify).toHaveBeenCalled()
     })
 
     it('configures logger with default settings when no config provided', () => {
-      const handler: InvocationHandler = async (request, context) => 'test response'
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
       new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       expect(Fastify).toHaveBeenCalledWith({ logger: true })
     })
 
     it('configures logger with custom level', () => {
-      const handler: InvocationHandler = async (request, context) => 'test response'
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
       new BedrockAgentCoreApp({
         invocationHandler: { process: handler },
         config: {
@@ -97,7 +96,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('disables logger when logging is disabled', () => {
-      const handler: InvocationHandler = async (request, context) => 'test response'
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
       new BedrockAgentCoreApp({
         invocationHandler: { process: handler },
         config: {
@@ -108,7 +107,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('uses info level as default when level not specified', () => {
-      const handler: InvocationHandler = async (request, context) => 'test response'
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
       new BedrockAgentCoreApp({
         invocationHandler: { process: handler },
         config: {
@@ -119,7 +118,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('throws error when handler passed as bare function', () => {
-      const handler: InvocationHandler = async (request, context) => 'test'
+      const handler: InvocationHandler = async (_request, _context) => 'test'
 
       expect(() => {
         new BedrockAgentCoreApp(handler as any)
@@ -141,7 +140,7 @@ describe('BedrockAgentCoreApp', () => {
 
   describe('routes setup', () => {
     it('registers GET /ping route', () => {
-      const handler: InvocationHandler = async (request, context) => 'test response'
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       const mockApp = app['_app'] as any
 
@@ -151,7 +150,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('registers POST /invocations route', () => {
-      const handler: InvocationHandler = async (request, context) => 'test response'
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       const mockApp = app['_app'] as any
 
@@ -161,8 +160,8 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('registers GET /ws route when websocket handler provided', () => {
-      const handler: InvocationHandler = async (request, context) => 'test response'
-      const websocketHandler: WebSocketHandler = async (socket, context) => {}
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
+      const websocketHandler: WebSocketHandler = async (_socket, _context) => {}
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler }, websocketHandler })
       const mockApp = app['_app'] as any
 
@@ -172,7 +171,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('does not register GET /ws route when no websocket handler', () => {
-      const handler: InvocationHandler = async (request, context) => 'test response'
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       const mockApp = app['_app'] as any
 
@@ -185,7 +184,7 @@ describe('BedrockAgentCoreApp', () => {
 
   describe('health check handler', () => {
     it('defaults returns correct response format', async () => {
-      const handler: InvocationHandler = async (request, context) => 'test response'
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       const mockApp = app['_app'] as any
 
@@ -205,7 +204,7 @@ describe('BedrockAgentCoreApp', () => {
 
   describe('invocations handler', () => {
     it('invokes handler with request and context', async () => {
-      const mockHandler = vi.fn(async (request, context) => ({ result: 'success' }))
+      const mockHandler = vi.fn(async (_request, _context) => ({ result: 'success' }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
@@ -253,7 +252,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('extracts workloadAccessToken from header when present', async () => {
-      const mockHandler = vi.fn(async (request, context) => ({ token: context.workloadAccessToken }))
+      const mockHandler = vi.fn(async (_request, context) => ({ token: context.workloadAccessToken }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
@@ -279,7 +278,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('sets workloadAccessToken to undefined when header not present', async () => {
-      const mockHandler = vi.fn(async (request, context) => ({ hasToken: !!context.workloadAccessToken }))
+      const mockHandler = vi.fn(async (_request, context) => ({ hasToken: !!context.workloadAccessToken }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
@@ -366,7 +365,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('sends correct SSE events for streaming response', async () => {
-      const mockHandler = vi.fn(async function* (req, context) {
+      const mockHandler = vi.fn(async function* (_req, context) {
         yield { event: 'start', sessionId: context.sessionId }
         yield { event: 'data', content: 'streaming test' }
         yield { event: 'end' }
@@ -425,7 +424,7 @@ describe('BedrockAgentCoreApp', () => {
 
     it('validates request with zod schema', async () => {
       const requestSchema = z.object({ message: z.string() })
-      const mockHandler = vi.fn(async (request, context) => ({ result: 'success' }))
+      const mockHandler = vi.fn(async (_request, _context) => ({ result: 'success' }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler, requestSchema } })
       const mockApp = app['_app'] as any
 
@@ -453,7 +452,7 @@ describe('BedrockAgentCoreApp', () => {
           return email.includes('@')
         }, 'Invalid email'),
       })
-      const mockHandler = vi.fn(async (request, context) => ({ result: 'success' }))
+      const mockHandler = vi.fn(async (_request, _context) => ({ result: 'success' }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler, requestSchema } })
       const mockApp = app['_app'] as any
 
@@ -475,7 +474,7 @@ describe('BedrockAgentCoreApp', () => {
 
     it('validates invalid request with zod schema', async () => {
       const requestSchema = z.object({ message: z.string() })
-      const mockHandler = vi.fn(async (request, context) => ({ result: 'success' }))
+      const mockHandler = vi.fn(async (_request, _context) => ({ result: 'success' }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler, requestSchema } })
       const mockApp = app['_app'] as any
 
@@ -502,8 +501,8 @@ describe('BedrockAgentCoreApp', () => {
 
   describe('websocket handler', () => {
     it('handles websocket connection with valid handler', async () => {
-      const handler: InvocationHandler = async (request, context) => 'test response'
-      const websocketHandler = vi.fn(async (socket, context) => {})
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
+      const websocketHandler = vi.fn(async (_socket, _context) => {})
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler }, websocketHandler })
       const mockApp = app['_app'] as any
 
@@ -529,7 +528,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('handles websocket errors and closes connection', async () => {
-      const handler: InvocationHandler = async (request, context) => 'test response'
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
       const websocketHandler = vi.fn(async () => {
         throw new Error('WebSocket handler error')
       })
@@ -551,7 +550,7 @@ describe('BedrockAgentCoreApp', () => {
 
   describe('task tracking', () => {
     it('adds and completes tasks', () => {
-      const handler: InvocationHandler = async (request, context) => 'test'
+      const handler: InvocationHandler = async (_request, _context) => 'test'
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
 
       const taskId = app.addAsyncTask('test-task')
@@ -562,7 +561,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('returns HealthyBusy with active tasks', () => {
-      const handler: InvocationHandler = async (request, context) => 'test'
+      const handler: InvocationHandler = async (_request, _context) => 'test'
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
 
       expect(app.getCurrentPingStatus()).toBe('Healthy')
@@ -572,11 +571,11 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('tracks multiple tasks', () => {
-      const handler: InvocationHandler = async (request, context) => 'test'
+      const handler: InvocationHandler = async (_request, _context) => 'test'
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
 
       const id1 = app.addAsyncTask('task1')
-      const id2 = app.addAsyncTask('task2')
+      const _id2 = app.addAsyncTask('task2')
 
       const info = app.getAsyncTaskInfo()
       expect(info.activeCount).toBe(2)
@@ -589,7 +588,7 @@ describe('BedrockAgentCoreApp', () => {
 
   describe('status priority', () => {
     it('custom handler used when provided', () => {
-      const handler: InvocationHandler = async (request, context) => 'test'
+      const handler: InvocationHandler = async (_request, _context) => 'test'
       const app = new BedrockAgentCoreApp({
         invocationHandler: { process: handler },
         pingHandler: () => 'HealthyBusy',
@@ -599,7 +598,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('automatic status when no handler', () => {
-      const handler: InvocationHandler = async (request, context) => 'test'
+      const handler: InvocationHandler = async (_request, _context) => 'test'
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
 
       expect(app.getCurrentPingStatus()).toBe('Healthy')
@@ -609,7 +608,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('custom handler overrides automatic status', () => {
-      const handler: InvocationHandler = async (request, context) => 'test'
+      const handler: InvocationHandler = async (_request, _context) => 'test'
       const app = new BedrockAgentCoreApp({
         invocationHandler: { process: handler },
         pingHandler: () => 'Healthy',
@@ -623,7 +622,7 @@ describe('BedrockAgentCoreApp', () => {
 
   describe('asyncTask decorator', () => {
     it('tracks task during execution', async () => {
-      const handler: InvocationHandler = async (request, context) => 'test'
+      const handler: InvocationHandler = async (_request, _context) => 'test'
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
 
       let statusDuringExecution: string | undefined
@@ -640,7 +639,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('removes task even on error', async () => {
-      const handler: InvocationHandler = async (request, context) => 'test'
+      const handler: InvocationHandler = async (_request, _context) => 'test'
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
 
       const fn = app.asyncTask(async () => {
@@ -652,7 +651,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('preserves function name', () => {
-      const handler: InvocationHandler = async (request, context) => 'test'
+      const handler: InvocationHandler = async (_request, _context) => 'test'
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
 
       async function myFunction() {
@@ -664,7 +663,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('throws error for non-async functions', () => {
-      const handler: InvocationHandler = async (request, context) => 'test'
+      const handler: InvocationHandler = async (_request, _context) => 'test'
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
 
       const syncFunction = () => {
@@ -677,7 +676,7 @@ describe('BedrockAgentCoreApp', () => {
 
   describe('request context extraction', () => {
     it('provides auto-generated requestId when header missing', async () => {
-      const mockHandler = vi.fn(async (request, context) => ({ requestId: context.requestId }))
+      const mockHandler = vi.fn(async (_request, context) => ({ requestId: context.requestId }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
@@ -702,7 +701,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('extracts requestId from header when present', async () => {
-      const mockHandler = vi.fn(async (request, context) => ({ requestId: context.requestId }))
+      const mockHandler = vi.fn(async (_request, context) => ({ requestId: context.requestId }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
@@ -725,7 +724,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('extracts oauth2CallbackUrl when present', async () => {
-      const mockHandler = vi.fn(async (request, context) => ({ url: context.oauth2CallbackUrl }))
+      const mockHandler = vi.fn(async (_request, context) => ({ url: context.oauth2CallbackUrl }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
@@ -751,7 +750,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('returns undefined oauth2CallbackUrl when header is missing', async () => {
-      const mockHandler = vi.fn(async (request, context) => ({ url: context.oauth2CallbackUrl }))
+      const mockHandler = vi.fn(async (_request, context) => ({ url: context.oauth2CallbackUrl }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
@@ -771,7 +770,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('includes Authorization header in filtered headers', async () => {
-      const mockHandler = vi.fn(async (request, context) => ({ headers: context.headers }))
+      const mockHandler = vi.fn(async (_request, context) => ({ headers: context.headers }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
@@ -799,7 +798,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('includes custom headers in filtered headers', async () => {
-      const mockHandler = vi.fn(async (request, context) => ({ headers: context.headers }))
+      const mockHandler = vi.fn(async (_request, context) => ({ headers: context.headers }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
@@ -827,7 +826,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('excludes non-custom headers from filtered headers', async () => {
-      const mockHandler = vi.fn(async (request, context) => ({ headers: context.headers }))
+      const mockHandler = vi.fn(async (_request, context) => ({ headers: context.headers }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
@@ -855,7 +854,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('includes multiple custom headers', async () => {
-      const mockHandler = vi.fn(async (request, context) => ({ headers: context.headers }))
+      const mockHandler = vi.fn(async (_request, context) => ({ headers: context.headers }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
@@ -887,7 +886,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('handles Authorization header case-insensitively', async () => {
-      const mockHandler = vi.fn(async (request, context) => ({ headers: context.headers }))
+      const mockHandler = vi.fn(async (_request, context) => ({ headers: context.headers }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
@@ -915,7 +914,7 @@ describe('BedrockAgentCoreApp', () => {
     })
 
     it('maintains backward compatibility with existing handlers', async () => {
-      const mockHandler = vi.fn(async (request, context) => {
+      const mockHandler = vi.fn(async (_request, context) => {
         expect(context.sessionId).toBeDefined()
         return 'test'
       })
