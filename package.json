@@ -26,6 +26,10 @@
       "import": "./dist/src/tools/browser/integrations/vercel-ai/index.js",
       "types": "./dist/src/tools/browser/integrations/vercel-ai/index.d.ts"
     },
+    "./browser/strands": {
+      "import": "./dist/src/tools/browser/integrations/strands/index.js",
+      "types": "./dist/src/tools/browser/integrations/strands/index.d.ts"
+    },
     "./code-interpreter": {
       "import": "./dist/src/tools/code-interpreter/index.js",
       "types": "./dist/src/tools/code-interpreter/index.d.ts"
@@ -33,6 +37,10 @@
     "./code-interpreter/vercel-ai": {
       "import": "./dist/src/tools/code-interpreter/integrations/vercel-ai/index.js",
       "types": "./dist/src/tools/code-interpreter/integrations/vercel-ai/index.d.ts"
+    },
+    "./code-interpreter/strands": {
+      "import": "./dist/src/tools/code-interpreter/integrations/strands/index.js",
+      "types": "./dist/src/tools/code-interpreter/integrations/strands/index.d.ts"
     },
     "./runtime": {
       "import": "./dist/src/runtime/index.js",
@@ -77,6 +85,7 @@
   "devDependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.0-beta.67",
     "@aws-sdk/client-cognito-identity-provider": "^3.957.0",
+    "@strands-agents/sdk": "^0.1.4",
     "@types/express": "^4.17.0",
     "@types/node": "^24.10.4",
     "@types/supertest": "^6.0.3",
@@ -123,6 +132,7 @@
     "zod": "^4.1.13"
   },
   "peerDependencies": {
+    "@strands-agents/sdk": ">=0.1.0",
     "ai": ">=6.0.0-beta",
     "playwright": ">=1.56.0"
   },
@@ -131,6 +141,9 @@
       "optional": true
     },
     "playwright": {
+      "optional": true
+    },
+    "@strands-agents/sdk": {
       "optional": true
     }
   }
