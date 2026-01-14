@@ -74,7 +74,7 @@ export type WebSocketHandler = (socket: WebSocket, context: RequestContext) => P
  * @example
  * ```typescript
  * const app = new BedrockAgentCoreApp({
- *   handler: myHandler,
+ *   invocationHandler: { process: myHandler },
  *   config: {
  *     contentTypeParsers: [
  *       {

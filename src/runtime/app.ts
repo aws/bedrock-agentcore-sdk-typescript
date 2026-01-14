@@ -42,7 +42,7 @@ const fastifyWebsocket = require('@fastify/websocket')
  * const app = new BedrockAgentCoreApp({
  *   invocationHandler: {
  *     requestSchema: z.object({ message: z.string() }),
- *     handler: async (request, context) => {
+ *     process: async (request, context) => {
  *       console.log(`Processing request with session ${context.sessionId}`)
  *       return `Hello ${request.message}!`
  *     }
