@@ -17,7 +17,7 @@ import { createExecuteCommandTool } from './execute-command-tool.js'
  *
  * @example
  * ```typescript
- * import { CodeInterpreterTools } from '@bedrock-agentcore/sdk/code-interpreter/vercel-ai'
+ * import { CodeInterpreterTools } from 'bedrock-agentcore/code-interpreter/vercel-ai'
  * import { ToolLoopAgent } from 'ai'
  * import { bedrock } from '@ai-sdk/amazon-bedrock'
  *

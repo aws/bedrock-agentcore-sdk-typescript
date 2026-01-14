@@ -23,7 +23,7 @@ import { createEvaluateTool } from './evaluate-tool.js'
  *
  * @example
  * ```typescript
- * import { BrowserTools } from '@bedrock-agentcore/sdk/browser/vercel-ai'
+ * import { BrowserTools } from 'bedrock-agentcore/browser/vercel-ai'
  * import { ToolLoopAgent } from 'ai'
  * import { bedrock } from '@ai-sdk/amazon-bedrock'
  *
