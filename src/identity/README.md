@@ -23,20 +23,24 @@ The Identity SDK is designed to work with BedrockAgentCoreApp. The runtime autom
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
 import { withAccessToken } from 'bedrock-agentcore/identity'
 
-const app = new BedrockAgentCoreApp({ handler: async (request, context) => {
-  const githubTool = withAccessToken({
-    workloadIdentityToken: context.workloadAccessToken!,
-    providerName: 'github',
-    scopes: ['repo'],
-    authFlow: 'M2M',
-  })(async (query: string, token: string) => {
-    // Token is automatically fetched and injected
-    return fetch(`https://api.github.com/search/repositories?q=${query}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }).then((r) => r.json())
-  })
+const app = new BedrockAgentCoreApp({
+  invocationHandler: {
+    process: async (request, context) => {
+      const githubTool = withAccessToken({
+        workloadIdentityToken: context.workloadAccessToken!,
+        providerName: 'github',
+        scopes: ['repo'],
+        authFlow: 'M2M',
+      })(async (query: string, token: string) => {
+        // Token is automatically fetched and injected
+        return fetch(`https://api.github.com/search/repositories?q=${query}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).then((r) => r.json())
+      })
 
-  return await githubTool(request.query)
+      return await githubTool(request.query)
+    },
+  },
 })
 
 app.run()
@@ -48,20 +52,24 @@ app.run()
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
 import { withApiKey } from 'bedrock-agentcore/identity'
 
-const app = new BedrockAgentCoreApp({ handler: async (request, context) => {
-  const openaiTool = withApiKey({
-    workloadIdentityToken: context.workloadAccessToken!,
-    providerName: 'openai',
-  })(async (prompt: string, apiKey: string) => {
-    // API key is automatically fetched and injected
-    return fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'gpt-4', messages: [{ role: 'user', content: prompt }] }),
-    }).then((r) => r.json())
-  })
+const app = new BedrockAgentCoreApp({
+  invocationHandler: {
+    process: async (request, context) => {
+      const openaiTool = withApiKey({
+        workloadIdentityToken: context.workloadAccessToken!,
+        providerName: 'openai',
+      })(async (prompt: string, apiKey: string) => {
+        // API key is automatically fetched and injected
+        return fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'gpt-4', messages: [{ role: 'user', content: prompt }] }),
+        }).then((r) => r.json())
+      })
 
-  return await openaiTool(request.prompt)
+      return await openaiTool(request.prompt)
+    },
+  },
 })
 
 app.run()
