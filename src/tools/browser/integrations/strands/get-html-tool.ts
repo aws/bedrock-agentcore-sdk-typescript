@@ -5,6 +5,8 @@ import type { PlaywrightBrowser } from '../playwright/client.js'
 /**
  * Creates a Strands SDK tool for getting HTML content.
  * Thin wrapper around PlaywrightBrowser.getHtml()
+ *
+ * @experimental
  */
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type, @typescript-eslint/explicit-module-boundary-types
 export function createGetHtmlTool(client: PlaywrightBrowser) {

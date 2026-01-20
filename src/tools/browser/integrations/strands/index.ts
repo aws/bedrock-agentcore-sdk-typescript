@@ -1,12 +1,18 @@
 /**
  * Strands SDK Browser Tool Integration
  *
+ * **⚠️ EXPERIMENTAL:** This integration uses the Strands TypeScript SDK, which is
+ * currently experimental and subject to breaking changes. See
+ * https://strandsagents.com/latest/documentation/docs/user-guide/quickstart/typescript/
+ *
  * This module provides Strands SDK integration for the AWS Bedrock AgentCore Browser service.
  * It follows the three-layer architecture:
  * - User Application Layer (Strands SDK)
  * - Integration Layer (this module - thin wrappers)
  * - Base Client Layer (BrowserClient - all browser logic)
  * - AWS SDK Layer (\@aws-sdk/client-bedrock-agentcore)
+ *
+ * @experimental
  */
 
 export { BrowserTools } from './tools.js'

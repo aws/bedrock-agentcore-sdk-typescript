@@ -10,9 +10,10 @@ import type { CodeInterpreter } from '../../client.js'
  * @param interpreter - CodeInterpreter instance
  * @returns Strands SDK tool for file operations
  *
+ * @experimental
  * @example
  * ```typescript
- * import { createFileOperationsTool } from 'bedrock-agentcore/code-interpreter/strands'
+ * import { createFileOperationsTool } from 'bedrock-agentcore/experimental/code-interpreter/strands'
  * import { CodeInterpreter } from 'bedrock-agentcore/code-interpreter'
  *
  * const interpreter = new CodeInterpreter({ region: 'us-west-2' })
