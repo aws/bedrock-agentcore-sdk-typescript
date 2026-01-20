@@ -218,6 +218,12 @@ describe('BedrockAgentCoreApp', () => {
           'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123',
           'content-type': 'application/json',
         },
+        log: {
+          info: vi.fn(),
+          error: vi.fn(),
+          warn: vi.fn(),
+          debug: vi.fn(),
+        },
       }
       const mockReply = { send: vi.fn(), status: vi.fn().mockReturnThis() }
       await invocationHandler(mockReq, mockReply)
@@ -229,6 +235,7 @@ describe('BedrockAgentCoreApp', () => {
           workloadAccessToken: undefined,
           requestId: expect.any(String),
           oauth2CallbackUrl: undefined,
+          log: expect.any(Object),
         }
       )
     })
@@ -530,6 +537,7 @@ describe('BedrockAgentCoreApp', () => {
         workloadAccessToken: undefined,
         requestId: expect.any(String),
         oauth2CallbackUrl: undefined,
+        log: expect.any(Object),
       })
     })
 

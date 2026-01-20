@@ -1,5 +1,5 @@
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
-import type { FastifyBodyParser, FastifyContentTypeParser } from 'fastify'
+import type { FastifyBodyParser, FastifyContentTypeParser, FastifyBaseLogger } from 'fastify'
 import { Buffer } from 'buffer'
 import { z } from 'zod'
 
@@ -43,6 +43,12 @@ export interface RequestContext {
    * Extracted from OAuth2CallbackUrl header when present.
    */
   oauth2CallbackUrl?: string | undefined
+
+  /**
+   * Request-scoped logger with automatic context (request ID, method, URL).
+   * Handlers should use this for all logging to ensure proper request correlation.
+   */
+  log: FastifyBaseLogger
 }
 
 /**

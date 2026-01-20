@@ -470,7 +470,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
    * Extracts request context from the incoming request.
    *
    * @param request - Fastify request object
-   * @returns Request context with sessionId and headers
+   * @returns Request context with sessionId, headers, and request-scoped logger
    */
   private _extractContext(request: FastifyRequest): RequestContext {
     // Extract sessionId from AWS header or body
@@ -512,6 +512,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
       workloadAccessToken,
       requestId,
       oauth2CallbackUrl,
+      log: request.log,
     }
   }
 }
