@@ -89,7 +89,10 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
     // Configure Fastify logger based on BedrockAgentCoreAppConfig
     const loggerConfig = this._getLoggerConfig()
 
-    this._app = Fastify({ logger: loggerConfig })
+    this._app = Fastify({
+      logger: loggerConfig,
+      disableRequestLogging: this._config.logging?.disableRequestLogging ?? ((req): boolean => req.url === '/ping'),
+    })
   }
 
   /**
@@ -287,15 +290,17 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
     }
 
     // If logging is explicitly disabled, return false
-    if (loggingConfig?.enabled === false) {
+    if (loggingConfig.enabled === false) {
       return false
     }
 
-    // Build logger configuration object
-    const loggerConfig: { level: string } = {
-      level: loggingConfig.level || 'info',
+    // If no options provided, use default level
+    if (!loggingConfig.options) {
+      return { level: 'info' }
     }
-    return loggerConfig
+
+    // Return FastifyLoggerOptions directly
+    return loggingConfig.options
   }
 
   /**

@@ -81,7 +81,10 @@ describe('BedrockAgentCoreApp', () => {
     it('configures logger with default settings when no config provided', () => {
       const handler: InvocationHandler = async (_request, _context) => 'test response'
       new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
-      expect(Fastify).toHaveBeenCalledWith({ logger: true })
+      expect(Fastify).toHaveBeenCalledWith({
+        logger: true,
+        disableRequestLogging: expect.any(Function),
+      })
     })
 
     it('configures logger with custom level', () => {
@@ -89,10 +92,13 @@ describe('BedrockAgentCoreApp', () => {
       new BedrockAgentCoreApp({
         invocationHandler: { process: handler },
         config: {
-          logging: { enabled: true, level: 'debug' },
+          logging: { enabled: true, options: { level: 'debug' } },
         },
       })
-      expect(Fastify).toHaveBeenCalledWith({ logger: { level: 'debug' } })
+      expect(Fastify).toHaveBeenCalledWith({
+        logger: { level: 'debug' },
+        disableRequestLogging: expect.any(Function),
+      })
     })
 
     it('disables logger when logging is disabled', () => {
@@ -103,7 +109,10 @@ describe('BedrockAgentCoreApp', () => {
           logging: { enabled: false },
         },
       })
-      expect(Fastify).toHaveBeenCalledWith({ logger: false })
+      expect(Fastify).toHaveBeenCalledWith({
+        logger: false,
+        disableRequestLogging: expect.any(Function),
+      })
     })
 
     it('uses info level as default when level not specified', () => {
@@ -114,7 +123,10 @@ describe('BedrockAgentCoreApp', () => {
           logging: { enabled: true },
         },
       })
-      expect(Fastify).toHaveBeenCalledWith({ logger: { level: 'info' } })
+      expect(Fastify).toHaveBeenCalledWith({
+        logger: { level: 'info' },
+        disableRequestLogging: expect.any(Function),
+      })
     })
 
     it('throws error when handler passed as bare function', () => {
