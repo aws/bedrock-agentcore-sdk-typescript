@@ -106,7 +106,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
         return this._app.listen({ port: PORT, host: '0.0.0.0' })
       })
       .then(() => {
-        console.log(`BedrockAgentCoreApp server listening on port ${PORT}`)
+        this._app.log.info(`Server listening on port ${PORT}`)
       })
       .catch((error: Error) => {
         this._app.log.error(error)
@@ -427,7 +427,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
           data: { error: errorMessage },
         })
       } else {
-        console.error(`Error during streaming SSE events: ${error}`)
+        this._app.log.error(error, 'Error during streaming SSE events')
         throw new Error('Error during streaming SSE events')
       }
     } finally {
@@ -449,17 +449,18 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
       // Extract context from WebSocket request
       const context = this._extractContext(request)
 
-      this._app.log.info(`WebSocket connection established for session: ${context.sessionId}`)
+      request.log.info({ sessionId: context.sessionId }, 'WebSocket connection established')
 
       // Call the user's WebSocket handler (guaranteed to exist since route is conditionally registered)
       await this._websocketHandler!(connection, context)
     } catch (error) {
-      this._app.log.error(`error=<${error instanceof Error ? error.message : String(error)}> | websocket handler error`)
+      request.log.error({ error: error instanceof Error ? error.message : String(error) }, 'WebSocket handler error')
       try {
         connection.close(1011, 'Internal server error')
       } catch (closeError) {
-        this._app.log.error(
-          `close_error=<${closeError instanceof Error ? closeError.message : String(closeError)}> | error closing websocket`
+        request.log.error(
+          { closeError: closeError instanceof Error ? closeError.message : String(closeError) },
+          'Error closing WebSocket'
         )
       }
     }

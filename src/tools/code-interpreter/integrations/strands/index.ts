@@ -2,7 +2,7 @@
  * Strands SDK integrations for AWS Bedrock AgentCore CodeInterpreter.
  *
  * **⚠️ EXPERIMENTAL:** This integration uses the Strands TypeScript SDK, which is
- * currently experimental and subject to breaking changes. 
+ * currently experimental and subject to breaking changes.
  *
  * This module provides a unified CodeInterpreterTools class that simplifies
  * integration with Strands SDK Agent.

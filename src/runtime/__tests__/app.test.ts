@@ -514,6 +514,12 @@ describe('BedrockAgentCoreApp', () => {
       const mockSocket = { socket: { close: vi.fn() } }
       const mockReq = {
         headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'ws-session-123' },
+        log: {
+          info: vi.fn(),
+          error: vi.fn(),
+          warn: vi.fn(),
+          debug: vi.fn(),
+        },
       }
 
       await wsHandler(mockSocket, mockReq)
@@ -540,6 +546,12 @@ describe('BedrockAgentCoreApp', () => {
       const mockSocket = { close: vi.fn() }
       const mockReq = {
         headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'ws-session-123' },
+        log: {
+          info: vi.fn(),
+          error: vi.fn(),
+          warn: vi.fn(),
+          debug: vi.fn(),
+        },
       }
 
       await app['_handleWebSocket'](mockSocket as any, mockReq as any)
