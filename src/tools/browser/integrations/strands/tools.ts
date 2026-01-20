@@ -23,7 +23,7 @@ import { createEvaluateTool } from './evaluate-tool.js'
  *
  * @example
  * ```typescript
- * import { BrowserTools } from 'bedrock-agentcore/browser/strands'
+ * import { BrowserTools } from 'bedrock-agentcore/experimental/browser/strands'
  * import { Agent, BedrockModel } from '@strands-agents/sdk'
  *
  * // Create tools instance

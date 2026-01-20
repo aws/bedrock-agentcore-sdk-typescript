@@ -5,6 +5,8 @@ import type { PlaywrightBrowser } from '../playwright/client.js'
 /**
  * Creates a Strands SDK tool for clicking elements.
  * Thin wrapper around PlaywrightBrowser.click()
+ *
+ * @experimental
  */
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type, @typescript-eslint/explicit-module-boundary-types
 export function createClickTool(client: PlaywrightBrowser) {

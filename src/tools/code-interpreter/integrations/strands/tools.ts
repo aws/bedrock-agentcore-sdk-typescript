@@ -17,7 +17,7 @@ import { createExecuteCommandTool } from './execute-command-tool.js'
  *
  * @example
  * ```typescript
- * import { CodeInterpreterTools } from 'bedrock-agentcore/code-interpreter/strands'
+ * import { CodeInterpreterTools } from 'bedrock-agentcore/experimental/code-interpreter/strands'
  * import { Agent, BedrockModel } from '@strands-agents/sdk'
  *
  * // Create tools instance

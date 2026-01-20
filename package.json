@@ -26,7 +26,7 @@
       "import": "./dist/src/tools/browser/integrations/vercel-ai/index.js",
       "types": "./dist/src/tools/browser/integrations/vercel-ai/index.d.ts"
     },
-    "./browser/strands": {
+    "./experimental/browser/strands": {
       "import": "./dist/src/tools/browser/integrations/strands/index.js",
       "types": "./dist/src/tools/browser/integrations/strands/index.d.ts"
     },
@@ -38,7 +38,7 @@
       "import": "./dist/src/tools/code-interpreter/integrations/vercel-ai/index.js",
       "types": "./dist/src/tools/code-interpreter/integrations/vercel-ai/index.d.ts"
     },
-    "./code-interpreter/strands": {
+    "./experimental/code-interpreter/strands": {
       "import": "./dist/src/tools/code-interpreter/integrations/strands/index.js",
       "types": "./dist/src/tools/code-interpreter/integrations/strands/index.d.ts"
     },

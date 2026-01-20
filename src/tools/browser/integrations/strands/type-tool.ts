@@ -5,6 +5,8 @@ import type { PlaywrightBrowser } from '../playwright/client.js'
 /**
  * Creates a Strands SDK tool for typing text.
  * Thin wrapper around PlaywrightBrowser.type()
+ *
+ * @experimental
  */
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type, @typescript-eslint/explicit-module-boundary-types
 export function createTypeTool(client: PlaywrightBrowser) {
