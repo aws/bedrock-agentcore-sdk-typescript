@@ -373,10 +373,9 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
           })
         }
       } else {
-        // Return JSON response (not streaming)
-        // If SSE was initialized due to Accept header but we're not streaming,
-        // explicitly set content-type to application/json
-        if (reply.sse) {
+        // Return non-streaming response
+        // If SSE mode is active but result is not a string/buffer, set JSON content-type
+        if (reply.sse && typeof result !== 'string' && !Buffer.isBuffer(result)) {
           await reply.type('application/json').send(result)
         } else {
           await reply.send(result)
