@@ -161,8 +161,8 @@ describe('Identity Integration Tests', () => {
   describe('HOF Wrappers', () => {
     it('wraps function with withAccessToken', async () => {
       // Set region for wrapper's internal IdentityClient
-      process.env.AWS_REGION = process.env.AWS_REGION || 'us-west-2';
-      
+      process.env.AWS_REGION = process.env.AWS_REGION || 'us-west-2'
+
       const wrappedFn = withAccessToken({
         workloadIdentityToken: 'test-workload-token',
         providerName: 'test-provider',
@@ -178,8 +178,8 @@ describe('Identity Integration Tests', () => {
 
     it('wraps function with withApiKey', async () => {
       // Set region for wrapper's internal IdentityClient
-      process.env.AWS_REGION = process.env.AWS_REGION || 'us-west-2';
-      
+      process.env.AWS_REGION = process.env.AWS_REGION || 'us-west-2'
+
       const wrappedFn = withApiKey({
         workloadIdentityToken: 'test-workload-token',
         providerName: 'test-provider',

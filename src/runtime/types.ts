@@ -1,5 +1,11 @@
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
-import type { FastifyBodyParser, FastifyContentTypeParser } from 'fastify'
+import type {
+  FastifyBodyParser,
+  FastifyContentTypeParser,
+  FastifyBaseLogger,
+  FastifyLoggerOptions,
+  FastifyRequest,
+} from 'fastify'
 import { Buffer } from 'buffer'
 import { z } from 'zod'
 
@@ -43,6 +49,12 @@ export interface RequestContext {
    * Extracted from OAuth2CallbackUrl header when present.
    */
   oauth2CallbackUrl?: string | undefined
+
+  /**
+   * Request-scoped logger with automatic context (request ID, method, URL).
+   * Handlers should use this for all logging to ensure proper request correlation.
+   */
+  log: FastifyBaseLogger
 }
 
 /**
@@ -136,8 +148,83 @@ export interface BedrockAgentCoreAppConfig {
    * Logging configuration options.
    */
   logging?: {
+    /**
+     * Enable or disable logging.
+     * Defaults to true.
+     */
     enabled?: boolean
-    level?: 'debug' | 'info' | 'warn' | 'error'
+
+    /**
+     * Disable automatic request/response logging.
+     *
+     * Can be:
+     * - `boolean` - Disable for all requests
+     * - `function` - Conditionally disable based on request properties
+     *
+     * When enabled, Fastify won't log "incoming request" and "request completed" messages.
+     * Manual logging with context.log still works.
+     *
+     * Defaults to `(req) =\> req.url === '/ping'` - disables logging for health checks
+     *
+     * @example
+     * ```typescript
+     * // Disable for all requests
+     * disableRequestLogging: true
+     *
+     * // Disable only for health checks (default behavior)
+     * disableRequestLogging: (request) => request.url === '/ping'
+     *
+     * // Disable for multiple endpoints
+     * disableRequestLogging: (request) => {
+     *   return ['/ping', '/health', '/metrics'].includes(request.url)
+     * }
+     *
+     * // Disable for load balancer health checks
+     * disableRequestLogging: (request) => {
+     *   return request.headers['user-agent']?.includes('ELB-HealthChecker')
+     * }
+     * ```
+     */
+    disableRequestLogging?: boolean | ((request: FastifyRequest) => boolean)
+
+    /**
+     * Fastify logger options.
+     *
+     * Configure log level, custom serializers, streams, and more.
+     *
+     * @see https://fastify.dev/docs/latest/Reference/Server/#logger
+     *
+     * @example
+     * ```typescript
+     * // Set log level
+     * logging: {
+     *   options: { level: 'debug' }
+     * }
+     *
+     * // Custom stream (e.g., CloudWatch)
+     * logging: {
+     *   options: {
+     *     level: 'info',
+     *     stream: cloudWatchStream
+     *   }
+     * }
+     *
+     * // Filter sensitive data
+     * logging: {
+     *   options: {
+     *     level: 'info',
+     *     serializers: {
+     *       req: (req) => ({
+     *         method: req.method,
+     *         url: req.url
+     *         // Authorization header excluded
+     *       })
+     *     }
+     *   }
+     * }
+     * ```
+     */
+    options?: FastifyLoggerOptions
   }
 
   /**

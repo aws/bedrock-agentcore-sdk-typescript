@@ -81,7 +81,10 @@ describe('BedrockAgentCoreApp', () => {
     it('configures logger with default settings when no config provided', () => {
       const handler: InvocationHandler = async (_request, _context) => 'test response'
       new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
-      expect(Fastify).toHaveBeenCalledWith({ logger: true })
+      expect(Fastify).toHaveBeenCalledWith({
+        logger: true,
+        disableRequestLogging: expect.any(Function),
+      })
     })
 
     it('configures logger with custom level', () => {
@@ -89,10 +92,13 @@ describe('BedrockAgentCoreApp', () => {
       new BedrockAgentCoreApp({
         invocationHandler: { process: handler },
         config: {
-          logging: { enabled: true, level: 'debug' },
+          logging: { enabled: true, options: { level: 'debug' } },
         },
       })
-      expect(Fastify).toHaveBeenCalledWith({ logger: { level: 'debug' } })
+      expect(Fastify).toHaveBeenCalledWith({
+        logger: { level: 'debug' },
+        disableRequestLogging: expect.any(Function),
+      })
     })
 
     it('disables logger when logging is disabled', () => {
@@ -103,7 +109,10 @@ describe('BedrockAgentCoreApp', () => {
           logging: { enabled: false },
         },
       })
-      expect(Fastify).toHaveBeenCalledWith({ logger: false })
+      expect(Fastify).toHaveBeenCalledWith({
+        logger: false,
+        disableRequestLogging: expect.any(Function),
+      })
     })
 
     it('uses info level as default when level not specified', () => {
@@ -114,7 +123,10 @@ describe('BedrockAgentCoreApp', () => {
           logging: { enabled: true },
         },
       })
-      expect(Fastify).toHaveBeenCalledWith({ logger: { level: 'info' } })
+      expect(Fastify).toHaveBeenCalledWith({
+        logger: { level: 'info' },
+        disableRequestLogging: expect.any(Function),
+      })
     })
 
     it('throws error when handler passed as bare function', () => {
@@ -218,6 +230,12 @@ describe('BedrockAgentCoreApp', () => {
           'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123',
           'content-type': 'application/json',
         },
+        log: {
+          info: vi.fn(),
+          error: vi.fn(),
+          warn: vi.fn(),
+          debug: vi.fn(),
+        },
       }
       const mockReply = { send: vi.fn(), status: vi.fn().mockReturnThis() }
       await invocationHandler(mockReq, mockReply)
@@ -229,6 +247,7 @@ describe('BedrockAgentCoreApp', () => {
           workloadAccessToken: undefined,
           requestId: expect.any(String),
           oauth2CallbackUrl: undefined,
+          log: expect.any(Object),
         }
       )
     })
@@ -514,6 +533,12 @@ describe('BedrockAgentCoreApp', () => {
       const mockSocket = { socket: { close: vi.fn() } }
       const mockReq = {
         headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'ws-session-123' },
+        log: {
+          info: vi.fn(),
+          error: vi.fn(),
+          warn: vi.fn(),
+          debug: vi.fn(),
+        },
       }
 
       await wsHandler(mockSocket, mockReq)
@@ -524,6 +549,7 @@ describe('BedrockAgentCoreApp', () => {
         workloadAccessToken: undefined,
         requestId: expect.any(String),
         oauth2CallbackUrl: undefined,
+        log: expect.any(Object),
       })
     })
 
@@ -540,6 +566,12 @@ describe('BedrockAgentCoreApp', () => {
       const mockSocket = { close: vi.fn() }
       const mockReq = {
         headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'ws-session-123' },
+        log: {
+          info: vi.fn(),
+          error: vi.fn(),
+          warn: vi.fn(),
+          debug: vi.fn(),
+        },
       }
 
       await app['_handleWebSocket'](mockSocket as any, mockReq as any)
