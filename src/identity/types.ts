@@ -42,8 +42,12 @@ export interface ApiKeyRequest {
  * Configuration for withAccessToken HOF wrapper
  */
 export interface OAuth2WrapperConfig {
-  /** Workload identity token for authentication */
-  workloadIdentityToken: string
+  /**
+   * Workload identity token for authentication.
+   * Optional - if not provided, automatically falls back to context.workloadAccessToken
+   * when called within a request handler. If neither is available, an error is thrown.
+   */
+  workloadIdentityToken?: string | undefined
   /** Name of the credential provider */
   providerName: string
   /** OAuth2 scopes to request */
@@ -54,7 +58,11 @@ export interface OAuth2WrapperConfig {
   onAuthUrl?: ((url: string) => void | Promise<void>) | undefined
   /** Force re-authentication even if token exists in vault */
   forceAuthentication?: boolean | undefined
-  /** OAuth2 callback URL (must be pre-registered) */
+  /**
+   * OAuth2 callback URL (must be pre-registered).
+   * Optional - if not provided, automatically falls back to context.oauth2CallbackUrl
+   * when called within a request handler.
+   */
   callbackUrl?: string | undefined
   /** Custom state for callback validation */
   customState?: string | undefined
@@ -66,8 +74,12 @@ export interface OAuth2WrapperConfig {
  * Configuration for withApiKey HOF wrapper
  */
 export interface ApiKeyWrapperConfig {
-  /** Workload identity token for authentication */
-  workloadIdentityToken: string
+  /**
+   * Workload identity token for authentication.
+   * Optional - if not provided, automatically falls back to context.workloadAccessToken
+   * when called within a request handler. If neither is available, an error is thrown.
+   */
+  workloadIdentityToken?: string | undefined
   /** Name of the credential provider */
   providerName: string
 }

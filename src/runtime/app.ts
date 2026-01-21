@@ -25,6 +25,7 @@ import type {
   AsyncTaskStatus,
   HealthStatus,
 } from './types.js'
+import { runWithContext } from './context.js'
 
 const require = createRequire(import.meta.url)
 const fastifySse = require('@fastify/sse')
@@ -351,8 +352,10 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
         handlerRequest = request.body as z.infer<TSchema>
       }
 
-      // Invoke handler
-      const result = await this._handler.process(handlerRequest, context)
+      // Invoke handler with context
+      const result = await runWithContext(context, async () => {
+        return await this._handler.process(handlerRequest, context)
+      })
 
       // Check if result is an async generator (streaming response)
       if (this._isAsyncGenerator(result)) {
@@ -451,8 +454,10 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
 
       this._app.log.info(`WebSocket connection established for session: ${context.sessionId}`)
 
-      // Call the user's WebSocket handler (guaranteed to exist since route is conditionally registered)
-      await this._websocketHandler!(connection, context)
+      // Call the user's WebSocket handler with context (guaranteed to exist since route is conditionally registered)
+      await runWithContext(context, async () => {
+        return await this._websocketHandler!(connection, context)
+      })
     } catch (error) {
       this._app.log.error(`error=<${error instanceof Error ? error.message : String(error)}> | websocket handler error`)
       try {

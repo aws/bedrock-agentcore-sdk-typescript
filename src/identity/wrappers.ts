@@ -4,6 +4,7 @@
 
 import { IdentityClient } from './client.js'
 import type { OAuth2WrapperConfig, ApiKeyWrapperConfig } from './types.js'
+import { getContext } from '../runtime/context.js'
 
 /**
  * Helper type to extract all parameters except the last one (the token/apiKey)
@@ -39,14 +40,25 @@ export function withAccessToken(config: OAuth2WrapperConfig) {
     fn: (...args: TParams) => Promise<TReturn>
   ): ((...args: InitParams<TParams>) => Promise<TReturn>) => {
     return async (...args: InitParams<TParams>): Promise<TReturn> => {
+      // Get context and fallback to it if config doesn't provide token
+      const context = getContext()
+      const workloadToken = config.workloadIdentityToken ?? context?.workloadAccessToken
+
+      if (!workloadToken) {
+        throw new Error(
+          'workloadIdentityToken not provided and no context available. ' +
+            'Either pass workloadIdentityToken in config or call from within a request handler.'
+        )
+      }
+
       const token = await client.getOAuth2Token({
         providerName: config.providerName,
         scopes: config.scopes,
         authFlow: config.authFlow,
-        workloadIdentityToken: config.workloadIdentityToken,
+        workloadIdentityToken: workloadToken,
         onAuthUrl: config.onAuthUrl,
         forceAuthentication: config.forceAuthentication,
-        callbackUrl: config.callbackUrl,
+        callbackUrl: config.callbackUrl ?? context?.oauth2CallbackUrl,
         customState: config.customState,
         customParameters: config.customParameters,
       })
@@ -84,9 +96,20 @@ export function withApiKey(config: ApiKeyWrapperConfig) {
     fn: (...args: TParams) => Promise<TReturn>
   ): ((...args: InitParams<TParams>) => Promise<TReturn>) => {
     return async (...args: InitParams<TParams>): Promise<TReturn> => {
+      // Get context and fallback to it if config doesn't provide token
+      const context = getContext()
+      const workloadToken = config.workloadIdentityToken ?? context?.workloadAccessToken
+
+      if (!workloadToken) {
+        throw new Error(
+          'workloadIdentityToken not provided and no context available. ' +
+            'Either pass workloadIdentityToken in config or call from within a request handler.'
+        )
+      }
+
       const apiKey = await client.getApiKey({
         providerName: config.providerName,
-        workloadIdentityToken: config.workloadIdentityToken,
+        workloadIdentityToken: workloadToken,
       })
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

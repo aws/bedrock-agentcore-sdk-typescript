@@ -41,7 +41,7 @@ describe('withAccessToken', () => {
 
   it('throws error if workload token not provided', async () => {
     const wrappedFn = withAccessToken({
-      workloadIdentityToken: '', // Empty token
+      // No workloadIdentityToken provided and no context available
       providerName: 'github',
       scopes: ['repo'],
       authFlow: 'M2M',
@@ -49,9 +49,8 @@ describe('withAccessToken', () => {
       return { input, token }
     })
 
-    // Should fail when trying to call API with empty token
-    vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockRejectedValue(new Error('Invalid token'))
-    await expect(wrappedFn('test')).rejects.toThrow('Invalid token')
+    // Should fail with context error when no token and no context
+    await expect(wrappedFn('test')).rejects.toThrow('workloadIdentityToken not provided and no context available')
   })
 
   it('passes all configuration options to getOAuth2Token', async () => {
@@ -149,16 +148,15 @@ describe('withApiKey', () => {
   })
 
   it('throws error if workload token not provided', async () => {
-    vi.spyOn(IdentityClient.prototype, 'getApiKey').mockRejectedValue(new Error('Invalid token'))
-
     const wrappedFn = withApiKey({
-      workloadIdentityToken: '',
+      // No workloadIdentityToken provided and no context available
       providerName: 'openai',
     })(async (input: string, apiKey: string) => {
       return { input, apiKey }
     })
 
-    await expect(wrappedFn('test')).rejects.toThrow('Invalid token')
+    // Should fail with context error when no token and no context
+    await expect(wrappedFn('test')).rejects.toThrow('workloadIdentityToken not provided and no context available')
   })
 
   it('preserves function parameter types', async () => {
