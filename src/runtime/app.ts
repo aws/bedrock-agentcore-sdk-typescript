@@ -374,10 +374,38 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
         }
       } else {
         // Return non-streaming response
-        // If SSE mode is active but result is not a string/buffer, set JSON content-type
-        if (reply.sse && typeof result !== 'string' && !Buffer.isBuffer(result)) {
-          await reply.type('application/json').send(result)
+        // If SSE mode is active, we need to handle content negotiation
+        if (reply.sse) {
+          const acceptHeader = request.headers.accept || ''
+
+          // Check if client can accept a non-SSE response
+          // Accept header with multiple types means client can handle any of them
+          const canAcceptNonSSE =
+            acceptHeader.includes('application/json') ||
+            acceptHeader.includes('*/*') ||
+            acceptHeader.includes('application/*')
+
+          if (canAcceptNonSSE) {
+            // Determine content-type based on result type
+            // Let Fastify's normal serialization rules apply
+            if (typeof result === 'string') {
+              await reply.type('text/plain').send(result)
+            } else if (Buffer.isBuffer(result)) {
+              await reply.type('application/octet-stream').send(result)
+            } else {
+              // Object - use JSON
+              await reply.type('application/json').send(result)
+            }
+          } else {
+            // Client only accepts text/event-stream but we have non-streaming data
+            await reply.status(406).send({
+              error: 'Not Acceptable',
+              message:
+                'Non-streaming response cannot be returned as text/event-stream. Client must accept application/json, text/plain, or */* for non-streaming responses.',
+            })
+          }
         } else {
+          // SSE mode not active, send normally
           await reply.send(result)
         }
       }
