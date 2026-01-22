@@ -441,6 +441,126 @@ describe('BedrockAgentCoreApp', () => {
       expect(mockSSE.close).toHaveBeenCalled()
     })
 
+    it('returns JSON for non-streaming response when SSE mode active with Accept: application/json', async () => {
+      const mockHandler = vi.fn(async () => ({ result: 'success' }))
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
+      const mockApp = app['_app'] as any
+
+      app['_setupRoutes']()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2]
+      const mockReq = {
+        body: {},
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123',
+          accept: 'text/event-stream, application/json',
+        },
+      }
+      const mockSSE = { keepAlive: vi.fn(), isConnected: true, send: vi.fn(), close: vi.fn() }
+      const mockReply = {
+        sse: mockSSE,
+        type: vi.fn().mockReturnThis(),
+        send: vi.fn(),
+        status: vi.fn().mockReturnThis(),
+      }
+
+      await invocationHandler(mockReq, mockReply)
+
+      expect(mockReply.type).toHaveBeenCalledWith('application/json')
+      expect(mockReply.send).toHaveBeenCalledWith({ result: 'success' })
+    })
+
+    it('returns text/plain for non-streaming response when SSE mode active with Accept: text/plain', async () => {
+      const mockHandler = vi.fn(async () => ({ result: 'success' }))
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
+      const mockApp = app['_app'] as any
+
+      app['_setupRoutes']()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2]
+      const mockReq = {
+        body: {},
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123',
+          accept: 'text/plain',
+        },
+      }
+      const mockSSE = { keepAlive: vi.fn(), isConnected: true, send: vi.fn(), close: vi.fn() }
+      const mockReply = {
+        sse: mockSSE,
+        type: vi.fn().mockReturnThis(),
+        send: vi.fn(),
+        status: vi.fn().mockReturnThis(),
+      }
+
+      await invocationHandler(mockReq, mockReply)
+
+      expect(mockReply.type).toHaveBeenCalledWith('text/plain')
+      expect(mockReply.send).toHaveBeenCalledWith('{"result":"success"}')
+    })
+
+    it('returns application/octet-stream for non-streaming response when SSE mode active', async () => {
+      const mockHandler = vi.fn(async () => ({ result: 'success' }))
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
+      const mockApp = app['_app'] as any
+
+      app['_setupRoutes']()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2]
+      const mockReq = {
+        body: {},
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123',
+          accept: 'application/octet-stream',
+        },
+      }
+      const mockSSE = { keepAlive: vi.fn(), isConnected: true, send: vi.fn(), close: vi.fn() }
+      const mockReply = {
+        sse: mockSSE,
+        type: vi.fn().mockReturnThis(),
+        send: vi.fn(),
+        status: vi.fn().mockReturnThis(),
+      }
+
+      await invocationHandler(mockReq, mockReply)
+
+      expect(mockReply.type).toHaveBeenCalledWith('application/octet-stream')
+      expect(mockReply.send).toHaveBeenCalledWith(Buffer.from('{"result":"success"}'))
+    })
+
+    it('defaults to JSON for non-streaming response when SSE mode active with unknown Accept header', async () => {
+      const mockHandler = vi.fn(async () => ({ result: 'success' }))
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
+      const mockApp = app['_app'] as any
+
+      app['_setupRoutes']()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2]
+      const mockReq = {
+        body: {},
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123',
+          accept: 'application/xml',
+        },
+      }
+      const mockSSE = { keepAlive: vi.fn(), isConnected: true, send: vi.fn(), close: vi.fn() }
+      const mockReply = {
+        sse: mockSSE,
+        type: vi.fn().mockReturnThis(),
+        send: vi.fn(),
+        status: vi.fn().mockReturnThis(),
+      }
+
+      await invocationHandler(mockReq, mockReply)
+
+      expect(mockReply.type).toHaveBeenCalledWith('application/json')
+      expect(mockReply.send).toHaveBeenCalledWith({ result: 'success' })
+    })
+
     it('validates request with zod schema', async () => {
       const requestSchema = z.object({ message: z.string() })
       const mockHandler = vi.fn(async (_request, _context) => ({ result: 'success' }))

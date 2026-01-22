@@ -365,7 +365,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
       // Check if result is an async generator (streaming response)
       if (this._isAsyncGenerator(result)) {
         if (reply.sse) {
-          // Wrap streaming in context so tool callbacks can access it during iteration
+          // Wrap streaming in context so getContext() works during iteration
           await runWithContext(context, async () => {
             await this._handleStreamingResponse(reply, result)
           })
