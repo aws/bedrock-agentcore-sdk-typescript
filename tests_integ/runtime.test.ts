@@ -411,6 +411,38 @@ describe('BedrockAgentCoreApp Integration', () => {
             expect(res.text).toContain('data: {"message":"async message"}')
           })
       })
+
+      it('preserves AsyncLocalStorage context during streaming iteration', async () => {
+        let contextDuringIteration: any = null
+
+        const contextHandler: InvocationHandler = async function* (_req, _context) {
+          const { getContext } = await import('../src/runtime/context.js')
+          yield { event: 'start', data: {} }
+          contextDuringIteration = getContext()
+          yield { event: 'end', data: {} }
+        }
+
+        const contextApp = new BedrockAgentCoreApp({ invocationHandler: { process: contextHandler } })
+        const contextFastify = (contextApp as any)._app
+        await (contextApp as any)._registerPlugins()
+        ;(contextApp as any)._setupRoutes()
+        await contextFastify.ready()
+
+        const res = await request(contextFastify.server)
+          .post('/invocations')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'context-session')
+          .set('workloadaccesstoken', 'test-token-123')
+          .set('accept', 'text/event-stream')
+          .send({ message: 'test' })
+          .expect(200)
+
+        // Verify the streaming response completed (proves iteration happened)
+        expect(res.text).toContain('event: end')
+
+        expect(contextDuringIteration).toBeDefined()
+        expect(contextDuringIteration?.sessionId).toBe('context-session')
+        expect(contextDuringIteration?.workloadAccessToken).toBe('test-token-123')
+      })
     })
   })
 

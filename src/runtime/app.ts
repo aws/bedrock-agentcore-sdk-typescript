@@ -365,7 +365,10 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
       // Check if result is an async generator (streaming response)
       if (this._isAsyncGenerator(result)) {
         if (reply.sse) {
-          await this._handleStreamingResponse(reply, result)
+          // Wrap streaming in context so getContext() works during iteration
+          await runWithContext(context, async () => {
+            await this._handleStreamingResponse(reply, result)
+          })
         } else {
           await reply.status(406).send({
             error:
@@ -373,8 +376,26 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
           })
         }
       } else {
-        // Return JSON response
-        await reply.send(result)
+        // Return non-streaming response
+        if (reply.sse) {
+          // SSE mode active but not streaming - respond based on client's Accept header
+          const acceptHeader = request.headers.accept || 'application/json'
+
+          if (acceptHeader.includes('application/json') || acceptHeader.includes('*/*')) {
+            await reply.type('application/json').send(result)
+          } else if (acceptHeader.includes('text/plain')) {
+            const text = typeof result === 'string' ? result : JSON.stringify(result)
+            await reply.type('text/plain').send(text)
+          } else if (acceptHeader.includes('application/octet-stream')) {
+            const buffer = Buffer.isBuffer(result) ? result : Buffer.from(JSON.stringify(result))
+            await reply.type('application/octet-stream').send(buffer)
+          } else {
+            // Default to JSON
+            await reply.type('application/json').send(result)
+          }
+        } else {
+          await reply.send(result)
+        }
       }
     } catch (error) {
       // Handle errors
