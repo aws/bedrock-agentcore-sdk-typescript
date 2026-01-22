@@ -8,7 +8,7 @@
  * ```typescript
  * import { ToolLoopAgent } from 'ai'
  * import { bedrock } from '@ai-sdk/amazon-bedrock'
- * import { CodeInterpreterTools } from '@bedrock-agentcore/sdk/code-interpreter/vercel-ai'
+ * import { CodeInterpreterTools } from 'bedrock-agentcore/code-interpreter/vercel-ai'
  *
  * const codeInterpreter = new CodeInterpreterTools({ region: 'us-west-2' })
  *

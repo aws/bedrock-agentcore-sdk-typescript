@@ -105,9 +105,12 @@ describe('BrowserTools', () => {
     it('navigate tool executes successfully', async () => {
       mockPlaywrightBrowser.navigate.mockResolvedValue(undefined)
 
-      const result = await browserTools.navigate.execute({
-        url: 'https://example.com',
-      })
+      const result = (await browserTools.navigate.execute!(
+        {
+          url: 'https://example.com',
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )) as { success: boolean; message: string }
 
       expect(result.success).toBe(true)
       expect(mockPlaywrightBrowser.navigate).toHaveBeenCalledWith({
@@ -118,9 +121,12 @@ describe('BrowserTools', () => {
     it('navigate tool handles errors', async () => {
       mockPlaywrightBrowser.navigate.mockRejectedValue(new Error('Navigation failed'))
 
-      const result = await browserTools.navigate.execute({
-        url: 'https://example.com',
-      })
+      const result = (await browserTools.navigate.execute!(
+        {
+          url: 'https://example.com',
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )) as { success: boolean; error: string }
 
       expect(result.success).toBe(false)
       expect(result.error).toBe('Navigation failed')
@@ -129,9 +135,12 @@ describe('BrowserTools', () => {
     it('click tool executes successfully', async () => {
       mockPlaywrightBrowser.click.mockResolvedValue(undefined)
 
-      const result = await browserTools.click.execute({
-        selector: 'button',
-      })
+      const result = (await browserTools.click.execute!(
+        {
+          selector: 'button',
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )) as { success: boolean; message: string }
 
       expect(result.success).toBe(true)
       expect(mockPlaywrightBrowser.click).toHaveBeenCalledWith({
@@ -142,12 +151,15 @@ describe('BrowserTools', () => {
     it('type tool executes with all parameters', async () => {
       mockPlaywrightBrowser.type.mockResolvedValue(undefined)
 
-      const result = await browserTools.type.execute({
-        selector: 'input',
-        text: 'hello',
-        delay: 100,
-        timeout: 5000,
-      })
+      const result = (await browserTools.type.execute!(
+        {
+          selector: 'input',
+          text: 'hello',
+          delay: 100,
+          timeout: 5000,
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )) as { success: boolean; message: string }
 
       expect(result.success).toBe(true)
       expect(mockPlaywrightBrowser.type).toHaveBeenCalledWith({
@@ -161,9 +173,12 @@ describe('BrowserTools', () => {
     it('getText tool executes successfully', async () => {
       mockPlaywrightBrowser.getText.mockResolvedValue('Hello World')
 
-      const result = await browserTools.getText.execute({
-        selector: 'h1',
-      })
+      const result = (await browserTools.getText.execute!(
+        {
+          selector: 'h1',
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )) as { success: boolean; text: string }
 
       expect(result.success).toBe(true)
       expect(result.text).toBe('Hello World')
@@ -172,9 +187,12 @@ describe('BrowserTools', () => {
     it('getHtml tool executes successfully', async () => {
       mockPlaywrightBrowser.getHtml.mockResolvedValue('<div>content</div>')
 
-      const result = await browserTools.getHtml.execute({
-        selector: '#main',
-      })
+      const result = (await browserTools.getHtml.execute!(
+        {
+          selector: '#main',
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )) as { success: boolean; html: string }
 
       expect(result.success).toBe(true)
       expect(result.html).toBe('<div>content</div>')
@@ -183,10 +201,13 @@ describe('BrowserTools', () => {
     it('screenshot tool returns base64', async () => {
       mockPlaywrightBrowser.screenshot.mockResolvedValue('base64string')
 
-      const result = await browserTools.screenshot.execute({
-        encoding: 'base64',
-        type: 'png',
-      })
+      const result = (await browserTools.screenshot.execute!(
+        {
+          encoding: 'base64',
+          type: 'png',
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )) as { success: boolean; screenshot: string }
 
       expect(result.success).toBe(true)
       expect(result.screenshot).toBe('base64string')
@@ -195,9 +216,12 @@ describe('BrowserTools', () => {
     it('evaluate tool executes JavaScript', async () => {
       mockPlaywrightBrowser.evaluate.mockResolvedValue({ title: 'Test' })
 
-      const result = await browserTools.evaluate.execute({
-        script: 'document.title',
-      })
+      const result = (await browserTools.evaluate.execute!(
+        {
+          script: 'document.title',
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )) as { success: boolean; result: any }
 
       expect(result.success).toBe(true)
       expect(result.result).toEqual({ title: 'Test' })
@@ -206,11 +230,14 @@ describe('BrowserTools', () => {
 
   describe('tool parameter filtering', () => {
     it('filters undefined parameters in navigate', async () => {
-      await browserTools.navigate.execute({
-        url: 'https://example.com',
-        waitUntil: undefined,
-        timeout: undefined,
-      })
+      await browserTools.navigate.execute!(
+        {
+          url: 'https://example.com',
+          waitUntil: undefined,
+          timeout: undefined,
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )
 
       expect(mockPlaywrightBrowser.navigate).toHaveBeenCalledWith({
         url: 'https://example.com',
@@ -218,11 +245,14 @@ describe('BrowserTools', () => {
     })
 
     it('includes defined optional parameters', async () => {
-      await browserTools.navigate.execute({
-        url: 'https://example.com',
-        waitUntil: 'load',
-        timeout: 30000,
-      })
+      await browserTools.navigate.execute!(
+        {
+          url: 'https://example.com',
+          waitUntil: 'load',
+          timeout: 30000,
+        },
+        { toolCallId: 'test-call', messages: [] }
+      )
 
       expect(mockPlaywrightBrowser.navigate).toHaveBeenCalledWith({
         url: 'https://example.com',

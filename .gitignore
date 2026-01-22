@@ -8,6 +8,7 @@ yarn-error.log*
 dist/
 build/
 *.tsbuildinfo
+*.tgz
 __pycache__
 .next/
 
@@ -34,3 +35,6 @@ Thumbs.db
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Project planning (not for repo)
+.kiro/

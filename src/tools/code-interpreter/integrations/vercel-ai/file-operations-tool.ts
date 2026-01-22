@@ -12,8 +12,8 @@ import type { CodeInterpreter } from '../../client.js'
  *
  * @example
  * ```typescript
- * import { createFileOperationsTool } from '@bedrock-agentcore/sdk/code-interpreter/vercel-ai'
- * import { CodeInterpreter } from '@bedrock-agentcore/sdk/code-interpreter'
+ * import { createFileOperationsTool } from 'bedrock-agentcore/code-interpreter/vercel-ai'
+ * import { CodeInterpreter } from 'bedrock-agentcore/code-interpreter'
  *
  * const interpreter = new CodeInterpreter({ region: 'us-west-2' })
  * const fileOpsTool = createFileOperationsTool(interpreter)

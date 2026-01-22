@@ -26,6 +26,10 @@
       "import": "./dist/src/tools/browser/integrations/vercel-ai/index.js",
       "types": "./dist/src/tools/browser/integrations/vercel-ai/index.d.ts"
     },
+    "./experimental/browser/strands": {
+      "import": "./dist/src/tools/browser/integrations/strands/index.js",
+      "types": "./dist/src/tools/browser/integrations/strands/index.d.ts"
+    },
     "./code-interpreter": {
       "import": "./dist/src/tools/code-interpreter/index.js",
       "types": "./dist/src/tools/code-interpreter/index.d.ts"
@@ -33,22 +37,37 @@
     "./code-interpreter/vercel-ai": {
       "import": "./dist/src/tools/code-interpreter/integrations/vercel-ai/index.js",
       "types": "./dist/src/tools/code-interpreter/integrations/vercel-ai/index.d.ts"
+    },
+    "./experimental/code-interpreter/strands": {
+      "import": "./dist/src/tools/code-interpreter/integrations/strands/index.js",
+      "types": "./dist/src/tools/code-interpreter/integrations/strands/index.d.ts"
+    },
+    "./runtime": {
+      "import": "./dist/src/runtime/index.js",
+      "types": "./dist/src/runtime/index.d.ts"
+    },
+    "./identity": {
+      "import": "./dist/src/identity/index.js",
+      "types": "./dist/src/identity/index.d.ts"
     }
   },
   "scripts": {
     "build": "tsc",
-    "check": "npm run lint && npm run format && npm run type-check && npm run test:coverage",
+    "check": "npm run lint && npm run format && npm run type-check:all && npm run test:coverage",
     "clean": "rm -rf node_modules dist package-lock.json",
     "test": "vitest run --project unit-node",
+    "test:all": "vitest run --project unit-node && vitest run --project integ",
+    "ci": "npm run lint && npm run format:check && npm run type-check:all && npm run build && npm run test:all",
     "test:watch": "vitest --project unit-node",
     "test:coverage": "vitest run --coverage --project unit-node",
-    "test:types": "vitest run --project types",
     "test:integ": "vitest run --project integ",
-    "lint": "eslint src examples",
-    "lint:fix": "eslint src examples --fix",
-    "format": "prettier --write src examples",
-    "format:check": "prettier --check src examples",
+    "lint": "eslint src tests_integ",
+    "lint:fix": "eslint src tests_integ --fix",
+    "format": "prettier --write src tests_integ",
+    "format:check": "prettier --check src tests_integ",
     "type-check": "tsc --noEmit",
+    "type-check:tests": "tsc --noEmit -p tsconfig.test.json",
+    "type-check:all": "npm run type-check && npm run type-check:tests",
     "type-check:watch": "tsc --noEmit --watch",
     "prepare": "npm run build && husky || true"
   },
@@ -65,7 +84,11 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.0-beta.67",
-    "@types/node": "^24.6.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.957.0",
+    "@strands-agents/sdk": "^0.1.4",
+    "@types/express": "^4.17.0",
+    "@types/node": "^24.10.4",
+    "@types/supertest": "^6.0.3",
     "@typescript-eslint/eslint-plugin": "^8.48.0",
     "@typescript-eslint/parser": "^8.0.0",
     "@vitest/coverage-v8": "^4.0.13",
@@ -74,8 +97,9 @@
     "eslint-plugin-tsdoc": "^0.5.0",
     "husky": "^9.1.7",
     "playwright": "^1.56.1",
-    "tsx": "^4.19.4",
     "prettier": "^3.0.0",
+    "supertest": "^7.1.4",
+    "tsx": "^4.19.4",
     "typescript": "^5.5.0",
     "vitest": "^4.0.8"
   },
@@ -92,14 +116,23 @@
   "homepage": "https://github.com/aws/bedrock-agentcore-sdk-typescript#readme",
   "dependencies": {
     "@aws-crypto/sha256-js": "^5.2.0",
-    "@aws-sdk/client-bedrock-agentcore": "^3.939.0",
+    "@aws-sdk/client-bedrock-agentcore": "^3.948.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "^3.948.0",
     "@aws-sdk/credential-providers": "^3.939.0",
+    "@aws-sdk/protocol-http": "^3.370.0",
+    "@aws-sdk/signature-v4": "^3.370.0",
+    "@fastify/sse": "^0.4.0",
+    "@fastify/websocket": "^11.0.1",
     "@smithy/protocol-http": "^5.3.5",
     "@smithy/signature-v4": "^5.3.5",
     "@smithy/util-utf8": "^4.2.0",
+    "@types/ws": "^8.18.1",
+    "fastify": "^5.7.1",
+    "ws": "^8.18.3",
     "zod": "^4.1.13"
   },
   "peerDependencies": {
+    "@strands-agents/sdk": ">=0.1.0",
     "ai": ">=6.0.0-beta",
     "playwright": ">=1.56.0"
   },
@@ -108,6 +141,9 @@
       "optional": true
     },
     "playwright": {
+      "optional": true
+    },
+    "@strands-agents/sdk": {
       "optional": true
     }
   }
