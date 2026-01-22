@@ -37,21 +37,17 @@ export function getContext(): RequestContext | undefined {
  * Run a function within a request context scope.
  * The context will be available via getContext() throughout the entire async call chain.
  *
+ * This function is internal to the runtime module and should not be used directly by customers.
+ * It is automatically called by BedrockAgentCoreApp to set up context for each request.
+ *
  * @param context - The request context to make available
  * @param fn - The function to execute within the context scope
  * @returns The return value of the function
- *
- * @example
- * ```typescript
- * import { runWithContext } from 'bedrock-agentcore/context'
- *
- * const context = { sessionId: 'session-123', headers: {} }
- * const result = await runWithContext(context, async () => {
- *   // Inside here, getContext() returns the context object
- *   return await someAsyncOperation()
- * })
- * ```
+ * @internal
  */
 export function runWithContext<T>(context: RequestContext, fn: () => T): T {
   return requestContextStorage.run(context, fn)
 }
+
+// Note: runWithContext is exported for use within the runtime module (app.ts)
+// but should not be re-exported from the public API (index.ts)
