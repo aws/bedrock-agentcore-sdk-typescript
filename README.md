@@ -57,7 +57,9 @@ const app = new BedrockAgentCoreApp({
     requestSchema: z.object({ prompt: z.string() }),
     process: async function* (request) {
       for await (const event of agent.stream(request.prompt)) {
-        if (event.delta?.text) yield { text: event.delta.text }
+        if (event.type === 'modelContentBlockDeltaEvent' && event.delta?.type === 'textDelta') {
+          yield { event: 'message', data: { text: event.delta.text } }
+        }
       }
     },
   },
