@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import {
   BedrockAgentCoreClient,
   StartCodeInterpreterSessionCommand,
@@ -448,7 +449,7 @@ export class CodeInterpreter {
         sessionId: this._session!.sessionId,
         name: 'listFiles',
         arguments: {
-          path: params?.path ?? '.',
+          directoryPath: params?.path ?? '.',
         },
       })
 
@@ -556,31 +557,43 @@ export class CodeInterpreter {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private _extractFromContentArray(content: any[]): string {
-    const parts: string[] = []
+    return content.map((item) => this._extractContentItem(item)).join('\n')
+  }
 
-    for (const item of content) {
-      if (item.type === 'text') {
-        // Direct text output
-        parts.push(item.text)
-      } else if (item.type === 'resource' && item.resource) {
-        // File content - extract text from nested resource object
-        if (item.resource.text) {
-          parts.push(item.resource.text)
-        } else {
-          // Resource without text - show metadata
-          parts.push(JSON.stringify(item.resource))
-        }
-      } else if (item.type === 'resource_link') {
-        // File metadata - format as human-readable string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _extractContentItem(item: any): string {
+    switch (item.type) {
+      case 'text':
+        return item.text
+      case 'resource':
+        return item.resource ? this._extractResourceContent(item.resource) : JSON.stringify(item)
+      case 'resource_link': {
         const { name, description, mimeType, uri } = item
         const meta = [name, description, mimeType].filter(Boolean).join(' - ')
-        parts.push(`${meta} (${uri})`)
-      } else {
-        // Unknown type - fallback to JSON
-        parts.push(JSON.stringify(item))
+        return `${meta} (${uri})`
       }
+      default:
+        return JSON.stringify(item)
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _extractResourceContent(resource: any): string {
+    if (resource.text) {
+      return resource.text
     }
 
-    return parts.join('\n')
+    if (resource.blob) {
+      const blob = resource.blob
+      const base64 =
+        blob instanceof Uint8Array || Buffer.isBuffer(blob) ? Buffer.from(blob).toString('base64') : String(blob)
+      return JSON.stringify({
+        uri: resource.uri,
+        mimeType: resource.mimeType,
+        blob: base64,
+      })
+    }
+
+    return JSON.stringify(resource)
   }
 }

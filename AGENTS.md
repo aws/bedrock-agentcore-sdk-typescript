@@ -1,6 +1,6 @@
-# AWS Bedrock AgentCore SDK TypeScript - SDK Development Guide
+# Agent Development Guide - AWS Bedrock AgentCore TypeScript SDK
 
-> **📘 SOURCE OF TRUTH**: This document is the **authoritative guide** for SDK development. All implementation patterns, coding conventions, testing strategies, and best practices are defined here. When in doubt, refer to this document.
+This document provides guidance specifically for AI agents working on the AWS Bedrock AgentCore TypeScript SDK codebase. For human contributor guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Purpose and Scope
 
@@ -10,134 +10,138 @@
 - Coding patterns and testing patterns to follow when writing code
 - Style guidelines, organizational patterns, and best practices
 
-This guide is for AI agents and developers contributing to the AWS Bedrock AgentCore SDK TypeScript codebase.
-
-## Table of Contents
-
-- [Directory Structure](#directory-structure)
-- [Development Workflow](#development-workflow)
-- [Architecture Overview](#architecture-overview)
-- [Browser Automation Patterns](#browser-automation-patterns)
-- [Coding Patterns](#coding-patterns)
-- [Testing Patterns](#testing-patterns)
-- [Code Style](#code-style)
-- [Error Handling](#error-handling)
-- [Things to Do](#things-to-do)
-- [Things NOT to Do](#things-not-to-do)
-- [Agent-Specific Notes](#agent-specific-notes)
-- [Troubleshooting](#troubleshooting)
+**For human contributors**: See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, testing, and contribution guidelines.
 
 ## Directory Structure
 
 ```
 bedrock-agentcore-sdk-typescript/
-├── src/
-│   ├── tools/
-│   │   ├── browser/
-│   │   │   ├── __tests__/
-│   │   │   │   ├── client.test.ts    # Base client tests
-│   │   │   │   └── types.test.ts     # Type validation tests
-│   │   │   ├── integrations/
-│   │   │   │   ├── playwright/
-│   │   │   │   │   ├── __tests__/
-│   │   │   │   │   │   └── client.test.ts
-│   │   │   │   │   ├── client.ts     # Playwright browser implementation
-│   │   │   │   │   ├── types.ts      # Playwright-specific types
-│   │   │   │   │   └── index.ts
-│   │   │   │   ├── vercel-ai/
-│   │   │   │   │   ├── __tests__/
-│   │   │   │   │   │   └── tool.test.ts
-│   │   │   │   │   ├── tool.ts       # Vercel AI SDK wrapper
-│   │   │   │   │   ├── config.ts     # Framework-specific config
-│   │   │   │   │   └── index.ts
-│   │   │   │   └── index.ts
-│   │   │   ├── client.ts             # Framework-agnostic base client
-│   │   │   ├── types.ts              # Browser action types
-│   │   │   └── index.ts              # Export client + integrations
-│   │   │
-│   │   ├── code-interpreter/
-│   │   │   ├── __tests__/
-│   │   │   │   ├── client.test.ts
-│   │   │   │   └── types.test.ts
-│   │   │   ├── integrations/
-│   │   │   │   ├── vercel-ai/
-│   │   │   │   │   ├── __tests__/
-│   │   │   │   │   │   └── tool.test.ts
-│   │   │   │   │   ├── tool.ts
-│   │   │   │   │   ├── config.ts
-│   │   │   │   │   └── index.ts
-│   │   │   │   └── index.ts
-│   │   │   ├── client.ts
-│   │   │   ├── types.ts
-│   │   │   └── index.ts
-│   │   │
-│   │   └── index.ts
-│   │
-│   └── index.ts                      # Main package entry point
+├── .github/                      # GitHub Actions workflows and templates
+│   ├── ISSUE_TEMPLATE/           # GitHub issue templates
+│   │   ├── bug_report.md         # Bug report template
+│   │   ├── custom.md             # Custom issue template
+│   │   └── feature_request.md    # Feature request template
+│   ├── workflows/                # CI/CD workflow definitions
+│   │   ├── integration-testing.yml  # Integration test workflow
+│   │   ├── pr-automerge.yml      # Auto-merge workflow for PRs
+│   │   ├── pr-validation.yml     # PR validation checks
+│   │   ├── release.yml           # Release automation workflow
+│   │   └── security-scanning.yml # Security scanning workflow
+│   ├── dependabot.yml            # Dependabot configuration
+│   └── labeler.yml               # Auto-labeling configuration
 │
-├── examples/
-│   ├── vercel-ai/
-│   │   ├── browser-basic.ts
-│   │   └── code-interpreter-basic.ts
-│   └── direct-client/
-│       ├── browser-usage.ts
-│       └── code-interpreter-usage.ts
+├── .husky/                       # Git hooks (pre-commit checks)
+│   └── pre-commit                # Pre-commit hook script
 │
-├── package.json
-├── tsconfig.json
-└── AGENTS.md                         # This file
+├── docs/                         # Documentation files
+│   ├── PR.md                     # Pull request guidelines and template
+│   └── TESTING.md                # Comprehensive testing guidelines
+│
+├── src/                          # Source code (all production code)
+│   ├── runtime/                  # Runtime server for hosting agents
+│   │   ├── __tests__/            # Unit tests for runtime
+│   │   ├── app.ts                # BedrockAgentCoreApp implementation
+│   │   ├── index.ts              # Runtime exports
+│   │   └── types.ts              # Runtime type definitions
+│   └── tools/                    # Tool definitions and types
+│       ├── browser/              # Browser automation tool
+│       │   ├── __tests__/        # Unit tests for browser tool
+│       │   ├── integrations/     # Framework-specific integrations
+│       │   ├── client.ts         # Browser client implementation
+│       │   ├── index.ts          # Browser tool exports
+│       │   └── types.ts          # Browser tool type definitions
+│       └── code-interpreter/     # Code interpreter tool
+│           ├── __tests__/        # Unit tests for code interpreter
+│           ├── integrations/     # Framework-specific integrations
+│           ├── client.ts         # Code interpreter client implementation
+│           ├── index.ts          # Code interpreter exports
+│           └── types.ts          # Code interpreter type definitions
+│
+├── examples/                     # Example applications and usage demos
+│   ├── deep-research-ui/         # Next.js UI for deep research workflows
+│   │   ├── app/                  # Next.js app directory structure
+│   │   │   ├── api/              # API route handlers
+│   │   │   ├── deep-research/    # Deep research page components
+│   │   │   ├── globals.css       # Global CSS styles
+│   │   │   └── layout.tsx        # Root layout component
+│   │   ├── lib/                  # Utility libraries and helpers
+│   │   │   └── agents/           # Agent-related utilities
+│   │   ├── example_com_screenshot.png  # Example screenshot
+│   │   ├── hackernews_homepage.png     # HackerNews homepage screenshot
+│   │   ├── next-env.d.ts         # Next.js TypeScript declarations
+│   │   ├── next.config.ts        # Next.js configuration
+│   │   ├── package-lock.json     # UI dependency lock file
+│   │   ├── package.json          # UI dependencies and scripts
+│   │   ├── postcss.config.mjs    # PostCSS configuration
+│   │   ├── README.md             # UI setup and usage instructions
+│   │   ├── tailwind.config.ts    # Tailwind CSS configuration
+│   │   └── tsconfig.json         # TypeScript config for UI
+│   ├── agent-research-assistant.ts  # Research assistant example
+│   ├── agent-with-browser.ts     # Browser integration example
+│   ├── agent-with-code-interpreter.ts  # Code interpreter example
+│   ├── README.md                 # Examples overview and setup
+│   ├── setup.js                  # Example setup utilities
+│   └── streaming-examples.ts     # Streaming usage examples
+│
+├── scripts/                      # Build and utility scripts
+│   └── bump-version.ts           # Version bumping script
+│
+├── test-package/                 # Test package for verification
+│   ├── package-lock.json         # Test package dependency lock file
+│   ├── package.json              # Test package dependencies
+│   ├── README.md                 # Test package documentation
+│   └── verify.js                 # Verification script
+│
+├── tests_integ/                  # Integration tests
+│   ├── browser.test.ts           # Browser integration tests
+│   ├── code-interpreter.test.ts  # Code interpreter integration tests
+│   ├── runtime.test.ts           # Runtime server integration tests
+│   ├── setup.ts                  # Test setup utilities and helpers
+│   └── vercel-ai-agent.test.ts   # Vercel AI integration tests
+│
+├── .gitattributes                # Git attributes configuration
+├── .gitignore                    # Git ignore rules
+├── .node-version                 # Node.js version specification
+├── .prettierrc                   # Code formatting configuration
+├── AGENTS.md                     # Agent development guidance (legacy)
+├── AGENTS_1.md                   # This file (current agent guidance)
+├── AGENTS_1_OLD_DIRECTORY_STRUCTURE.md  # Previous directory structure backup
+├── CHANGELOG.md                  # Version history and changes
+├── CODE_OF_CONDUCT.md            # Community guidelines and conduct rules
+├── CONTRIBUTING.md               # Human contributor guidelines and setup
+├── eslint.config.js              # ESLint linting configuration
+├── LICENSE                       # License information (Apache 2.0)
+├── NOTICE                        # Legal notices and attributions
+├── package.json                  # Project configuration and dependencies
+├── package-lock.json             # Dependency lock file
+├── README.md                     # Project overview and usage guide
+├── SECURITY.md                   # Security policy and vulnerability reporting
+├── tsconfig.json                 # TypeScript compiler configuration
+└── vitest.config.ts              # Vitest testing framework configuration
 ```
 
 ### Directory Purposes
 
-- **`src/`**: All production code lives here with co-located unit tests
-- **`src/core/`**: Core types, utilities, and base functionality shared across tools
-- **`src/tools/{tool}/`**: Tool-specific implementations (browser, code-interpreter, etc.)
-- **`src/tools/{tool}/client.ts`**: Framework-agnostic base client for the tool
-- **`src/tools/{tool}/types.ts`**: Shared types and Zod schemas for the tool
-- **`src/tools/{tool}/integrations/`**: Framework-specific wrappers (Vercel AI, LangChain, etc.)
-- **`__tests__/`**: Co-located unit tests next to source files
-- **`examples/`**: Example applications demonstrating SDK usage
+- **`.github/`**: GitHub Actions workflows, issue templates, and CI/CD automation
+- **`.github/ISSUE_TEMPLATE/`**: Standardized templates for bug reports, feature requests, and custom issues
+- **`.github/workflows/`**: Automated workflows for testing, validation, releases, and security scanning
+- **`.husky/`**: Git hooks for pre-commit quality checks and validation
+- **`docs/`**: Comprehensive documentation for development processes and guidelines
+- **`src/`**: All production source code for the SDK
+- **`src/runtime/`**: HTTP server for hosting agents on AWS Bedrock AgentCore Runtime
+- **`src/tools/`**: Tool definitions and implementations for browser automation and code interpretation
+- **`src/tools/browser/`**: Browser automation client with AWS Bedrock integration
+- **`src/tools/code-interpreter/`**: Code execution client with sandboxed environment support
+- **`examples/`**: Example applications and usage demonstrations for different use cases
+- **`examples/deep-research-ui/`**: Complete Next.js UI application showcasing deep research workflows
+- **`examples/deep-research-ui/app/`**: Next.js app router structure with API routes and page components
+- **`examples/deep-research-ui/lib/`**: Utility libraries and agent-related helper functions
+- **`scripts/`**: Build and utility scripts for development and release automation
+- **`test-package/`**: Standalone test package for SDK verification and validation
+- **`tests_integ/`**: Integration tests that validate public API and external service integrations
 
 **IMPORTANT**: After making changes that affect the directory structure (adding new directories, moving files, or adding significant new files), you MUST update this directory structure section to reflect the current state of the repository.
 
-## Development Workflow
-
-### For AI Agents
-
-1. **Read Context**: Review CLAUDE.md for design decisions
-2. **Check Existing Code**: Search for similar patterns before implementing
-3. **Follow Patterns**: Use established patterns from existing code
-4. **Write Tests**: Create tests in `__tests__/` directories
-5. **Document**: Add TSDoc comments for exported functions
-6. **Validate**: Run tests and linting before committing
-
-### Git Workflow
-
-```bash
-# Create feature branch
-git checkout -b feature/browser-client-implementation
-
-# Make changes with atomic commits
-git add src/tools/browser/client.ts
-git commit -m "feat: implement BrowserClient base class"
-
-# Run quality gates
-npm run test
-npm run lint
-npm run type-check
-
-# Push and create PR
-git push origin feature/browser-client-implementation
-```
-
-### Quality Gates
-
-All code must pass:
-- ✅ TypeScript type checking (`npm run type-check`)
-- ✅ ESLint rules (`npm run lint`)
-- ✅ Unit tests (`npm run test`)
-- ✅ Build process (`npm run build`)
 
 ## Architecture Overview
 
@@ -184,338 +188,337 @@ The SDK follows a layered integration pattern:
 3. **Clear separation**: Each framework gets its own subdirectory
 4. **Testability**: Mock at client layer, not AWS SDK layer
 
-## Browser Automation Patterns
+## Development Workflow for Agents
 
-### Explicit Waits (Required)
+### 1. Environment Setup
 
-**ALWAYS use explicit waits** before interacting with elements. Never assume elements are immediately available.
+See [CONTRIBUTING.md - Development Environment](CONTRIBUTING.md#development-environment) for:
+- Prerequisites (Node.js 20+, npm)
+- Installation steps
+- Verification commands
 
+### 2. Making Changes
+
+1. **Create feature branch**: `git checkout -b agent-tasks/{ISSUE_NUMBER}`
+2. **Implement changes** following the patterns below
+3. **Run quality checks** before committing (pre-commit hooks will run automatically)
+4. **Commit with conventional commits**: `feat:`, `fix:`, `refactor:`, `docs:`, etc.
+5. **Push to remote**: `git push origin agent-tasks/{ISSUE_NUMBER}`
+6. **Create pull request** following [PR.md](docs/PR.md) guidelines
+
+### 3. Pull Request Guidelines
+
+When creating pull requests, you **MUST** follow the guidelines in [PR.md](docs/PR.md). Key principles:
+
+- **Focus on WHY**: Explain motivation and user impact, not implementation details
+- **Document public API changes**: Show before/after code examples
+- **Be concise**: Use prose over bullet lists; avoid exhaustive checklists
+- **Target senior engineers**: Assume familiarity with the SDK
+- **Exclude implementation details**: Leave these to code comments and diffs
+
+See [PR.md](docs/PR.md) for the complete guidance and template.
+
+### 4. Quality Gates
+
+Pre-commit hooks automatically run:
+- Unit tests (via npm test)
+- Linting (via npm run lint)
+- Format checking (via npm run format:check)
+- Type checking (via npm run type-check)
+
+All checks must pass before commit is allowed.
+
+### 5. Testing Guidelines
+
+When writing tests, you **MUST** follow the guidelines in [docs/TESTING.md](docs/TESTING.md). Key topics covered:
+
+- Test organization and file location
+- Test batching strategy
+- Object assertion best practices
+- Test coverage requirements
+- Multi-environment testing (Node.js and browser)
+
+See [TESTING.md](docs/TESTING.md) for the complete testing reference.
+
+## Coding Patterns and Best Practices
+
+### Logging Style Guide
+
+The SDK uses a structured logging format consistent with the Python SDK for better log parsing and searchability.
+
+**Format**:
 ```typescript
-// ✅ Good: Wait for element before interaction
-await browser.waitForSelector({
-  selector: '#submit-button',
-  state: 'visible',
-  timeout: 30000,
-})
-await browser.click({ selector: '#submit-button' })
+// With context fields
+logger.warn(`field1=<${value1}>, field2=<${value2}> | human readable message`)
 
-// ❌ Bad: No wait, causes race conditions
-await browser.click({ selector: '#submit-button' })
+// Without context fields
+logger.warn('human readable message')
+
+// Multiple statements in message (use pipe to separate)
+logger.warn(`field=<${value}> | statement one | statement two`)
 ```
 
-**Rationale**: Progressive page loading means HTML may be present but JavaScript is still modifying the DOM. Explicit waits prevent race conditions with dynamic content.
+**Guidelines**:
 
-### Form Input: fill() vs type()
+1. **Context Fields** (when relevant):
+   - Add context as `field=<value>` pairs at the beginning
+   - Use commas to separate pairs
+   - Enclose values in `<>` for readability (especially helpful for empty values: `field=<>`)
+   - Use template literals for string interpolation
 
-**Use `fill()` for form inputs**, not `type()`. The `fill()` method clears existing values and sets the new value atomically.
+2. **Messages**:
+   - Add human-readable messages after context fields
+   - Use lowercase for consistency
+   - Avoid punctuation (periods, exclamation points) to reduce clutter
+   - Keep messages concise and focused on a single statement
+   - If multiple statements are needed, separate them with pipe character (`|`)
+
+**Examples**:
 
 ```typescript
-// ✅ Good: Clear and set value atomically
-await browser.fill({
-  selector: '#email',
-  value: 'user@example.com',
-  timeout: 30000,
-})
+// ✅ Good: Context fields with message
+logger.warn(`stop_reason=<${stopReason}>, fallback=<${fallback}> | unknown stop reason, converting to camelCase`)
+logger.warn(`event_type=<${eventType}> | unsupported bedrock event type`)
 
-// ❌ Bad: Character-by-character typing is slow and unreliable
-await browser.type({
-  selector: '#email',
-  text: 'user@example.com',
-  delay: 100,
-})
+// ✅ Good: Simple message without context fields
+logger.warn('cache points are not supported in openai system prompts, ignoring cache points')
+
+// ✅ Good: Multiple statements separated by pipes
+logger.warn(`request_id=<${id}> | processing request | starting validation`)
+
+// ❌ Bad: Not using angle brackets for values
+logger.warn(`stop_reason=${stopReason} | unknown stop reason`)
+
+// ❌ Bad: Using punctuation
+logger.warn(`event_type=<${eventType}> | Unsupported event type.`)
 ```
 
-**When to use `type()`**: Only when simulating realistic human typing behavior is required (e.g., testing keystroke handlers, autocomplete).
 
-### Navigation with Fallback Strategies
 
-Back/forward navigation should use intelligent fallback strategies to handle different page loading patterns:
+### File Organization Pattern
 
+**For source files**:
+```
+src/
+├── module.ts              # Source file
+└── __tests__/
+    └── module.test.ts     # Unit tests co-located
+```
+
+**Function ordering within files**:
+- Functions MUST be ordered from most general to most specific (top-down reading)
+- Public/exported functions MUST appear before private helper functions
+- Main entry point functions MUST be at the top of the file
+- Helper functions SHOULD follow in order of their usage
+
+**Example**:
 ```typescript
-async back(): Promise<void> {
-  try {
-    // Try networkidle (best for dynamic sites)
-    await this._playwrightPage.goBack({ waitUntil: 'networkidle', timeout: 30000 })
-  } catch {
-    try {
-      // Fallback to load event
-      await this._playwrightPage.goBack({ waitUntil: 'load', timeout: 30000 })
-    } catch {
-      // Ultimate fallback: trigger navigation without waiting
-      await this._playwrightPage.evaluate('window.history.back()')
-    }
-  }
+// ✅ Good: Main function first, helpers follow
+export async function* mainFunction() {
+  const result = await helperFunction1()
+  return helperFunction2(result)
+}
+
+async function helperFunction1() {
+  // Implementation
+}
+
+function helperFunction2(input: string) {
+  // Implementation
+}
+
+// ❌ Bad: Helpers before main function
+async function helperFunction1() {
+  // Implementation
+}
+
+export async function* mainFunction() {
+  const result = await helperFunction1()
+  return helperFunction2(result)
 }
 ```
 
-**Rationale**: Sites with heavy tracking scripts and ads may never reach `networkidle`. The fallback strategy handles clean pages, slow pages, and problematic pages gracefully.
-
-### Element Visibility Checks
-
-**Check visibility before interaction** when dealing with conditional UI elements:
-
-```typescript
-// ✅ Good: Check visibility first
-const isVisible = await browser.isVisible({ selector: '#modal' })
-if (isVisible) {
-  await browser.click({ selector: '#modal .close-button' })
-}
-
-// ❌ Bad: Direct interaction without checking
-try {
-  await browser.click({ selector: '#modal .close-button' })
-} catch (error) {
-  // Element may not exist
-}
+**For integration tests**:
+```
+test/integ/
+└── feature.test.ts        # Tests public API
 ```
 
-### Session Management and Cleanup
+**Class structure ordering**:
 
-**Always clean up sessions** in finally blocks to prevent resource leaks:
-
-```typescript
-// ✅ Good: Cleanup in finally block
-const browser = new PlaywrightBrowser({ region: 'us-east-1' })
-try {
-  await browser.startSession()
-  await browser.navigate({ url: 'https://example.com' })
-  // ... browser operations
-} finally {
-  await browser.stopSession()
-}
-
-// ❌ Bad: No cleanup on error
-const browser = new PlaywrightBrowser({ region: 'us-east-1' })
-await browser.startSession()
-await browser.navigate({ url: 'https://example.com' })
-await browser.stopSession()
-```
-
-### Integration Test Patterns
-
-Integration tests should follow these patterns:
+Within a class, organize members in this specific order:
 
 ```typescript
-describe('PlaywrightBrowser Integration', () => {
-  let browser: PlaywrightBrowser
-
-  beforeAll(async () => {
-    browser = new PlaywrightBrowser({ region: 'us-west-2' })
-    await browser.startSession({ sessionName: 'test-session' })
-  })
-
-  afterAll(async () => {
-    await browser.stopSession()
-  })
-
-  it('searches for content', async () => {
-    // Navigate
-    await browser.navigate({
-      url: 'https://example.com',
-      waitUntil: 'load',
-      timeout: 60000,
-    })
-
-    // Wait for search input to be ready
-    await browser.waitForSelector({
-      selector: '#search-input',
-      state: 'visible',
-      timeout: 60000,
-    })
-
-    // Fill search box
-    await browser.fill({
-      selector: '#search-input',
-      value: 'TypeScript',
-      timeout: 60000,
-    })
-
-    // Submit search
-    await browser.pressKey('Enter')
-
-    // Wait for results to appear
-    await browser.waitForSelector({
-      selector: '#results',
-      state: 'visible',
-      timeout: 60000,
-    })
-
-    // Verify results
-    const html = await browser.getHtml()
-    expect(html).toContain('TypeScript')
-  }, 90000)
-})
-```
-
-**Key principles**:
-- Use `beforeAll`/`afterAll` for session management (not `beforeEach`/`afterEach`)
-- Set generous timeouts for real website interactions (60s+)
-- Wait for each element before interaction
-- Use `fill()` instead of `type()` for form inputs
-- Set test timeout longer than sum of operation timeouts
-
-## Coding Patterns
-
-### Import Organization
-
-Organize imports in this order:
-
-```typescript
-// 1. Node.js built-ins
-import { performance } from 'perf_hooks'
-import crypto from 'crypto'
-
-// 2. External dependencies
-import { z } from 'zod'
-import { tool } from 'ai'
-
-// 3. AWS SDK imports
-import {
-  BedrockAgentRuntimeClient,
-  StartBrowserSessionCommand,
-  StopBrowserSessionCommand,
-} from '@aws-sdk/client-bedrock-agent-runtime'
-
-// 4. Internal imports (relative paths)
-import type { BrowserAction } from './types'
-import { BrowserClient } from './client'
-import type { ToolResult } from '../../core/types'
-```
-
-### File Organization
-
-Structure each file in this order:
-
-1. Imports
-2. Type definitions (interfaces, types)
-3. Constants
-4. Exported functions/classes
-5. Helper functions (non-exported)
-
-### Function Ordering
-
-Within a class or module:
-
-1. **Constructor** (for classes)
-2. **Public methods** (ordered from general to specific)
-3. **Private methods** (ordered from general to specific)
-4. **Static methods** (if any)
-
-Example:
-
-```typescript
-export class BrowserClient {
+export class ExampleClient {
   // 1. Private fields
-  private _controlPlaneClient: BedrockAgentRuntimeClient
-  private _dataPlaneClient: BedrockAgentRuntimeClient
-  private _sessions: Map<string, BrowserSessionInfo> = new Map()
+  private readonly _config: Config
+  private _sessions: Map<string, SessionInfo> = new Map()
 
   // 2. Constructor
-  constructor(config: BrowserClientConfig) {
-    // ...
+  constructor(config: Config) {
+    this._config = config
   }
 
-  // 3. Public methods (general to specific)
+  // 3. Public methods (ordered from general to specific)
   async startSession(params: StartSessionParams): Promise<SessionInfo> {
-    // ...
-  }
-
-  async stopSession(sessionName: string): Promise<void> {
-    // ...
+    // Implementation
   }
 
   async navigate(params: NavigateParams): Promise<ActionResult> {
-    // ...
+    // Implementation
   }
 
   async click(params: ClickParams): Promise<ActionResult> {
-    // ...
+    // Implementation
   }
 
-  // 4. Private methods (general to specific)
-  private _getSession(sessionName: string): BrowserSessionInfo {
-    // ...
+  // 4. Private methods (ordered from general to specific)
+  private _getSession(sessionName: string): SessionInfo {
+    // Implementation
   }
 
   private _generateSessionName(): string {
-    // ...
+    // Implementation
   }
 }
 ```
+
+**Rules**:
+- Private fields come first
+- Constructor follows private fields
+- Public methods ordered from general to specific operations
+- Private methods come last, also ordered from general to specific
+- Static methods (if any) come after private methods
 
 ### TypeScript Type Safety
 
-**ALWAYS use strict typing:**
-
+**Strict requirements**:
 ```typescript
-// ✅ Good: Explicit return types
-export async function startSession(
-  params: StartSessionParams
-): Promise<SessionInfo> {
-  // ...
+// Good: Explicit return types
+export function process(input: string): string {
+  return input.toUpperCase()
 }
 
-// ❌ Bad: Inferred return type
-export async function startSession(params: StartSessionParams) {
-  // ...
+// Bad: No return type
+export function process(input: string) {
+  return input.toUpperCase()
+}
+
+// Good: Proper typing
+export function getData(): { id: number; name: string } {
+  return { id: 1, name: 'test' }
+}
+
+// Bad: Using any
+export function getData(): any {
+  return { id: 1, name: 'test' }
 }
 ```
 
-**NEVER use `any`:**
+**Rules**:
+- Always provide explicit return types
+- Never use `any` type (enforced by ESLint)
+- Use TypeScript strict mode features
+- Leverage type inference where appropriate
+
+### Class Field Naming Conventions
+
+**Private fields**: Use underscore prefix for private class fields to improve readability and distinguish them from public members.
 
 ```typescript
-// ✅ Good: Use proper types or `unknown`
-function processData(data: unknown): ProcessedData {
-  if (typeof data === 'object' && data !== null) {
-    // Type guard
-    return transformData(data as RawData)
-  }
-  throw new Error('Invalid data')
-}
+// ✅ Good: Private fields with underscore prefix
+export class Example {
+  private readonly _config: Config
+  private _state: State
 
-// ❌ Bad: Using `any`
-function processData(data: any): ProcessedData {
-  return transformData(data)
-}
-```
-
-### Class Field Naming
-
-Use underscore prefix for **private fields only**:
-
-```typescript
-export class BrowserClient {
-  // ✅ Good: Private fields with underscore
-  private _client: BedrockAgentRuntimeClient
-  private _sessions: Map<string, SessionInfo>
-
-  // ✅ Good: Public fields without underscore (rare)
-  readonly region: string
-
-  constructor(config: BrowserClientConfig) {
-    this._client = new BedrockAgentRuntimeClient({ region: config.region })
-    this._sessions = new Map()
-    this.region = config.region
+  constructor(config: Config) {
+    this._config = config
+    this._state = { initialized: false }
   }
 
-  private _getSession(name: string): SessionInfo {
-    return this._sessions.get(name)!
+  public getConfig(): Config {
+    return this._config
+  }
+}
+
+// ❌ Bad: No underscore for private fields
+export class Example {
+  private readonly config: Config  // Missing underscore
+
+  constructor(config: Config) {
+    this.config = config
   }
 }
 ```
 
-### TSDoc Documentation
+**Rules**:
+- Private fields MUST use underscore prefix (e.g., `_field`)
+- Public fields MUST NOT use underscore prefix
+- This convention improves code readability and makes the distinction between public and private members immediately visible
 
-**TSDoc format** (required for all exported functions, classes, and interfaces):
+### 
+
+**Use camelCase for variables, functions, and object properties**:
+
+```typescript
+// ✅ Good: camelCase for variables and functions
+const sessionName = params?.sessionName ?? DEFAULT_SESSION_NAME
+const interpreterId = params?.interpreterId ?? this.identifier
+let contentStr = ''
+
+async function executeCode(params: ExecuteCodeParams): Promise<string> {
+  const command = new InvokeCodeInterpreterCommand({
+    codeInterpreterIdentifier: this.identifier,
+    sessionId: this._session!.sessionId,
+  })
+  return result
+}
+
+// Object properties
+const sessionInfo: SessionInfo = {
+  sessionName,
+  sessionId: response.sessionId!,
+  createdAt: response.createdAt!,
+}
+```
+
+**Use SCREAMING_SNAKE_CASE for constants**:
+
+```typescript
+// ✅ Good: Constants in SCREAMING_SNAKE_CASE
+export const DEFAULT_IDENTIFIER = 'aws.browser.v1'
+export const DEFAULT_SESSION_NAME = 'default'
+export const DEFAULT_TIMEOUT = 3600
+export const DEFAULT_REGION = 'us-west-2'
+```
+
+**Use PascalCase for classes, interfaces, and types**:
+
+```typescript
+// ✅ Good: PascalCase for types
+export class CodeInterpreter { }
+interface SessionInfo { }
+type ExecuteCodeParams = { }
+```
+
+**Rules**:
+- Variables, functions, and object properties MUST use camelCase
+- Constants MUST use SCREAMING_SNAKE_CASE
+- Classes, interfaces, and types MUST use PascalCase
+- Private methods MUST use underscore prefix with camelCase (e.g., `_handleInvocation`)
+
+### Documentation Requirements
+
+**TSDoc format** (required for all exported functions):
 
 ```typescript
 /**
  * Brief description of what the function does.
- *
+ * 
  * @param paramName - Description of the parameter
  * @param optionalParam - Description of optional parameter
  * @returns Description of what is returned
- *
+ * 
  * @example
  * ```typescript
  * const result = functionName('input')
@@ -551,351 +554,176 @@ export interface MyConfig {
 - All exported functions, classes, and interfaces must have TSDoc
 - Include `@param` for all parameters
 - Include `@returns` for return values
-- Include `@example` only for exported classes (main SDK entry points like BrowserClient, CodeInterpreterClient)
+- Include `@example` only for exported classes (main SDK entry points like BedrockModel, Agent)
 - Do NOT include `@example` for type definitions, interfaces, or internal types
 - Interface properties MUST have single-line descriptions
 - Interface properties MAY include an optional `@see` link for additional details
 - TSDoc validation enforced by ESLint
 
-### Interface/Type Organization
+### Code Style Guidelines
 
-Order type definitions from **top-level to dependencies**:
+**Formatting** (enforced by Prettier):
+- No semicolons
+- Single quotes
+- Line length: 120 characters
+- Tab width: 2 spaces
+- Trailing commas in ES5 style
 
+**Example**:
 ```typescript
-// 1. Top-level interface (what users interact with)
-export interface BrowserClientConfig {
-  region: string
-  identifier?: string
-}
-
-// 2. Session-related types
-export interface BrowserSessionInfo {
-  sessionId: string
-  description?: string
-}
-
-export interface StartSessionParams {
-  sessionName?: string
-  description?: string
-  timeout?: number
-}
-
-// 3. Operation-specific types
-export interface NavigateParams {
-  sessionName: string
-  url: string
-  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'
-}
-
-export interface ClickParams {
-  sessionName: string
-  selector: string
-  timeout?: number
-}
-
-// 4. Result types
-export interface ActionResult {
-  success: boolean
-  error?: string
-}
-```
-
-### Discriminated Union Naming
-
-For action-based discriminated unions, **action value must match operation name**:
-
-```typescript
-// ✅ Good: Action matches operation (snake_case from Python SDK)
-export const BrowserActionSchema = z.discriminatedUnion('action', [
-  z.object({
-    action: z.literal('init_session'),  // Matches Python SDK
-    session_name: z.string().optional(),
-  }),
-  z.object({
-    action: z.literal('navigate'),      // Matches Python SDK
-    session_name: z.string(),
-    url: z.string().url(),
-  }),
-  z.object({
-    action: z.literal('execute_code'),  // Matches Python SDK
-    code: z.string(),
-    language: z.enum(['python', 'javascript', 'typescript']),
-  }),
-])
-
-// ❌ Bad: Action doesn't match operation
-export const BrowserActionSchema = z.discriminatedUnion('action', [
-  z.object({
-    action: z.literal('start'),  // Should be 'init_session'
-    session_name: z.string().optional(),
-  }),
-])
-```
-
-**Rationale**: Consistency with Python SDK, clear mapping between action value and operation.
-
-## Testing Patterns
-
-### Test Location
-
-Tests are **co-located** with source files in `__tests__/` directories:
-
-```
-src/tools/browser/
-├── __tests__/
-│   ├── client.test.ts
-│   └── types.test.ts
-├── client.ts
-└── types.ts
-```
-
-### Test Organization
-
-Use **nested describe blocks** to organize tests:
-
-```typescript
-describe('BrowserClient', () => {
-  describe('constructor', () => {
-    it('creates client with default identifier', () => {
-      const client = new BrowserClient({ region: 'us-east-1' })
-      expect(client).toBeDefined()
-    })
-
-    it('creates client with custom identifier', () => {
-      const client = new BrowserClient({
-        region: 'us-east-1',
-        identifier: 'custom.browser.v1',
-      })
-      expect(client).toBeDefined()
-    })
-  })
-
-  describe('startSession', () => {
-    let client: BrowserClient
-
-    beforeEach(() => {
-      client = new BrowserClient({ region: 'us-east-1' })
-    })
-
-    describe('when sessionName is provided', () => {
-      it('uses the provided session name', async () => {
-        const result = await client.startSession({
-          sessionName: 'my-session',
-        })
-        expect(result.sessionName).toBe('my-session')
-      })
-    })
-
-    describe('when sessionName is omitted', () => {
-      it('generates a session name', async () => {
-        const result = await client.startSession({})
-        expect(result.sessionName).toMatch(/^browser-\d+/)
-      })
-    })
-  })
-
-  describe('navigate', () => {
-    let client: BrowserClient
-    let sessionName: string
-
-    beforeEach(async () => {
-      client = new BrowserClient({ region: 'us-east-1' })
-      const session = await client.startSession({})
-      sessionName = session.sessionName
-    })
-
-    describe('when called with valid URL', () => {
-      it('returns success result', async () => {
-        const result = await client.navigate({
-          sessionName,
-          url: 'https://example.com',
-        })
-        expect(result.success).toBe(true)
-      })
-    })
-
-    describe('when called with invalid URL', () => {
-      it('returns error result', async () => {
-        const result = await client.navigate({
-          sessionName,
-          url: 'invalid-url',
-        })
-        expect(result.success).toBe(false)
-        expect(result.error).toBeDefined()
-      })
-    })
-  })
-})
-```
-
-### Test Batching Strategy
-
-**Rule**: When test setup cost exceeds test logic cost, you MUST batch related assertions into a single test.
-
-**You MUST batch when**:
-- Setup complexity > test logic complexity
-- Multiple assertions verify the same object state
-- Related behaviors share expensive context
-
-**You SHOULD keep separate tests for**:
-- Distinct behaviors or execution paths
-- Error conditions
-- Different input scenarios
-
-```typescript
-// ✅ Good: Batch when setup is expensive
-describe('CodeInterpreterClient', () => {
-  describe('executeCode', () => {
-    it('executes Python code and returns output', async () => {
-      const client = new CodeInterpreterClient({ region: 'us-east-1' })
-      const session = await client.startSession({})
-
-      const result = await client.executeCode({
-        sessionName: session.sessionName,
-        code: 'print("Hello, World!")',
-        language: 'python',
-      })
-
-      // Multiple assertions in one test (batched)
-      expect(result.status).toBe('success')
-      expect(result.output).toContain('Hello, World!')
-      expect(result.exitCode).toBe(0)
-      expect(result.error).toBeUndefined()
-
-      await client.stopSession(session.sessionName)
-    })
-  })
-})
-
-// ❌ Bad: Separate tests when setup is expensive
-describe('CodeInterpreterClient', () => {
-  describe('executeCode', () => {
-    it('returns success status', async () => {
-      const client = new CodeInterpreterClient({ region: 'us-east-1' })
-      const session = await client.startSession({})
-      const result = await client.executeCode({...})
-      expect(result.status).toBe('success')
-      await client.stopSession(session.sessionName)
-    })
-
-    it('returns correct output', async () => {
-      // Duplicate expensive setup
-      const client = new CodeInterpreterClient({ region: 'us-east-1' })
-      const session = await client.startSession({})
-      const result = await client.executeCode({...})
-      expect(result.output).toContain('Hello, World!')
-      await client.stopSession(session.sessionName)
-    })
-  })
-})
-```
-
-### Mock Providers
-
-Create reusable mock providers for testing:
-
-```typescript
-// __tests__/mocks/aws-sdk.ts
-export function createMockBedrockClient() {
-  return {
-    send: jest.fn().mockImplementation((command) => {
-      if (command instanceof StartBrowserSessionCommand) {
-        return Promise.resolve({ sessionId: 'mock-session-id' })
-      }
-      if (command instanceof InvokeBrowserActionCommand) {
-        return Promise.resolve({ success: true })
-      }
-      return Promise.reject(new Error('Unknown command'))
-    }),
+export function example(name: string, options?: Options): Result {
+  const config = {
+    name,
+    enabled: true,
+    settings: {
+      timeout: 5000,
+      retries: 3,
+    },
   }
+
+  return processConfig(config)
 }
-
-// client.test.ts
-import { createMockBedrockClient } from './mocks/aws-sdk'
-
-describe('BrowserClient', () => {
-  it('starts session successfully', async () => {
-    const mockClient = createMockBedrockClient()
-    const client = new BrowserClient({ region: 'us-east-1' })
-    // Inject mock (implementation detail depends on your dependency injection)
-  })
-})
 ```
 
-### Object Assertions
-
-**Test entire objects rather than individual properties** when the object structure is important:
-
-```typescript
-// ✅ Good: Test entire object structure
-it('returns complete session info', async () => {
-  const result = await client.startSession({
-    sessionName: 'test-session',
-    description: 'Test description',
-  })
-
-  expect(result).toEqual({
-    sessionName: 'test-session',
-    sessionId: expect.stringMatching(/^session-/),
-  })
-})
-
-// ❌ Bad: Test properties individually when structure matters
-it('returns session name and id', async () => {
-  const result = await client.startSession({...})
-  expect(result.sessionName).toBe('test-session')
-  expect(result.sessionId).toBeDefined()
-  // Missing: Doesn't verify no unexpected properties
-})
-```
-
-## Code Style
-
-### General Style
-
-- **No semicolons** (use ESLint to enforce)
-- **Single quotes** for strings (except when avoiding escapes)
-- **Trailing commas** in multiline structures
-- **120 character** line length limit
-- **2 spaces** for indentation
-
-```typescript
-// ✅ Good
-const config = {
-  region: 'us-east-1',
-  identifier: 'aws.browser.v1',
-  timeout: 900,
-}
-
-// ❌ Bad
-const config = {
-  region: "us-east-1",
-  identifier: "aws.browser.v1",
-  timeout: 900
-};
-```
-
-### Async/Await
+### Async/Await Standards
 
 **Always use async/await**, never raw Promises:
 
 ```typescript
-// ✅ Good
+// ✅ Good: Use async/await
 async function startSession(params: StartSessionParams): Promise<SessionInfo> {
-  const response = await this._client.send(new StartBrowserSessionCommand({...}))
+  const response = await this._client.send(new StartSessionCommand(params))
   return { sessionId: response.sessionId! }
 }
 
-// ❌ Bad
+// ❌ Bad: Raw Promises
 function startSession(params: StartSessionParams): Promise<SessionInfo> {
-  return this._client.send(new StartBrowserSessionCommand({...}))
+  return this._client.send(new StartSessionCommand(params))
     .then(response => ({ sessionId: response.sessionId! }))
 }
 ```
 
-## Error Handling
+**Rules**:
+- All asynchronous operations must use async/await syntax
+- Avoid Promise chains (.then(), .catch()) in favor of try/catch blocks
+- This improves readability and makes error handling more consistent
 
-### Error Creation
+### Import Organization
+
+**Always use relative imports for internal modules** and organize imports in this order:
+
+```typescript
+// 1. External dependencies
+import { something } from 'external-package'
+import { z } from 'zod'
+
+// 2. Internal modules (using relative paths)
+import { Agent } from '../agent'
+import { Tool } from '../tools'
+import { hello } from './hello'
+
+// 3. Types (if separate)
+import type { Options, Config } from '../types'
+```
+
+**Rules**:
+- External dependencies come first
+- Internal modules use relative paths (`./` or `../`)
+- Type-only imports come last (when separated from value imports)
+- Group related imports together within each section
+
+### Interface and Type Organization
+
+**When defining interfaces or types, organize them so the top-level interface comes first, followed by its dependencies, and then all nested dependencies.**
+
+```typescript
+// ✅ Correct - Top-level first, then dependencies
+export interface Message {
+  role: Role
+  content: ContentBlock[]
+}
+
+export type Role = 'user' | 'assistant'
+
+export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock
+
+export class TextBlock {
+  readonly type = 'textBlock' as const
+  readonly text: string
+  constructor(data: { text: string }) { this.text = data.text }
+}
+
+export class ToolUseBlock {
+  readonly type = 'toolUseBlock' as const
+  readonly name: string
+  readonly toolUseId: string
+  readonly input: JSONValue
+  constructor(data: { name: string; toolUseId: string; input: JSONValue }) {
+    this.name = data.name
+    this.toolUseId = data.toolUseId
+    this.input = data.input
+  }
+}
+
+export class ToolResultBlock {
+  readonly type = 'toolResultBlock' as const
+  readonly toolUseId: string
+  readonly status: 'success' | 'error'
+  readonly content: ToolResultContent[]
+  constructor(data: { toolUseId: string; status: 'success' | 'error'; content: ToolResultContent[] }) {
+    this.toolUseId = data.toolUseId
+    this.status = data.status
+    this.content = data.content
+  }
+}
+
+// ❌ Wrong - Dependencies before top-level
+export type Role = 'user' | 'assistant'
+
+export interface TextBlockData {
+  text: string
+}
+
+export interface Message {  // Top-level should come first
+  role: Role
+  content: ContentBlock[]
+}
+```
+
+**Rationale**: This ordering makes files more readable by providing an overview first, then details.
+
+### Discriminated Union Naming Convention
+
+**When creating discriminated unions with a `type` field, the type value MUST match the interface name with the first letter lowercase.**
+
+```typescript
+// ✅ Correct - type matches class name (first letter lowercase)
+export class TextBlock {
+  readonly type = 'textBlock' as const  // Matches 'TextBlock' class name
+  readonly text: string
+  constructor(data: { text: string }) { this.text = data.text }
+}
+
+export class CachePointBlock {
+  readonly type = 'cachePointBlock' as const  // Matches 'CachePointBlock' class name
+  readonly cacheType: 'default'
+  constructor(data: { cacheType: 'default' }) { this.cacheType = data.cacheType }
+}
+
+export type ContentBlock = TextBlock | ToolUseBlock | CachePointBlock
+
+// ❌ Wrong - type doesn't match class name
+export class CachePointBlock {
+  readonly type = 'cachePoint' as const  // Should be 'cachePointBlock'
+  readonly cacheType: 'default'
+}
+```
+
+**Rationale**: This consistent naming makes discriminated unions predictable and improves code readability. Developers can easily understand the relationship between the type value and the class.
+
+### Error Handling
+
+#### Error Creation
 
 Use descriptive error messages with context:
 
@@ -922,7 +750,7 @@ private _getSession(sessionName: string): BrowserSessionInfo {
 }
 ```
 
-### Error Handling in Client Methods
+#### Error Handling in Client Methods
 
 **Catch AWS SDK errors and translate to user-friendly messages**:
 
@@ -966,163 +794,148 @@ async navigate(params: NavigateParams): Promise<ActionResult> {
 }
 ```
 
+#### Basic Error Patterns
+
+```typescript
+// Good: Explicit error handling
+export function process(input: string): string {
+  if (!input) {
+    throw new Error('Input cannot be empty')
+  }
+  return input.trim()
+}
+
+// Good: Custom error types
+export class ValidationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ValidationError'
+  }
+}
+```
+
 ## Things to Do
 
-### ✅ DO
+✅ **Do**:
+- Use relative imports for internal modules
+- Co-locate unit tests with source under `__tests__` directories
+- Follow nested describe pattern for test organization
+- Write explicit return types for all functions
+- Document all exported functions with TSDoc
+- Use meaningful variable and function names
+- Keep functions small and focused (single responsibility)
+- Use async/await for asynchronous operations
+- Handle errors explicitly
 
-1. **Read CLAUDE.md** before implementing new features
-2. **Use established patterns** from existing code
-3. **Write tests** for all new code in `__tests__/` directories
-4. **Add TSDoc** for all exported functions and classes
-5. **Use strict TypeScript** (no `any`, explicit return types)
-6. **Follow import order** (Node built-ins → external → AWS SDK → internal)
-7. **Order functions** (public before private, general before specific)
-8. **Use discriminated unions** for action-based APIs
-9. **Prefix private fields** with underscore (`_field`)
-10. **Batch test assertions** when setup is expensive
-11. **Test entire objects** when structure matters
-12. **Handle errors gracefully** with context-rich messages
-13. **Use async/await** instead of raw Promises
-14. **Reuse clients** instead of creating new instances
-15. **Clean up resources** (sessions, connections) in finally blocks
+## Things NOT to Do
 
-### ❌ DON'T
+❌ **Don't**:
+- Use `any` type (enforced by ESLint)
+- Put unit tests in separate `tests/` directory (use `src/**/__tests__/**`)
+- Skip documentation for exported functions
+- Use semicolons (Prettier will remove them)
+- Commit without running pre-commit hooks
+- Ignore linting errors
+- Skip type checking
+- Use implicit return types
 
-1. **Don't create** new architecture patterns without discussion
-2. **Don't use `any`** - use proper types or `unknown` with type guards
-3. **Don't mix** framework-agnostic and framework-specific code
-4. **Don't create** new clients repeatedly - reuse instances
-5. **Don't leave** sessions or resources uncleaned
-6. **Don't write** generic error messages - include context
-7. **Don't use** raw Promises - use async/await
-8. **Don't skip** TSDoc for exported APIs
-9. **Don't name** private fields without underscore prefix
-10. **Don't create** separate test files for small helpers
-11. **Don't test** individual properties when object structure matters
-12. **Don't duplicate** expensive setup in tests - batch assertions
-13. **Don't hardcode** AWS regions - use configuration
-14. **Don't skip** cleanup in finally blocks
-15. **Don't commit** code that fails linting or type checking
+## Development Commands
+
+For detailed command usage, see [CONTRIBUTING.md - Testing Instructions](CONTRIBUTING.md#testing-instructions-and-best-practices).
+
+Quick reference:
+```bash
+npm test              # Run unit tests in Node.js
+npm run test:browser  # Run unit tests in browser (Chromium via Playwright)
+npm run test:all      # Run all tests in all environments
+npm run test:integ    # Run integration tests
+npm run test:coverage # Run tests with coverage report
+npm run lint          # Check code quality
+npm run format        # Auto-fix formatting
+npm run type-check    # Verify TypeScript types
+npm run build         # Compile TypeScript
+```
+
+## Browser Tool
+
+When developing or working with the browser automation tool, see [docs/BROWSER_AUTOMATION_PATTERNS.md](docs/BROWSER_AUTOMATION_PATTERNS.md) for comprehensive patterns and best practices. This includes:
+
+- Explicit waits and element interaction patterns
+- Form input handling (fill() vs type())
+- Navigation with fallback strategies
+- Element visibility checks
+- Session management and cleanup
+- Integration test patterns for browser automation
+
+## Troubleshooting
+
+For comprehensive troubleshooting guidance, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). This includes:
+
+- Common issues and solutions
+- Debug strategies and tools
+- Environment-specific problems
+- Performance optimization
+- AWS SDK troubleshooting
+- When to seek additional help
+
+**Quick fixes for common issues:**
+- **TypeScript compilation fails**: Run `npm run type-check` to see all type errors
+- **ESLint errors**: Run `npm run lint -- --fix` to auto-fix formatting issues
+- **Test failures**: Ensure proper session cleanup in `afterEach` blocks
+- **AWS SDK errors**: Check credentials and region configuration
 
 ## Agent-Specific Notes
 
-### Writing Code
+### When Implementing Features
 
+1. **Read task requirements** carefully from the GitHub issue
+2. **Follow TDD approach** if appropriate:
+   - Write failing tests first
+   - Implement minimal code to pass tests
+   - Refactor while keeping tests green
+3. **Use existing patterns** as reference
+4. **Document as you go** with TSDoc comments
+5. **Run all checks** before committing (pre-commit hooks will enforce this)
+
+
+### Writing code
 - YOU MUST make the SMALLEST reasonable changes to achieve the desired outcome.
 - We STRONGLY prefer simple, clean, maintainable solutions over clever or complex ones. Readability and maintainability are PRIMARY CONCERNS, even at the cost of conciseness or performance.
 - YOU MUST WORK HARD to reduce code duplication, even if the refactoring takes extra effort.
 - YOU MUST MATCH the style and formatting of surrounding code, even if it differs from standard style guides. Consistency within a file trumps external standards.
 - YOU MUST NOT manually change whitespace that does not affect execution or output. Otherwise, use a formatting tool.
 - Fix broken things immediately when you find them. Don't ask permission to fix bugs.
-- **Always search** for similar patterns in the codebase first
-- **Follow the three-layer pattern**: User App → Integration → Base Client → AWS SDK
-- **Maintain consistency** with Python SDK where applicable (e.g., action names)
-- **Think about testability**: Design for easy mocking and testing
 
-### Code Comments
 
-- NEVER add comments explaining that something is "improved", "better", "new", "enhanced", or referencing what it used to be
-- Comments should explain WHAT the code does or WHY it exists, not how it's better than something else
-- YOU MUST NEVER add comments about what used to be there or how something has changed.
-- YOU MUST NEVER refer to temporal context in comments (like "recently refactored" "moved") or code. Comments should be evergreen and describe the code as it is.
-- YOU MUST NEVER write overly verbose comments. Use concise language.
-- **TSDoc for public APIs**: Required for all exported functions and classes
-- **Inline comments**: Only for complex logic that isn't obvious
-- **Explain why, not what**: Focus on reasoning, not mechanics
+#### Code Comments
+ - NEVER add comments explaining that something is "improved", "better", "new", "enhanced", or referencing what it used to be
+ - Comments should explain WHAT the code does or WHY it exists, not how it's better than something else
+ - YOU MUST NEVER add comments about what used to be there or how something has changed. 
+ - YOU MUST NEVER refer to temporal context in comments (like "recently refactored" "moved") or code. Comments should be evergreen and describe the code as it is.
+ - YOU MUST NEVER write overly verbose comments. Use concise language.
 
-```typescript
-// ✅ Good: Explains reasoning
-// Reuse default CDP context instead of creating redundant context
-// to match Python SDK behavior and avoid unnecessary resource overhead
-const browserContext = browser.contexts()[0]
 
-// ❌ Bad: States the obvious
-// Get the first browser context
-const browserContext = browser.contexts()[0]
+### Code Review Considerations
 
-// ❌ Bad: References temporal context
-// Recently refactored to use default context
-const browserContext = browser.contexts()[0]
+When responding to PR feedback:
+- Address all review comments
+- Test changes thoroughly
+- Update documentation if behavior changes
+- Maintain test coverage
+- Follow conventional commit format for fix commits
 
-// ❌ Bad: References what it used to be
-// Changed from creating new context to reusing default
-const browserContext = browser.contexts()[0]
-```
+### Integration with Other Files
 
-### When Implementing New Features
-
-1. **Follow existing patterns** for similar features
-2. **Create base client first** (framework-agnostic)
-3. **Then create integrations** (framework-specific wrappers)
-4. **Write tests** for both base client and integrations
-5. **Add examples** in `examples/` directory
-6. **Update exports** in `index.ts` files
-
-### When Reviewing Code
-
-1. **Check type safety**: No `any`, explicit return types
-2. **Verify error handling**: Graceful degradation with context
-3. **Confirm test coverage**: Tests in `__tests__/` directories
-4. **Check documentation**: TSDoc for exported APIs
-5. **Validate patterns**: Follows established conventions
-
-## Troubleshooting
-
-### Common Issues
-
-**Issue**: Tests failing with "Session not found"
-**Solution**: Ensure session is created in `beforeEach` and cleaned up in `afterEach`
-
-**Issue**: TypeScript errors about missing types
-**Solution**: Run `npm install` to update `@types` packages
-
-**Issue**: ESLint errors about semicolons
-**Solution**: Run `npm run lint -- --fix` to auto-fix
-
-**Issue**: AWS SDK errors in tests
-**Solution**: Use mock providers from `__tests__/mocks/` directory
-
-**Issue**: Integration tests failing
-**Solution**: Check AWS credentials and region configuration
-
-### Debug Strategies
-
-1. **Check AWS SDK calls**: Log commands before sending
-2. **Verify session state**: Log active sessions with `listSessions()`
-3. **Test with base client**: Isolate framework integration issues
-4. **Use mock clients**: Test logic without AWS calls
-5. **Check error messages**: AWS SDK errors contain useful context
-
-### Getting Help
-
-1. **Search codebase**: Look for similar implementations
-2. **Check tests**: Examples of how code should be used
-3. **Review examples**: Working code in `examples/` directory
-4. **Consult Python SDK**: Reference implementation patterns
-5. **Review AGENTS.md**: This document contains all development patterns
-
----
-
-## Summary
-
-This guide provides patterns and conventions for developing the AWS Bedrock AgentCore SDK TypeScript. Follow these guidelines to maintain consistency, quality, and testability across the codebase.
-
-**Key Takeaways**:
-- Three-layer architecture (User App → Integration → Base Client → AWS SDK)
-- Framework-agnostic base clients with framework-specific integrations
-- Co-located tests with nested describe blocks
-- Strict TypeScript with no `any` and explicit return types
-- TSDoc for all exported APIs
-- Consistent error handling with context-rich messages
-- Test batching when setup is expensive
-- Clean up resources in finally blocks
+- **CONTRIBUTING.md**: Contains testing/setup commands and human contribution guidelines
+- **docs/TESTING.md**: Comprehensive testing guidelines (MUST follow when writing tests)
+- **docs/PR.md**: Pull request guidelines and template
+- **README.md**: Public-facing documentation, links to strandsagents.com
+- **package.json**: Defines all npm scripts referenced in documentation
 
 ## Additional Resources
 
-- [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/intro.html) - Official TypeScript documentation
-- [Vitest Documentation](https://vitest.dev/) - Modern unit testing framework
-- [TSDoc Reference](https://tsdoc.org/) - TypeScript documentation standard
-- [Conventional Commits](https://www.conventionalcommits.org/) - Commit message conventions
-- [Strands Agents Documentation](https://github.com/strands-agents) - Reference implementation patterns
-- [AWS Bedrock AgentCore Python SDK](https://github.com/aws/bedrock-agentcore-sdk-python) - Python SDK reference
-- [Vercel AI SDK Documentation](https://sdk.vercel.ai/docs) - Framework integration reference
+- [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/intro.html)
+- [Vitest Documentation](https://vitest.dev/)
+- [TSDoc Reference](https://tsdoc.org/)
+- [Conventional Commits](https://www.conventionalcommits.org/)
+- [Strands Agents Documentation](https://strandsagents.com/)

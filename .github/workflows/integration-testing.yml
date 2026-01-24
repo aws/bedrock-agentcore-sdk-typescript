@@ -107,7 +107,6 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: authorization-check
-    if: needs.authorization-check.outputs.should-run == 'true'
     environment: ${{ needs.authorization-check.outputs.approval-env }}
     permissions:
       id-token: write # Required for AWS OIDC
@@ -136,24 +135,23 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm run clean
+          npm install
 
       - name: Build package
         run: npm run build
 
-      - name: Run integration tests - Browser
+      - name: Run integration tests
         env:
           AWS_REGION: us-west-2
+          OAUTH2_PROVIDER_NAME: ${{ secrets.OAUTH2_PROVIDER_NAME }}
+          OAUTH2_SCOPES: ${{ secrets.OAUTH2_SCOPES }}
+          APIKEY_PROVIDER_NAME: ${{ secrets.APIKEY_PROVIDER_NAME }}
         timeout-minutes: 10
         run: |
-          npm run test:integ -- --reporter=verbose tests_integ/browser.test.ts
+          npm run test:integ --reporter=verbose
 
-      - name: Run integration tests - Code Interpreter
-        env:
-          AWS_REGION: us-west-2
-        timeout-minutes: 10
-        run: |
-          npm run test:integ -- --reporter=verbose tests_integ/code-interpreter.test.ts
 
   safety-gate:
     name: Security Block
