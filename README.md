@@ -57,7 +57,9 @@ const app = new BedrockAgentCoreApp({
     requestSchema: z.object({ prompt: z.string() }),
     process: async function* (request) {
       for await (const event of agent.stream(request.prompt)) {
-        if (event.delta?.text) yield { text: event.delta.text }
+        if (event.type === 'modelContentBlockDeltaEvent' && event.delta?.type === 'textDelta') {
+          yield { event: 'message', data: { text: event.delta.text } }
+        }
       }
     },
   },
@@ -75,14 +77,14 @@ app.run()
 Give your agent secure code execution with three lines:
 
 ```typescript
-import { CodeInterpreterTools } from 'bedrock-agentcore/tools/code-interpreter/strands'
+import { CodeInterpreterTools } from 'bedrock-agentcore/experimental/code-interpreter/strands'
 import { Agent, BedrockModel } from '@strands-agents/sdk'
 
 const codeInterpreter = new CodeInterpreterTools({ region: 'us-east-1' })
 
 const agent = new Agent({
   model: new BedrockModel({ modelId: 'global.amazon.nova-2-lite-v1:0' }),
-  tools: codeInterpreter.getTools(),
+  tools: codeInterpreter.tools,
 })
 
 // Agent can now execute code in a secure sandboxed environment
