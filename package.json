@@ -87,7 +87,7 @@
     "@aws-sdk/client-cognito-identity-provider": "^3.957.0",
     "@strands-agents/sdk": "^0.1.4",
     "@types/express": "^4.17.0",
-    "@types/node": "^24.10.4",
+    "@types/node": "^25.0.10",
     "@types/supertest": "^6.0.3",
     "@typescript-eslint/eslint-plugin": "^8.48.0",
     "@typescript-eslint/parser": "^8.0.0",
