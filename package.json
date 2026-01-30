@@ -12,18 +12,22 @@
   "exports": {
     ".": {
       "import": "./dist/src/index.js",
+      "require": "./dist/src/index.js",
       "types": "./dist/src/index.d.ts"
     },
     "./browser": {
       "import": "./dist/src/tools/browser/index.js",
+      "require": "./dist/src/tools/browser/index.js",
       "types": "./dist/src/tools/browser/index.d.ts"
     },
     "./browser/playwright": {
       "import": "./dist/src/tools/browser/integrations/playwright/index.js",
+      "require": "./dist/src/tools/browser/integrations/playwright/index.js",
       "types": "./dist/src/tools/browser/integrations/playwright/index.d.ts"
     },
     "./browser/vercel-ai": {
       "import": "./dist/src/tools/browser/integrations/vercel-ai/index.js",
+      "require": "./dist/src/tools/browser/integrations/vercel-ai/index.js",
       "types": "./dist/src/tools/browser/integrations/vercel-ai/index.d.ts"
     },
     "./experimental/browser/strands": {
@@ -32,10 +36,12 @@
     },
     "./code-interpreter": {
       "import": "./dist/src/tools/code-interpreter/index.js",
+      "require": "./dist/src/tools/code-interpreter/index.js",
       "types": "./dist/src/tools/code-interpreter/index.d.ts"
     },
     "./code-interpreter/vercel-ai": {
       "import": "./dist/src/tools/code-interpreter/integrations/vercel-ai/index.js",
+      "require": "./dist/src/tools/code-interpreter/integrations/vercel-ai/index.js",
       "types": "./dist/src/tools/code-interpreter/integrations/vercel-ai/index.d.ts"
     },
     "./experimental/code-interpreter/strands": {
@@ -148,3 +154,4 @@
     }
   }
 }
+
