@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.2.1] - 2026-02-03
+
+### Added
+- feat: add Slack notification workflow for new issues (#56) (ca67c52)
+
+### Fixed
+- fix: escape special characters in Slack notification payload (#58) (abdbb84)
+
+### Other Changes
+- docs(readme): fix incorrect code examples    (#50) (5e3cf94)
+
 ## [0.2.0] - 2026-01-22
 
 ### Added
