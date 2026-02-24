@@ -165,7 +165,96 @@ describe('PlaywrightBrowser Integration', () => {
 
 **Key principles**:
 - Use `beforeAll`/`afterAll` for session management (not `beforeEach`/`afterEach`)
+- When each test needs different session config (proxy, extensions, profile), use `afterEach` for cleanup instead
 - Set generous timeouts for real website interactions (60s+)
 - Wait for each element before interaction
 - Use `fill()` instead of `type()` for form inputs
 - Set test timeout longer than sum of operation timeouts
+
+## Advanced Session Configuration
+
+### Proxy Configuration
+
+Route browser traffic through external proxy servers. Proxy credentials are stored in AWS Secrets Manager.
+
+```typescript
+await browser.startSession({
+  sessionName: 'proxy-session',
+  proxyConfiguration: {
+    proxies: [
+      {
+        externalProxy: {
+          server: 'proxy.example.com',
+          port: 8080,
+          domainPatterns: ['.example.com', '.internal.corp'],
+          credentials: {
+            basicAuth: {
+              secretArn: 'arn:aws:secretsmanager:us-west-2:123456789:secret:proxy-creds',
+            },
+          },
+        },
+      },
+    ],
+    bypass: {
+      domainPatterns: ['checkip.amazonaws.com', '169.254.169.254'],
+    },
+  },
+})
+```
+
+**Limits**: Maximum 5 proxies per session, 100 domain patterns per proxy, 100 bypass patterns.
+
+### Browser Extensions
+
+Load browser extensions from S3. Extensions must be packaged as zip files.
+
+```typescript
+await browser.startSession({
+  sessionName: 'extension-session',
+  extensions: [
+    {
+      location: {
+        s3: {
+          bucket: 'my-extensions-bucket',
+          prefix: 'tampermonkey.zip',
+          versionId: 'optional-version-id',
+        },
+      },
+    },
+  ],
+})
+```
+
+### Profile Persistence
+
+Persist browser state across sessions using a profile identifier. Profiles must be created via `SaveBrowserSessionProfile` before use. The identifier follows the pattern `[a-zA-Z][a-zA-Z0-9_]{0,47}-[a-zA-Z0-9]{10}`.
+
+```typescript
+// First session: state is saved to the profile on stop
+await browser.startSession({
+  sessionName: 'session-1',
+  profileConfiguration: { profileIdentifier: 'myprofile-aBcDeFgHiJ' },
+})
+// ... interact with browser ...
+await browser.stopSession()
+
+// Second session: state is restored from the profile
+await browser.startSession({
+  sessionName: 'session-2',
+  profileConfiguration: { profileIdentifier: 'myprofile-aBcDeFgHiJ' },
+})
+```
+
+### Combining Configuration
+
+All session configuration options can be used together:
+
+```typescript
+await browser.startSession({
+  sessionName: 'full-config',
+  timeout: 7200,
+  viewport: { width: 1920, height: 1080 },
+  proxyConfiguration: { proxies: [/* ... */] },
+  extensions: [/* ... */],
+  profileConfiguration: { profileIdentifier: 'my-profile' },
+})

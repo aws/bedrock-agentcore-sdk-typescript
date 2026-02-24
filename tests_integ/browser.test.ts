@@ -122,9 +122,9 @@ describe('PlaywrightBrowser Wikipedia Integration', () => {
       timeout: 60000,
     })
 
-    // Wait for a key element to ensure page is fully loaded
+    // Wait for search input to ensure page is fully loaded
     await browser.waitForSelector({
-      selector: 'h1',
+      selector: '#searchInput',
       timeout: 30000,
       state: 'visible',
     })
@@ -146,9 +146,9 @@ describe('PlaywrightBrowser Wikipedia Integration', () => {
     // Go back
     await browser.back()
 
-    // Wait for homepage element after going back
+    // Wait for homepage search input after going back
     await browser.waitForSelector({
-      selector: 'h1',
+      selector: '#searchInput',
       timeout: 60000,
       state: 'visible',
     })

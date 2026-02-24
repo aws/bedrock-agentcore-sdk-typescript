@@ -75,6 +75,21 @@ export interface StartSessionParams {
    * Viewport dimensions for the browser.
    */
   viewport?: ViewportConfig
+
+  /**
+   * Proxy configuration for the browser session.
+   */
+  proxyConfiguration?: ProxyConfiguration
+
+  /**
+   * Browser extensions to load in the session.
+   */
+  extensions?: BrowserExtension[]
+
+  /**
+   * Profile configuration for the browser session.
+   */
+  profileConfiguration?: ProfileConfiguration
 }
 
 /**
@@ -90,6 +105,163 @@ export interface ViewportConfig {
    * Viewport height in pixels.
    */
   height: number
+}
+
+/**
+ * Basic authentication credentials stored in AWS Secrets Manager.
+ */
+export interface BasicAuth {
+  /**
+   * ARN of the Secrets Manager secret containing proxy credentials.
+   */
+  secretArn: string
+}
+
+/**
+ * Credentials for proxy server authentication.
+ */
+export interface ProxyCredentials {
+  /**
+   * Basic authentication credentials.
+   */
+  basicAuth?: BasicAuth
+}
+
+/**
+ * External proxy server configuration.
+ */
+export interface ExternalProxy {
+  /**
+   * Proxy server hostname.
+   */
+  server: string
+
+  /**
+   * Proxy server port.
+   */
+  port: number
+
+  /**
+   * Domain patterns to route through this proxy.
+   * Uses leading dot notation (e.g., '.example.com').
+   */
+  domainPatterns?: string[]
+
+  /**
+   * Credentials for proxy authentication.
+   */
+  credentials?: ProxyCredentials
+}
+
+/**
+ * Individual proxy entry wrapping an external proxy configuration.
+ */
+export interface ProxyEntry {
+  /**
+   * External proxy server configuration.
+   */
+  externalProxy: ExternalProxy
+}
+
+/**
+ * Domains that bypass all proxy rules.
+ */
+export interface BypassConfig {
+  /**
+   * Domain patterns that should bypass the proxy.
+   */
+  domainPatterns: string[]
+}
+
+/**
+ * Proxy configuration for routing browser traffic through external proxy servers.
+ * Maximum 5 proxies per session, 100 domain patterns per proxy, 100 bypass patterns.
+ */
+export interface ProxyConfiguration {
+  /**
+   * List of proxy entries to apply.
+   */
+  proxies: ProxyEntry[]
+
+  /**
+   * Domains that bypass all proxy rules.
+   */
+  bypass?: BypassConfig
+}
+
+/**
+ * S3 location for resources.
+ */
+export interface S3Location {
+  /**
+   * S3 bucket name containing the resource.
+   */
+  bucket: string
+
+  /**
+   * S3 prefix/key to the resource file.
+   */
+  prefix: string
+
+  /**
+   * Optional S3 version ID.
+   */
+  versionId?: string
+}
+
+/**
+ * Resource location (union type for S3).
+ */
+export interface ResourceLocation {
+  /**
+   * S3 location of the resource.
+   */
+  s3: S3Location
+}
+
+/**
+ * Browser extension configuration.
+ */
+export interface BrowserExtension {
+  /**
+   * Location of the extension.
+   */
+  location: ResourceLocation
+}
+
+/**
+ * Profile configuration for persisting browser state across sessions.
+ */
+export interface ProfileConfiguration {
+  /**
+   * Identifier for the browser profile.
+   */
+  profileIdentifier: string
+}
+
+/**
+ * Complete session configuration combining all optional session parameters.
+ *
+ * Convenience type for bundling proxy, extensions, profile, and viewport
+ * configuration into a single object.
+ *
+ * @example
+ * ```typescript
+ * const config: SessionConfiguration = {
+ *   viewport: { width: 1920, height: 1080 },
+ *   proxyConfiguration: { proxies: [{ externalProxy: { server: 'proxy.example.com', port: 8080 } }] },
+ *   extensions: [{ location: { s3: { bucket: 'my-bucket', prefix: 'ext.zip' } } }],
+ *   profileConfiguration: { profileIdentifier: 'my-profile-id' },
+ * }
+ *
+ * await browser.startSession({ sessionName: 'my-session', ...config })
+ * ```
+ */
+export interface SessionConfiguration {
+  viewport?: ViewportConfig
+  proxyConfiguration?: ProxyConfiguration
+  extensions?: BrowserExtension[]
+  profileConfiguration?: ProfileConfiguration
 }
 
 /**

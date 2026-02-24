@@ -94,7 +94,10 @@ export class Browser {
     const sessionTimeoutSeconds = params?.timeout ?? DEFAULT_TIMEOUT
 
     // Prepare command input
-    const input: StartBrowserSessionCommandInput = {
+    // Our SDK types (ProxyEntry, BypassConfig, ProfileConfiguration) are convenience wrappers
+    // over the tagged-union shapes in @aws-sdk/client-bedrock-agentcore (Proxy, ProxyBypass,
+    // BrowserProfileConfiguration). The wire format is identical, so the assertion is safe.
+    const input = {
       browserIdentifier: this.identifier,
       name: sessionName,
       sessionTimeoutSeconds: sessionTimeoutSeconds,
@@ -104,7 +107,10 @@ export class Browser {
             height: params.viewport.height,
           }
         : undefined,
-    }
+      ...(params?.proxyConfiguration && { proxyConfiguration: params.proxyConfiguration }),
+      ...(params?.extensions && { extensions: params.extensions }),
+      ...(params?.profileConfiguration && { profileConfiguration: params.profileConfiguration }),
+    } as StartBrowserSessionCommandInput
 
     // Start the session
     const command = new StartBrowserSessionCommand(input)

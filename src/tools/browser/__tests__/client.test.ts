@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Browser } from '../client.js'
+import type { SessionConfiguration } from '../types.js'
 
 // Track session state for mocking
 const mockSessionState = new Map<
@@ -249,6 +250,143 @@ describe('Browser', () => {
 
       await expect(client.startSession()).rejects.toThrow(/already active/)
     })
+
+    it('includes proxyConfiguration in command input when provided', async () => {
+      const proxyConfig = {
+        proxies: [
+          {
+            externalProxy: {
+              server: 'proxy.example.com',
+              port: 8080,
+              domainPatterns: ['.example.com'],
+              credentials: {
+                basicAuth: {
+                  secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:proxy-creds',
+                },
+              },
+            },
+          },
+        ],
+        bypass: {
+          domainPatterns: ['internal.example.com'],
+        },
+      }
+
+      const StartBrowserSessionCommand = (await import('@aws-sdk/client-bedrock-agentcore')).StartBrowserSessionCommand
+      const commandSpy = vi.mocked(StartBrowserSessionCommand)
+
+      await client.startSession({ proxyConfiguration: proxyConfig })
+
+      const lastCall = commandSpy.mock.calls[commandSpy.mock.calls.length - 1]
+      expect(lastCall![0]).toHaveProperty('proxyConfiguration')
+      expect(lastCall![0]!.proxyConfiguration).toEqual(proxyConfig)
+    })
+
+    it('includes extensions in command input when provided', async () => {
+      const extensions = [
+        {
+          location: {
+            s3: {
+              bucket: 'my-extensions',
+              prefix: 'extension1.zip',
+            },
+          },
+        },
+        {
+          location: {
+            s3: {
+              bucket: 'my-extensions',
+              prefix: 'extension2.zip',
+              versionId: 'v123',
+            },
+          },
+        },
+      ]
+
+      const StartBrowserSessionCommand = (await import('@aws-sdk/client-bedrock-agentcore')).StartBrowserSessionCommand
+      const commandSpy = vi.mocked(StartBrowserSessionCommand)
+
+      await client.startSession({ extensions })
+
+      const lastCall = commandSpy.mock.calls[commandSpy.mock.calls.length - 1]
+      expect(lastCall![0]).toHaveProperty('extensions')
+      expect(lastCall![0]!.extensions).toEqual(extensions)
+    })
+
+    it('includes profileConfiguration in command input when provided', async () => {
+      const profileConfig = {
+        profileIdentifier: 'my-profile-id',
+      }
+
+      const StartBrowserSessionCommand = (await import('@aws-sdk/client-bedrock-agentcore')).StartBrowserSessionCommand
+      const commandSpy = vi.mocked(StartBrowserSessionCommand)
+
+      await client.startSession({ profileConfiguration: profileConfig })
+
+      const lastCall = commandSpy.mock.calls[commandSpy.mock.calls.length - 1]
+      expect(lastCall![0]).toHaveProperty('profileConfiguration')
+      expect(lastCall![0]!.profileConfiguration).toEqual(profileConfig)
+    })
+
+    it('includes all new params together when provided', async () => {
+      const proxyConfig = {
+        proxies: [
+          {
+            externalProxy: {
+              server: 'proxy.example.com',
+              port: 8080,
+            },
+          },
+        ],
+      }
+
+      const extensions = [
+        {
+          location: {
+            s3: {
+              bucket: 'extensions-bucket',
+              prefix: 'ext.zip',
+            },
+          },
+        },
+      ]
+
+      const profileConfig = {
+        profileIdentifier: 'my-profile-id',
+      }
+
+      const StartBrowserSessionCommand = (await import('@aws-sdk/client-bedrock-agentcore')).StartBrowserSessionCommand
+      const commandSpy = vi.mocked(StartBrowserSessionCommand)
+
+      await client.startSession({
+        sessionName: 'full-config-test',
+        timeout: 7200,
+        viewport: { width: 1920, height: 1080 },
+        proxyConfiguration: proxyConfig,
+        extensions,
+        profileConfiguration: profileConfig,
+      })
+
+      const lastCall = commandSpy.mock.calls[commandSpy.mock.calls.length - 1]
+      expect(lastCall![0]).toHaveProperty('proxyConfiguration')
+      expect(lastCall![0]).toHaveProperty('extensions')
+      expect(lastCall![0]).toHaveProperty('profileConfiguration')
+      expect(lastCall![0]!.proxyConfiguration).toEqual(proxyConfig)
+      expect(lastCall![0]!.extensions).toEqual(extensions)
+      expect(lastCall![0]!.profileConfiguration).toEqual(profileConfig)
+    })
+
+    it('omits undefined new params from command input', async () => {
+      const StartBrowserSessionCommand = (await import('@aws-sdk/client-bedrock-agentcore')).StartBrowserSessionCommand
+      const commandSpy = vi.mocked(StartBrowserSessionCommand)
+
+      await client.startSession({ sessionName: 'basic-test' })
+
+      const lastCall = commandSpy.mock.calls[commandSpy.mock.calls.length - 1]
+      expect(lastCall![0]).not.toHaveProperty('proxyConfiguration')
+      expect(lastCall![0]).not.toHaveProperty('extensions')
+      expect(lastCall![0]).not.toHaveProperty('profileConfiguration')
+    })
   })
 
   describe('stopSession', () => {
@@ -440,6 +578,94 @@ describe('Browser', () => {
 
       expect(result).toBeDefined()
       expect(result.streamStatus).toBe('ENABLED')
+    })
+  })
+
+  describe('SessionConfiguration', () => {
+    let client: Browser
+
+    beforeEach(() => {
+      client = new Browser({ region: 'us-east-1' })
+    })
+
+    it('can be spread into startSession params', async () => {
+      const config: SessionConfiguration = {
+        viewport: { width: 1920, height: 1080 },
+        proxyConfiguration: {
+          proxies: [
+            {
+              externalProxy: {
+                server: 'proxy.example.com',
+                port: 8080,
+              },
+            },
+          ],
+        },
+        extensions: [
+          {
+            location: {
+              s3: {
+                bucket: 'my-extensions',
+                prefix: 'extension.zip',
+              },
+            },
+          },
+        ],
+        profileConfiguration: {
+          profileIdentifier: 'my-profile-id',
+        },
+      }
+
+      const StartBrowserSessionCommand = (await import('@aws-sdk/client-bedrock-agentcore')).StartBrowserSessionCommand
+      const commandSpy = vi.mocked(StartBrowserSessionCommand)
+
+      await client.startSession({ sessionName: 'config-test', ...config })
+
+      const lastCall = commandSpy.mock.calls[commandSpy.mock.calls.length - 1]
+      expect(lastCall![0]!.proxyConfiguration).toEqual(config.proxyConfiguration)
+      expect(lastCall![0]!.extensions).toEqual(config.extensions)
+      expect(lastCall![0]!.profileConfiguration).toEqual(config.profileConfiguration)
+    })
+
+    it('works with only a subset of fields', async () => {
+      const config: SessionConfiguration = {
+        proxyConfiguration: {
+          proxies: [
+            {
+              externalProxy: {
+                server: 'proxy.example.com',
+                port: 3128,
+              },
+            },
+          ],
+        },
+      }
+
+      const StartBrowserSessionCommand = (await import('@aws-sdk/client-bedrock-agentcore')).StartBrowserSessionCommand
+      const commandSpy = vi.mocked(StartBrowserSessionCommand)
+
+      await client.startSession({ sessionName: 'partial-config', ...config })
+
+      const lastCall = commandSpy.mock.calls[commandSpy.mock.calls.length - 1]
+      expect(lastCall![0]!.proxyConfiguration).toEqual(config.proxyConfiguration)
+      expect(lastCall![0]).not.toHaveProperty('extensions')
+      expect(lastCall![0]).not.toHaveProperty('profileConfiguration')
+    })
+
+    it('passes through malformed proxy config without client-side validation', async () => {
+      // The SDK passes configs through to the API without validation;
+      // the API is responsible for rejecting invalid configs.
+      const malformedProxy = {
+        proxies: [] as any[],
+      }
+
+      const StartBrowserSessionCommand = (await import('@aws-sdk/client-bedrock-agentcore')).StartBrowserSessionCommand
+      const commandSpy = vi.mocked(StartBrowserSessionCommand)
+
+      await client.startSession({ proxyConfiguration: malformedProxy })
+
+      const lastCall = commandSpy.mock.calls[commandSpy.mock.calls.length - 1]
+      expect(lastCall![0]!.proxyConfiguration).toEqual(malformedProxy)
     })
   })
 })
