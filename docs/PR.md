@@ -160,7 +160,7 @@ API changes, state "No public API changes."]
 ## Use Cases (optional)
 
 [Only include for non-obvious functionality. Provide 1-3 concrete use cases
-showing when developers would use this feature. Skip for trivial changes obvious fixes..]
+showing when developers would use this feature. Skip for trivial changes or obvious fixes.]
 
 ## Breaking Changes (if applicable)
 
@@ -194,7 +194,7 @@ showing when developers would use this feature. Skip for trivial changes obvious
 ## Checklist Items
 
  - [ ] Does the PR description target a Senior Engineer familiar with the project?
- - [ ] Does the PR description give an overview of the feature being implemented, including any notes on key implemention decisions
+ - [ ] Does the PR description give an overview of the feature being implemented, including any notes on key implementation decisions
  - [ ] Does the PR include a "Resolves #<ISSUE NUMBER>" in the body and is not bolded?
  - [ ] Does the PR contain the motivation or use-cases behind the change?
- - [ ] Does the PR omit irrelevent details not needed for historical reference?
+ - [ ] Does the PR omit irrelevant details not needed for historical reference?
