@@ -5,7 +5,7 @@ import tsdoc from 'eslint-plugin-tsdoc'
 
 export default [
   {
-    ignores: ['**/.next/**', '**/node_modules/**', '**/dist/**', '**/next-env.d.ts'],
+    ignores: ['**/.next/**', '**/node_modules/**', '**/dist/**', '**/next-env.d.ts', '**/nice-dcv-web-client-sdk/**', 'src/tools/browser/live-view/types/**', 'src/tools/browser/live-view/integration/**'],
   },
   eslint.configs.recommended,
   {

@@ -129,6 +129,21 @@ export class Browser {
   }
 
   /**
+   * Attaches an existing session by ID so that signing methods
+   * (generateWebSocketUrl, generateLiveViewUrl) can be used
+   * without calling startSession().
+   *
+   * @param sessionId - The ID of an existing browser session
+   */
+  attachSession(sessionId: string): void {
+    this._session = {
+      sessionId,
+      sessionName: 'attached',
+      createdAt: new Date(),
+    }
+  }
+
+  /**
    * Stops the active browser session.
    *
    * @throws Error if no session is active
@@ -350,6 +365,51 @@ export class Browser {
     }
 
     return result
+  }
+
+  /**
+   * Generates a presigned HTTPS URL for the browser live-view (DCV streaming).
+   * Uses SigV4 presigning with query parameters — suitable for browser-side
+   * WebSocket connections where custom headers cannot be sent.
+   *
+   * @param expiresIn - URL expiration in seconds (default: 300)
+   * @returns Presigned HTTPS URL string
+   *
+   * @throws Error if no session is active
+   */
+  async generateLiveViewUrl(expiresIn = 300): Promise<string> {
+    if (!this._session) {
+      throw new Error('No active session. Call startSession() first.')
+    }
+
+    const host = `bedrock-agentcore.${this.region}.amazonaws.com`
+    const path = `/browser-streams/${this.identifier}/sessions/${this._session.sessionId}/live-view`
+
+    const credentialsProvider = this._credentialsProvider ?? fromNodeProviderChain()
+    const credentials = await credentialsProvider()
+
+    const signer = new SignatureV4({
+      service: 'bedrock-agentcore',
+      region: this.region,
+      credentials,
+      sha256: Sha256,
+    })
+
+    const presigned = await signer.presign(
+      new HttpRequest({
+        protocol: 'https:',
+        hostname: host,
+        path,
+        method: 'GET',
+        headers: { host },
+      }),
+      { expiresIn }
+    )
+
+    const qs = Object.entries(presigned.query ?? {})
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+      .join('&')
+    return `https://${host}${path}?${qs}`
   }
 
   /**

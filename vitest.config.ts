@@ -1,11 +1,20 @@
+import { resolve } from 'path'
 import { defineConfig } from 'vitest/config'
+
+const dcvStub = resolve(__dirname, 'src/tools/browser/live-view/__tests__/__mocks__/dcv-stub.tsx')
 
 export default defineConfig({
   test: {
     projects: [
       {
+        resolve: {
+          alias: {
+            dcv: dcvStub,
+            'dcv-ui': dcvStub,
+          },
+        },
         test: {
-          include: ['src/**/__tests__/**/*.test.ts'],
+          include: ['src/**/__tests__/**/*.test.{ts,tsx}'],
           includeSource: ['src/**/*.{js,ts}'],
           name: { label: 'unit-node', color: 'green' },
           typecheck: {
@@ -42,7 +51,6 @@ export default defineConfig({
         functions: 60,
         branches: 50,
         statements: 60,
-        // Allow lower thresholds - app.ts needs integration tests
         perFile: true,
       },
     },

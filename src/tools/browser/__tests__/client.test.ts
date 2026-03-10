@@ -172,6 +172,17 @@ vi.mock('@smithy/signature-v4', () => ({
         'X-Amz-Security-Token': 'mock-session-token',
       },
     }))
+    this.presign = vi.fn(async (request: any) => ({
+      ...request,
+      query: {
+        'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+        'X-Amz-Credential': 'mock-access-key/20250114/us-east-1/bedrock-agentcore/aws4_request',
+        'X-Amz-Date': '20250114T000000Z',
+        'X-Amz-Expires': '300',
+        'X-Amz-SignedHeaders': 'host',
+        'X-Amz-Signature': 'mock-signature',
+      },
+    }))
     return this
   }),
 }))
@@ -535,6 +546,53 @@ describe('Browser', () => {
 
       expect(wsConnection.url).toContain(session.sessionId)
       expect(wsConnection.url).toContain(client.identifier)
+    })
+  })
+
+  describe('generateLiveViewUrl', () => {
+    let client: Browser
+
+    beforeEach(() => {
+      client = new Browser({ region: 'us-east-1' })
+    })
+
+    it('generates presigned HTTPS URL for active session', async () => {
+      await client.startSession()
+      const url = await client.generateLiveViewUrl()
+
+      expect(url).toMatch(/^https:\/\//)
+      expect(url).toContain('browser-streams')
+      expect(url).toContain('live-view')
+      expect(url).toContain('X-Amz-Signature')
+      expect(url).toContain('X-Amz-Credential')
+      expect(url).toContain('X-Amz-Algorithm')
+    })
+
+    it('throws error when no active session', async () => {
+      await expect(client.generateLiveViewUrl()).rejects.toThrow(/No active session/)
+    })
+
+    it('includes session ID and identifier in URL', async () => {
+      const session = await client.startSession()
+      const url = await client.generateLiveViewUrl()
+
+      expect(url).toContain(session.sessionId)
+      expect(url).toContain(client.identifier)
+    })
+
+    it('does not use wss protocol', async () => {
+      await client.startSession()
+      const url = await client.generateLiveViewUrl()
+
+      expect(url).not.toMatch(/^wss:\/\//)
+    })
+
+    it('uses query params not headers for auth', async () => {
+      await client.startSession()
+      const url = await client.generateLiveViewUrl()
+
+      expect(url).toContain('X-Amz-Expires')
+      expect(url).not.toContain('/automation')
     })
   })
 

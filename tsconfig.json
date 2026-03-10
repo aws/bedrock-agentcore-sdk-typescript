@@ -26,8 +26,9 @@
     "verbatimModuleSyntax": true,
     "sourceMap": true,
     "removeComments": false,
+    "jsx": "react-jsx",
     "types": ["node", "vitest/importMeta"]
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/**/__tests__/**"]
+  "exclude": ["node_modules", "dist", "src/**/__tests__/**", "src/tools/browser/live-view/nice-dcv-web-client-sdk/**", "src/tools/browser/live-view/integration/**"]
 }

@@ -30,6 +30,10 @@
       "import": "./dist/src/tools/browser/integrations/strands/index.js",
       "types": "./dist/src/tools/browser/integrations/strands/index.d.ts"
     },
+    "./browser/live-view": {
+      "import": "./dist/src/tools/browser/live-view/index.js",
+      "types": "./dist/src/tools/browser/live-view/index.d.ts"
+    },
     "./code-interpreter": {
       "import": "./dist/src/tools/code-interpreter/index.js",
       "types": "./dist/src/tools/code-interpreter/index.d.ts"
@@ -52,7 +56,8 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run copy-dcv",
+    "copy-dcv": "npx tsx scripts/copy-dcv-sdk.ts",
     "check": "npm run lint && npm run format && npm run type-check:all && npm run test:coverage",
     "clean": "rm -rf node_modules dist package-lock.json",
     "test": "vitest run --project unit-node",
@@ -86,8 +91,12 @@
     "@ai-sdk/amazon-bedrock": "^4.0.0-beta.67",
     "@aws-sdk/client-cognito-identity-provider": "^3.957.0",
     "@strands-agents/sdk": "^0.5.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/express": "^5.0.6",
     "@types/node": "^25.0.10",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@types/supertest": "^6.0.3",
     "@typescript-eslint/eslint-plugin": "^8.48.0",
     "@typescript-eslint/parser": "^8.0.0",
@@ -96,8 +105,11 @@
     "eslint": "^9.0.0",
     "eslint-plugin-tsdoc": "^0.5.0",
     "husky": "^9.1.7",
+    "jsdom": "^28.1.0",
     "playwright": "^1.56.1",
     "prettier": "^3.0.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "supertest": "^7.1.4",
     "tsx": "^4.19.4",
     "typescript": "^5.5.0",
@@ -134,7 +146,9 @@
   "peerDependencies": {
     "@strands-agents/sdk": ">=0.1.0",
     "ai": ">=6.0.0-beta",
-    "playwright": ">=1.56.0"
+    "playwright": ">=1.56.0",
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
   },
   "peerDependenciesMeta": {
     "ai": {
@@ -144,6 +158,12 @@
       "optional": true
     },
     "@strands-agents/sdk": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
       "optional": true
     }
   }
