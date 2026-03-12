@@ -110,15 +110,6 @@ Returns a presigned HTTPS URL for the DCV streaming endpoint. Default expiry is 
 
 Attaches an existing session ID so `generateLiveViewUrl()` can be called without `startSession()`.
 
-## Multiple Instances
-
-You can render multiple `BrowserLiveView` components simultaneously — each manages its own authentication state keyed by `signedUrl`:
-
-```tsx
-<BrowserLiveView signedUrl={url1} />
-<BrowserLiveView signedUrl={url2} />
-```
-
 ## Important Notes
 
 - `remoteWidth`/`remoteHeight` must match the viewport dimensions from `startSession()`, otherwise the display will appear cropped or have black bars
