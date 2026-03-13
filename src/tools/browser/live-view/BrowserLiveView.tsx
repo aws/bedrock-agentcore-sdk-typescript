@@ -27,6 +27,8 @@ interface AuthState {
 
 const authStateMap = new Map<string, AuthState>()
 
+let instanceCounter = 0
+
 const DEFAULT_REMOTE_WIDTH = 1920
 const DEFAULT_REMOTE_HEIGHT = 1080
 
@@ -46,6 +48,7 @@ export const BrowserLiveView = ({
   const containerRef = useRef<HTMLDivElement>(null)
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
   const mutationObserverRef = useRef<MutationObserver | null>(null)
+  const divIdRef = useRef(`dcv-display-${++instanceCounter}`)
 
   // Cleanup on unmount — disconnect DCV connection and observers
   useEffect(() => {
@@ -166,12 +169,12 @@ export const BrowserLiveView = ({
 
         lastApplyTime = Date.now()
 
-        const dcvContainer = container.querySelector<HTMLElement>('#dcv-container')
+        const dcvContainer = container.querySelector<HTMLElement>(`#${divIdRef.current}-container`)
         if (dcvContainer) {
           Object.assign(dcvContainer.style, { width: `${cw}px`, height: `${ch}px`, overflow: 'hidden' })
         }
 
-        const dcvDisplay = container.querySelector<HTMLElement>('#dcv-display')
+        const dcvDisplay = container.querySelector<HTMLElement>(`#${divIdRef.current}`)
         if (dcvDisplay) {
           const { scale, offsetX } = calculateScale(cw, ch, remoteWidth, remoteHeight)
           Object.assign(dcvDisplay.style, {
@@ -190,7 +193,7 @@ export const BrowserLiveView = ({
 
       const setupMutationObserver = () => {
         const container = containerRef.current
-        const dcvDisplay = container?.querySelector<HTMLElement>('#dcv-display')
+        const dcvDisplay = container?.querySelector<HTMLElement>(`#${divIdRef.current}`)
         if (!dcvDisplay) return
 
         mutationObserverRef.current?.disconnect()
@@ -232,6 +235,7 @@ export const BrowserLiveView = ({
           onConnectionEstablished,
           logLevel: dcv.LogLevel.INFO,
           observers: { httpExtraSearchParams: httpExtraSearchParamsCb },
+          divId: divIdRef.current,
         }}
         uiConfig={{
           toolbar: { visible: false, fullscreenButton: false, multimonitorButton: false },

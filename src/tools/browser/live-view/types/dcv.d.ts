@@ -42,6 +42,7 @@ declare module 'dcv-ui' {
       onConnectionEstablished: (conn: DCVConnection) => void
       logLevel: number
       observers: { httpExtraSearchParams: (conn: DCVConnection) => URLSearchParams }
+      divId?: string
     }
     uiConfig: {
       toolbar: { visible: boolean; fullscreenButton: boolean; multimonitorButton: boolean }
