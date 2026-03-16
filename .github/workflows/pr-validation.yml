@@ -74,18 +74,3 @@ jobs:
           if [ "${TOTAL_CHANGES}" -gt 1000 ]; then
             echo "Large PR detected (>1000 lines). Consider splitting into smaller PRs."
           fi
-
-  label:
-    name: Auto-label PR
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Label by changed files
-        uses: actions/labeler@v6
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
