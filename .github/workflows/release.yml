@@ -43,7 +43,7 @@ jobs:
           fi
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -192,7 +192,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: release/v${{ needs.prepare-release.outputs.version }}
 
@@ -282,7 +282,7 @@ jobs:
 
     steps:
       - name: Checkout latest main (AFTER PR merge)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: main  # CRITICAL: Always checkout main, not the original trigger commit
           fetch-depth: 0
