@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { Readable } from 'stream'
 import { z } from 'zod'
 import type { InvocationHandler, WebSocketHandler } from '../types.js'
 import { BedrockAgentCoreApp } from '../app.js'
@@ -352,8 +353,8 @@ describe('BedrockAgentCoreApp', () => {
 
     it('handles streaming response', async () => {
       const mockHandler = vi.fn(async function* () {
-        yield { chunk: 1 }
-        yield { chunk: 2 }
+        yield { data: 'chunk1' }
+        yield { data: 'chunk2' }
       })
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
@@ -380,14 +381,16 @@ describe('BedrockAgentCoreApp', () => {
       }
       await invocationHandler(mockReq, mockReply)
       expect(mockSSE.keepAlive).toHaveBeenCalled()
-      expect(mockSSE.send).toHaveBeenCalled()
+      expect(mockSSE.send).toHaveBeenCalledTimes(2)
+      expect(mockSSE.send).toHaveBeenCalledWith({ data: 'chunk1' })
+      expect(mockSSE.send).toHaveBeenCalledWith({ data: 'chunk2' })
     })
 
-    it('sends correct SSE events for streaming response', async () => {
-      const mockHandler = vi.fn(async function* (_req, context) {
-        yield { event: 'start', sessionId: context.sessionId }
-        yield { event: 'data', content: 'streaming test' }
-        yield { event: 'end' }
+    it('sends correct SSE events for streaming response with data field', async () => {
+      const mockHandler = vi.fn(async function* () {
+        yield { data: 'hello' }
+        yield { data: { nested: true }, event: 'custom' }
+        yield 'plain string'
       })
 
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
@@ -403,7 +406,6 @@ describe('BedrockAgentCoreApp', () => {
         headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'stream-session' },
       }
 
-      // Track all SSE events sent
       const sentEvents: any[] = []
       const mockSSE = {
         keepAlive: vi.fn(),
@@ -424,21 +426,142 @@ describe('BedrockAgentCoreApp', () => {
 
       await invocationHandler(mockReq, mockReply)
 
-      // Verify SSE setup
       expect(mockSSE.keepAlive).toHaveBeenCalled()
-
-      // Verify correct number of SSE events (3 data + 1 done)
       expect(mockSSE.send).toHaveBeenCalledTimes(3)
 
-      // Verify the actual SSE event data
+      // Objects with 'data' field pass through, strings pass through
+      expect(sentEvents).toEqual([{ data: 'hello' }, { data: { nested: true }, event: 'custom' }, 'plain string'])
+
+      expect(mockSSE.close).toHaveBeenCalled()
+    })
+
+    it('normalizes objects without data field by wrapping them', async () => {
+      const mockHandler = vi.fn(async function* () {
+        yield { event: 'start', sessionId: 'abc' }
+        yield { chunk: 1 }
+        yield { event: 'end' }
+      })
+
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
+      const mockApp = app['_app'] as any
+
+      app['_setupRoutes']()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2]
+
+      const mockReq = {
+        body: {},
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'stream-session' },
+      }
+
+      const sentEvents: any[] = []
+      const mockSSE = {
+        keepAlive: vi.fn(),
+        onClose: vi.fn(),
+        isConnected: true,
+        send: vi.fn((event) => {
+          sentEvents.push(event)
+          return Promise.resolve()
+        }),
+        close: vi.fn(),
+      }
+
+      const mockReply = {
+        sse: mockSSE,
+        status: vi.fn().mockReturnThis(),
+        send: vi.fn(),
+      }
+
+      await invocationHandler(mockReq, mockReply)
+
+      // Objects without 'data' field are wrapped as { data: chunk }
       expect(sentEvents).toEqual([
-        { event: 'start', sessionId: 'stream-session' },
-        { event: 'data', content: 'streaming test' },
-        { event: 'end' },
+        { data: { event: 'start', sessionId: 'abc' } },
+        { data: { chunk: 1 } },
+        { data: { event: 'end' } },
       ])
 
-      // Verify connection was closed
       expect(mockSSE.close).toHaveBeenCalled()
+    })
+
+    it('sends error via SSE when streaming handler throws and connection is active', async () => {
+      const mockHandler = vi.fn(async function* () {
+        yield { data: 'first' }
+        throw new Error('Handler exploded')
+      })
+
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
+      const mockApp = app['_app'] as any
+
+      app['_setupRoutes']()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2]
+
+      const mockReq = {
+        body: {},
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
+      }
+
+      const sentEvents: any[] = []
+      const mockSSE = {
+        keepAlive: vi.fn(),
+        isConnected: true,
+        send: vi.fn((event) => {
+          sentEvents.push(event)
+          return Promise.resolve()
+        }),
+        close: vi.fn(),
+      }
+
+      const mockReply = {
+        sse: mockSSE,
+        raw: { headersSent: true },
+        status: vi.fn().mockReturnThis(),
+        send: vi.fn(),
+      }
+
+      await invocationHandler(mockReq, mockReply)
+
+      // Error should be sent as SSE event, not as HTTP 500
+      expect(sentEvents).toContainEqual({
+        event: 'error',
+        data: { error: 'Handler exploded' },
+      })
+      expect(mockSSE.close).toHaveBeenCalled()
+      // Should NOT try to send HTTP error response
+      expect(mockReply.status).not.toHaveBeenCalledWith(500)
+    })
+
+    it('sends HTTP 500 when handler throws before streaming starts', async () => {
+      const mockHandler = vi.fn(async () => {
+        throw new Error('Immediate failure')
+      })
+
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
+      const mockApp = app['_app'] as any
+
+      app['_setupRoutes']()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2]
+
+      const mockReq = {
+        body: {},
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
+      }
+
+      const mockReply = {
+        raw: { headersSent: false },
+        status: vi.fn().mockReturnThis(),
+        send: vi.fn(),
+      }
+
+      await invocationHandler(mockReq, mockReply)
+
+      expect(mockReply.status).toHaveBeenCalledWith(500)
+      expect(mockReply.send).toHaveBeenCalledWith({ error: 'Immediate failure' })
     })
 
     it('returns JSON for non-streaming response when SSE mode active with Accept: application/json', async () => {
@@ -1037,6 +1160,61 @@ describe('BedrockAgentCoreApp', () => {
       )
     })
 
+    it('logs error when handler throws after headers sent and SSE connection is closed', async () => {
+      const mockHandler = vi.fn(async function* () {
+        yield { data: 'first' }
+        throw new Error('Late failure')
+      })
+
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
+      const mockApp = app['_app'] as any
+
+      app['_setupRoutes']()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2]
+
+      const mockReq = {
+        body: {},
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
+      }
+
+      let sendCount = 0
+      const mockSSE = {
+        keepAlive: vi.fn(),
+        // Connection drops after first send
+        get isConnected() {
+          return sendCount < 2
+        },
+        send: vi.fn(() => {
+          sendCount++
+          return Promise.resolve()
+        }),
+        close: vi.fn(),
+      }
+
+      const mockReply = {
+        sse: mockSSE,
+        raw: { headersSent: true },
+        status: vi.fn().mockReturnThis(),
+        send: vi.fn(),
+      }
+
+      await invocationHandler(mockReq, mockReply)
+
+      // 'first' chunk sent, then error thrown, isConnected still true for error send
+      // so error event also sent (sendCount becomes 2), then isConnected returns false
+      expect(mockSSE.send).toHaveBeenCalledTimes(2)
+      expect(mockSSE.send).toHaveBeenCalledWith({ data: 'first' })
+      expect(mockSSE.send).toHaveBeenCalledWith({
+        event: 'error',
+        data: { error: 'Late failure' },
+      })
+      // Should NOT try to send HTTP error response
+      expect(mockReply.status).not.toHaveBeenCalledWith(500)
+      expect(mockSSE.close).toHaveBeenCalled()
+    })
+
     it('handles Authorization header case-insensitively', async () => {
       const mockHandler = vi.fn(async (_request, context) => ({ headers: context.headers }))
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
@@ -1093,6 +1271,104 @@ describe('BedrockAgentCoreApp', () => {
           headers: expect.any(Object),
         })
       )
+    })
+  })
+
+  describe('_normalizeSSEChunk', () => {
+    let normalize: (chunk: unknown) => unknown
+
+    beforeEach(() => {
+      const handler: InvocationHandler = async (_request, _context) => 'test'
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
+      normalize = (app as any)._normalizeSSEChunk.bind(app)
+    })
+
+    it('passes through strings as-is', () => {
+      expect(normalize('hello')).toBe('hello')
+      expect(normalize('')).toBe('')
+    })
+
+    it('passes through Buffers as-is', () => {
+      const buf = Buffer.from('test')
+      expect(normalize(buf)).toBe(buf)
+    })
+
+    it('passes through objects with data field as-is', () => {
+      const msg = { data: 'hello' }
+      expect(normalize(msg)).toBe(msg)
+
+      const msgWithEvent = { event: 'custom', data: { nested: true } }
+      expect(normalize(msgWithEvent)).toBe(msgWithEvent)
+
+      const msgWithId = { id: '1', event: 'update', data: 'x', retry: 1000 }
+      expect(normalize(msgWithId)).toBe(msgWithId)
+    })
+
+    it('wraps objects without data field as { data: chunk }', () => {
+      expect(normalize({ event: 'start' })).toEqual({ data: { event: 'start' } })
+      expect(normalize({ chunk: 1 })).toEqual({ data: { chunk: 1 } })
+      expect(normalize({ foo: 'bar', baz: 42 })).toEqual({ data: { foo: 'bar', baz: 42 } })
+    })
+
+    it('wraps null as { data: null }', () => {
+      expect(normalize(null)).toEqual({ data: null })
+    })
+
+    it('wraps undefined as { data: undefined }', () => {
+      expect(normalize(undefined)).toEqual({ data: undefined })
+    })
+
+    it('wraps numbers as { data: number }', () => {
+      expect(normalize(42)).toEqual({ data: 42 })
+      expect(normalize(0)).toEqual({ data: 0 })
+    })
+
+    it('wraps booleans as { data: boolean }', () => {
+      expect(normalize(true)).toEqual({ data: true })
+      expect(normalize(false)).toEqual({ data: false })
+    })
+
+    it('passes through Readable streams as-is', () => {
+      const stream = new Readable({
+        read() {
+          this.push(null)
+        },
+      })
+      expect(normalize(stream)).toBe(stream)
+    })
+
+    it('passes through AsyncIterables as-is', () => {
+      const asyncIterable = {
+        [Symbol.asyncIterator]() {
+          return {
+            next: async () => ({ done: true, value: undefined }),
+          }
+        },
+      }
+      expect(normalize(asyncIterable)).toBe(asyncIterable)
+    })
+
+    it('passes through async generators as-is', () => {
+      async function* gen() {
+        yield 'test'
+      }
+      const generator = gen()
+      expect(normalize(generator)).toBe(generator)
+    })
+
+    it('wraps arrays as { data: array } (arrays have no data property)', () => {
+      const arr = [1, 2, 3]
+      expect(normalize(arr)).toEqual({ data: [1, 2, 3] })
+    })
+
+    it('handles object with data: null (valid SSEMessage)', () => {
+      const msg = { data: null }
+      expect(normalize(msg)).toBe(msg) // passes through since 'data' in msg is true
+    })
+
+    it('handles object with data: undefined (valid SSEMessage)', () => {
+      const msg = { data: undefined }
+      expect(normalize(msg)).toBe(msg) // 'data' in msg is true even if value is undefined
     })
   })
 })

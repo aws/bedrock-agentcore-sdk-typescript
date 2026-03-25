@@ -1,6 +1,7 @@
 import { Buffer } from 'buffer'
 import { createRequire } from 'module'
 import { randomUUID } from 'crypto'
+import { Readable } from 'stream'
 import Fastify from 'fastify'
 import { z } from 'zod'
 import type {
@@ -398,11 +399,24 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
         }
       }
     } catch (error) {
-      // Handle errors
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      await reply.status(500).send({
-        error: errorMessage,
-      })
+      if (reply.raw.headersSent) {
+        // Headers already sent (streaming started) — cannot send HTTP error response
+        if (reply.sse?.isConnected) {
+          try {
+            await reply.sse.send({ event: 'error', data: { error: errorMessage } })
+          } catch {
+            this._app.log.error(error, 'Error after headers sent (failed to send SSE error event)')
+          }
+          reply.sse.close()
+        } else {
+          this._app.log.error(error, 'Error after response headers sent')
+        }
+      } else {
+        await reply.status(500).send({
+          error: errorMessage,
+        })
+      }
     }
   }
 
@@ -444,20 +458,23 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
           break
         }
 
-        // Send SSE message
-        await reply.sse.send(chunk)
+        // Normalize chunk to a valid SSESource before sending
+        await reply.sse.send(this._normalizeSSEChunk(chunk))
       }
     } catch (error) {
-      // Send error event if still connected
+      // Send error event if still connected; guard against send() itself failing
       if (reply.sse && reply.sse.isConnected) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        await reply.sse.send({
-          event: 'error',
-          data: { error: errorMessage },
-        })
+        try {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+          await reply.sse.send({
+            event: 'error',
+            data: { error: errorMessage },
+          })
+        } catch {
+          this._app.log.error(error, 'Error during streaming SSE events (failed to send error event)')
+        }
       } else {
         this._app.log.error(error, 'Error during streaming SSE events')
-        throw new Error('Error during streaming SSE events')
       }
     } finally {
       // Close the SSE connection
@@ -465,6 +482,42 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
         reply.sse.close()
       }
     }
+  }
+
+  /**
+   * Normalizes a chunk yielded by the user's async generator into a valid SSESource.
+   *
+   * \@fastify/sse's send() accepts: string, Buffer, SSEMessage (object with `data` field),
+   * Readable, or AsyncIterable. Arbitrary objects without a `data` field are rejected.
+   * This method wraps such objects as `{ data: chunk }` so they are sent as SSE data.
+   *
+   * @param chunk - Raw value yielded by the generator
+   * @returns A valid SSESource
+   */
+  private _normalizeSSEChunk(chunk: unknown): SSESource {
+    // Strings and Buffers are valid SSESource as-is
+    if (typeof chunk === 'string' || Buffer.isBuffer(chunk)) {
+      return chunk
+    }
+    // Readable streams are valid SSESource — @fastify/sse pipes them via pipeline()
+    if (chunk instanceof Readable) {
+      return chunk
+    }
+    // Non-null objects need further inspection
+    if (typeof chunk === 'object' && chunk !== null) {
+      // Objects with a 'data' property are valid SSEMessage
+      if ('data' in chunk) {
+        return chunk as SSESource
+      }
+      // AsyncIterables are valid SSESource — @fastify/sse iterates them
+      if (Symbol.asyncIterator in chunk) {
+        return chunk as SSESource
+      }
+      // Plain objects without 'data' — wrap as SSEMessage data payload
+      return { data: chunk }
+    }
+    // Primitives (number, boolean, null) — wrap as SSEMessage data payload
+    return { data: chunk }
   }
 
   /**

@@ -443,6 +443,197 @@ describe('BedrockAgentCoreApp Integration', () => {
         expect(contextDuringIteration?.sessionId).toBe('context-session')
         expect(contextDuringIteration?.workloadAccessToken).toBe('test-token-123')
       })
+
+      it('normalizes objects without data field by wrapping them as SSE data', async () => {
+        // This is the exact scenario from GitHub issue #66:
+        // User yields { event: 'start' } without a 'data' field, which
+        // @fastify/sse rejects with TypeError('Invalid SSE source type')
+        const noDataHandler: InvocationHandler = async function* (_req, _context) {
+          yield { event: 'start', sessionId: 'abc' }
+          yield { chunk: 1 }
+          yield { status: 'done' }
+        }
+
+        const noDataApp = new BedrockAgentCoreApp({ invocationHandler: { process: noDataHandler } })
+        const noDataFastify = (noDataApp as any)._app
+        await (noDataApp as any)._registerPlugins()
+        ;(noDataApp as any)._setupRoutes()
+        await noDataFastify.ready()
+
+        await request(noDataFastify.server)
+          .post('/invocations')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'no-data-session')
+          .set('accept', 'text/event-stream')
+          .send({ message: 'test' })
+          .expect('Content-Type', 'text/event-stream')
+          .expect(200)
+          .expect(function (res) {
+            // Objects without 'data' are wrapped as { data: chunk } and serialized
+            expect(res.text).toContain('data: {"event":"start","sessionId":"abc"}')
+            expect(res.text).toContain('data: {"chunk":1}')
+            expect(res.text).toContain('data: {"status":"done"}')
+            // Should NOT contain any error events
+            expect(res.text).not.toContain('event: error')
+          })
+      })
+
+      it('passes through mixed SSE source types correctly', async () => {
+        // User mixes proper SSEMessage objects, bare objects, strings, and Buffers
+        const mixedHandler: InvocationHandler = async function* (_req, _context) {
+          yield { event: 'start', data: { msg: 'proper SSEMessage' } } // has 'data' → passthrough
+          yield { chunk: 42 } // no 'data' → wrapped
+          yield 'plain text' // string → passthrough
+          yield Buffer.from('buffer data') // Buffer → passthrough
+          yield { event: 'end', data: {} } // has 'data' → passthrough
+        }
+
+        const mixedApp = new BedrockAgentCoreApp({ invocationHandler: { process: mixedHandler } })
+        const mixedFastify = (mixedApp as any)._app
+        await (mixedApp as any)._registerPlugins()
+        ;(mixedApp as any)._setupRoutes()
+        await mixedFastify.ready()
+
+        await request(mixedFastify.server)
+          .post('/invocations')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'mixed-session')
+          .set('accept', 'text/event-stream')
+          .send({})
+          .expect('Content-Type', 'text/event-stream')
+          .expect(200)
+          .expect(function (res) {
+            expect(res.text).toContain('event: start')
+            expect(res.text).toContain('data: {"msg":"proper SSEMessage"}')
+            expect(res.text).toContain('data: {"chunk":42}')
+            expect(res.text).toContain('data: plain text')
+            expect(res.text).toContain('data: buffer data')
+            expect(res.text).toContain('event: end')
+          })
+      })
+
+      it('handles streaming handler that throws mid-stream without crashing server', async () => {
+        const errorHandler: InvocationHandler = async function* (_req, _context) {
+          yield { event: 'start', data: { status: 'ok' } }
+          yield 'partial data'
+          throw new Error('Mid-stream failure')
+        }
+
+        const errorApp = new BedrockAgentCoreApp({ invocationHandler: { process: errorHandler } })
+        const errorFastify = (errorApp as any)._app
+        await (errorApp as any)._registerPlugins()
+        ;(errorApp as any)._setupRoutes()
+        await errorFastify.ready()
+
+        // First request — handler throws mid-stream
+        await request(errorFastify.server)
+          .post('/invocations')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'error-stream-session')
+          .set('accept', 'text/event-stream')
+          .send({})
+          .expect('Content-Type', 'text/event-stream')
+          .expect(200)
+          .expect(function (res) {
+            // Should have the data sent before the error
+            expect(res.text).toContain('event: start')
+            expect(res.text).toContain('data: partial data')
+            // Should contain an error event (not HTTP 500)
+            expect(res.text).toContain('event: error')
+            expect(res.text).toContain('Mid-stream failure')
+          })
+
+        // Second request — server is still alive and functional
+        await request(errorFastify.server)
+          .post('/invocations')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'after-error-session')
+          .set('accept', 'text/event-stream')
+          .send({})
+          .expect('Content-Type', 'text/event-stream')
+          .expect(200)
+          .expect(function (res) {
+            expect(res.text).toContain('event: start')
+          })
+      })
+
+      it('returns HTTP 500 when non-streaming handler throws (headers not yet sent)', async () => {
+        const throwHandler: InvocationHandler = async (_req, _context) => {
+          throw new Error('Sync handler blew up')
+        }
+
+        const throwApp = new BedrockAgentCoreApp({ invocationHandler: { process: throwHandler } })
+        const throwFastify = (throwApp as any)._app
+        await (throwApp as any)._registerPlugins()
+        ;(throwApp as any)._setupRoutes()
+        await throwFastify.ready()
+
+        await request(throwFastify.server)
+          .post('/invocations')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'throw-session')
+          .send({})
+          .expect(500)
+          .expect(function (res) {
+            expect(res.body.error).toBe('Sync handler blew up')
+          })
+      })
+
+      it('handles yielding null and undefined values', async () => {
+        const nullHandler: InvocationHandler = async function* (_req, _context) {
+          yield null
+          yield undefined
+          yield 'after-nulls'
+        }
+
+        const nullApp = new BedrockAgentCoreApp({ invocationHandler: { process: nullHandler } })
+        const nullFastify = (nullApp as any)._app
+        await (nullApp as any)._registerPlugins()
+        ;(nullApp as any)._setupRoutes()
+        await nullFastify.ready()
+
+        await request(nullFastify.server)
+          .post('/invocations')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'null-session')
+          .set('accept', 'text/event-stream')
+          .send({})
+          .expect('Content-Type', 'text/event-stream')
+          .expect(200)
+          .expect(function (res) {
+            // null wrapped as { data: null } → JSON.stringify(null) → "null"
+            expect(res.text).toContain('data: null')
+            // string passed through directly
+            expect(res.text).toContain('data: after-nulls')
+            // Should not contain error events
+            expect(res.text).not.toContain('event: error')
+          })
+      })
+
+      it('handles yielding primitive values (numbers, booleans)', async () => {
+        // Numbers and booleans are not valid SSESource directly,
+        // so _normalizeSSEChunk wraps them: yield 42 → { data: 42 }
+        // Then @fastify/sse serializes: JSON.stringify(42) → "42"
+        const primitiveHandler: InvocationHandler = async function* (_req, _context) {
+          yield { data: 42 }
+          yield { data: true }
+          yield { data: { msg: 'done' } }
+        }
+
+        const primitiveApp = new BedrockAgentCoreApp({ invocationHandler: { process: primitiveHandler } })
+        const primitiveFastify = (primitiveApp as any)._app
+        await (primitiveApp as any)._registerPlugins()
+        ;(primitiveApp as any)._setupRoutes()
+        await primitiveFastify.ready()
+
+        await request(primitiveFastify.server)
+          .post('/invocations')
+          .set('x-amzn-bedrock-agentcore-runtime-session-id', 'primitive-session')
+          .set('accept', 'text/event-stream')
+          .send({})
+          .expect('Content-Type', 'text/event-stream')
+          .expect(200)
+          .expect(function (res) {
+            // JSON.stringify(42) → "42", JSON.stringify(true) → "true"
+            expect(res.text).toContain('data: 42')
+            expect(res.text).toContain('data: true')
+            expect(res.text).toContain('data: {"msg":"done"}')
+          })
+      })
     })
   })
 
@@ -666,7 +857,9 @@ describe('BedrockAgentCoreApp Integration', () => {
                     validated: true,
                   }
                 } catch (error) {
-                  throw new Error(`Invalid JSON: ${error instanceof Error ? error.message : 'Unknown error'}`)
+                  throw new Error(`Invalid JSON: ${error instanceof Error ? error.message : 'Unknown error'}`, {
+                    cause: error,
+                  })
                 }
               },
               parseAs: 'string',
