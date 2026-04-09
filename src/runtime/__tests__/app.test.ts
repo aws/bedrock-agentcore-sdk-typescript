@@ -210,7 +210,7 @@ describe('BedrockAgentCoreApp', () => {
       await pingHandler(mockReq, mockReply)
       expect(mockReply.send).toHaveBeenCalledWith({
         status: expect.stringMatching(/^(Healthy|HealthyBusy)$/),
-        time_of_last_update: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/),
+        time_of_last_update: expect.any(Number),
       })
     })
   })

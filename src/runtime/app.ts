@@ -315,7 +315,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
     const status = this.getCurrentPingStatus()
     const response: HealthCheckResponse = {
       status,
-      time_of_last_update: new Date(this._lastStatusUpdateTime).toISOString(),
+      time_of_last_update: Math.floor(this._lastStatusUpdateTime / 1000),
     }
     await reply.send(response)
   }

@@ -282,9 +282,9 @@ export interface HealthCheckResponse {
   status: HealthStatus
 
   /**
-   * ISO 8601 timestamp of the last update.
+   * Unix timestamp in seconds of the last status update.
    */
-  time_of_last_update: string
+  time_of_last_update: number
 }
 
 /**

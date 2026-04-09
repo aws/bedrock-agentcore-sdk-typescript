@@ -51,13 +51,14 @@ describe('BedrockAgentCoreApp Integration', () => {
         })
     })
 
-    it('returns valid ISO 8601 timestamp', async () => {
+    it('returns valid Unix timestamp in seconds', async () => {
       await request(fastify.server)
         .get('/ping')
         .expect(200)
         .expect(function (res) {
-          const timestamp = new Date(res.body.time_of_last_update)
-          expect(timestamp.toISOString()).toBe(res.body.time_of_last_update)
+          expect(typeof res.body.time_of_last_update).toBe('number')
+          expect(res.body.time_of_last_update).toBeGreaterThan(0)
+          expect(res.body.time_of_last_update).toBeLessThanOrEqual(Math.floor(Date.now() / 1000))
         })
     })
 

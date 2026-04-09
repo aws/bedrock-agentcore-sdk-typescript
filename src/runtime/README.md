@@ -160,7 +160,7 @@ Returns:
 ```json
 {
   "status": "Healthy",
-  "time_of_last_update": "2024-12-16T21:00:00.000Z"
+  "time_of_last_update": 1734382800
 }
 ```
 
