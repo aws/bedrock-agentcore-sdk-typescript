@@ -30,7 +30,11 @@ Key design decisions:
 
 ## Git Workflow
 
-Do not commit directly to `feat/agentcore-memory`. Create a feature branch off `feat/agentcore-memory` and open a PR back into it.
+Do not commit directly to `feat/agentcore-memory`. Always:
+
+1. Create a new feature branch off `feat/agentcore-memory` (e.g. `feat/memory-plugin-types`)
+2. Commit and push to that feature branch
+3. Open a PR targeting `feat/agentcore-memory` as the base branch, using the PR template in `.github/PULL_REQUEST_TEMPLATE.md`
 
 ## Build & Test
 
