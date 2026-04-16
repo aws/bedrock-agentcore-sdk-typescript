@@ -42,12 +42,13 @@ describe('MemoryClient', () => {
           createMemory: () => {
             throw Object.assign(new Error('already exists'), { name: 'ValidationException' })
           },
-          getMemory: () => Promise.resolve({ memory: { id: 'mem-1' }, $metadata: {} }),
+          listMemories: () => Promise.resolve({ memories: [{ id: 'test-abc123' }] }),
+          getMemory: () => Promise.resolve({ memory: { id: 'test-abc123' }, $metadata: {} }),
         }) as unknown as BedrockAgentCoreControl,
       })
 
       const result = await client.createOrGetMemory({ name: 'test', eventExpiryDuration: 30 })
-      expect(result.memory).toMatchObject({ id: 'mem-1' })
+      expect(result.memory).toMatchObject({ id: 'test-abc123' })
     })
 
     it('propagates non-conflict errors', async () => {

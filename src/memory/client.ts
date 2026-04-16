@@ -96,7 +96,9 @@ class MemoryClient extends MemoryPassthroughClient {
       return await this.controlPlane.createMemory(input)
     } catch (err: unknown) {
       if (hasName(err, 'ValidationException') && String(err).includes('already exists')) {
-        const resp = await this.controlPlane.getMemory({ memoryId: input.name })
+        const existingId = await findMemoryIdByName(this.controlPlane, input.name!)
+        if (!existingId) throw err
+        const resp = await this.controlPlane.getMemory({ memoryId: existingId })
         return { memory: resp.memory, $metadata: resp.$metadata }
       }
       throw err
@@ -225,6 +227,17 @@ class MemoryClient extends MemoryPassthroughClient {
 
 function hasName(err: unknown, name: string): boolean {
   return typeof err === 'object' && err !== null && 'name' in err && (err as { name: unknown }).name === name
+}
+
+async function findMemoryIdByName(controlPlane: BedrockAgentCoreControl, name: string): Promise<string | undefined> {
+  let nextToken: string | undefined
+  do {
+    const resp = await controlPlane.listMemories({ nextToken })
+    const match = resp.memories?.find((m) => m.id?.startsWith(`${name}-`) || m.id === name)
+    if (match?.id) return match.id
+    nextToken = resp.nextToken
+  } while (nextToken)
+  return undefined
 }
 
 export { MemoryClient }
