@@ -20,7 +20,7 @@ export const DEFAULT_PAGE_SIZE = 100
 export async function paginateAll<TOutput, TItem>(
   fetchPage: (nextToken?: string) => Promise<TOutput>,
   getItems: (output: TOutput) => TItem[] | undefined,
-  getNextToken: (output: TOutput) => string | undefined,
+  getNextToken: (output: TOutput) => string | undefined
 ): Promise<TItem[]> {
   const items: TItem[] = []
   let nextToken: string | undefined

@@ -1,21 +1,5 @@
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
-import type {
-  CreateEventCommandInput,
-  CreateEventCommandOutput,
-  ListEventsCommandInput,
-  ListEventsCommandOutput,
-  GetEventCommandInput,
-  GetEventCommandOutput,
-  DeleteEventCommandInput,
-  DeleteEventCommandOutput,
-  RetrieveMemoryRecordsCommandInput,
-  RetrieveMemoryRecordsCommandOutput,
-  ListActorsCommandOutput,
-  ListSessionsCommandOutput,
-  Event as MemoryEvent,
-  Conversational,
-  BedrockAgentCore,
-} from '@aws-sdk/client-bedrock-agentcore'
+import type { Event as MemoryEvent, BedrockAgentCore } from '@aws-sdk/client-bedrock-agentcore'
 import type { BedrockAgentCoreControl } from '@aws-sdk/client-bedrock-agentcore-control'
 
 export const DATA_PLANE_METHODS = [
@@ -57,21 +41,6 @@ export interface MemoryClientConfig {
 export interface WaitOptions {
   maxWaitSeconds?: number
   pollIntervalMs?: number
-}
-
-type MemoryScoped = 'memoryId'
-
-export interface ScopedMemory {
-  createEvent(input: Omit<CreateEventCommandInput, MemoryScoped>): Promise<CreateEventCommandOutput>
-  listEvents(input: Omit<ListEventsCommandInput, MemoryScoped>): Promise<ListEventsCommandOutput>
-  listAllEvents(input: Omit<ListEventsCommandInput, MemoryScoped | 'nextToken'>): Promise<MemoryEvent[]>
-  getEvent(input: Omit<GetEventCommandInput, MemoryScoped>): Promise<GetEventCommandOutput>
-  deleteEvent(input: Omit<DeleteEventCommandInput, MemoryScoped>): Promise<DeleteEventCommandOutput>
-  retrieveMemoryRecords(input: Omit<RetrieveMemoryRecordsCommandInput, MemoryScoped>): Promise<RetrieveMemoryRecordsCommandOutput>
-  listActors(): Promise<ListActorsCommandOutput>
-  listSessions(input: { actorId: string }): Promise<ListSessionsCommandOutput>
-  getLastKTurns(params: Omit<GetLastKTurnsParams, MemoryScoped>): Promise<Conversational[][]>
-  listBranches(params: { actorId: string; sessionId: string }): Promise<BranchInfo[]>
 }
 
 export interface BranchInfo {

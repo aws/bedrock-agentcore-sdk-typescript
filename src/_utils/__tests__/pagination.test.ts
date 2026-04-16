@@ -9,7 +9,7 @@ describe('paginateAll', () => {
     const result = await paginateAll(
       () => Promise.resolve(pages[callCount++]!),
       (page) => page.items,
-      (page) => page.nextToken,
+      (page) => page.nextToken
     )
 
     expect(result).toEqual([1, 2, 3])
@@ -31,7 +31,7 @@ describe('paginateAll', () => {
         return Promise.resolve(pages[callCount++]!)
       },
       (page) => page.items,
-      (page) => page.nextToken,
+      (page) => page.nextToken
     )
 
     expect(result).toEqual([1, 2, 3, 4, 5])
@@ -42,7 +42,7 @@ describe('paginateAll', () => {
     const result = await paginateAll(
       () => Promise.resolve({ items: undefined as number[] | undefined, nextToken: undefined }),
       (page) => page.items,
-      (page) => page.nextToken,
+      (page) => page.nextToken
     )
 
     expect(result).toEqual([])

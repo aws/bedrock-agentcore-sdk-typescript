@@ -4,13 +4,7 @@ import type { BedrockAgentCoreControl } from '@aws-sdk/client-bedrock-agentcore-
 import { MemoryClient } from '../client.js'
 import { DATA_PLANE_METHODS, CONTROL_PLANE_METHODS } from '../types.js'
 
-function fakeControlPlane(overrides: Record<string, (input: unknown) => unknown>): Record<string, unknown> {
-  return new Proxy({} as Record<string, unknown>, {
-    get: (_, method) => overrides[method as string] ?? (() => Promise.resolve({})),
-  })
-}
-
-function fakeDataPlane(overrides: Record<string, (input: unknown) => unknown>): Record<string, unknown> {
+function fakeClient(overrides: Record<string, (input: unknown) => unknown>): Record<string, unknown> {
   return new Proxy({} as Record<string, unknown>, {
     get: (_, method) => overrides[method as string] ?? (() => Promise.resolve({})),
   })
@@ -41,22 +35,10 @@ describe('MemoryClient', () => {
     })
   })
 
-  describe('memory() scoping', () => {
-    const client = new MemoryClient({ region: 'us-west-2' })
-    const mem = client.memory('mem-1')
-
-    it('exposes scoped methods as functions', () => {
-      expect(typeof mem.createEvent).toBe('function')
-      expect(typeof mem.retrieveMemoryRecords).toBe('function')
-      expect(typeof mem.listEvents).toBe('function')
-      expect(typeof mem.listActors).toBe('function')
-    })
-  })
-
   describe('createOrGetMemory()', () => {
     it('returns existing memory when create throws already-exists', async () => {
       const client = new MemoryClient({
-        controlPlaneClient: fakeControlPlane({
+        controlPlaneClient: fakeClient({
           createMemory: () => {
             throw Object.assign(new Error('already exists'), { name: 'ValidationException' })
           },
@@ -70,7 +52,7 @@ describe('MemoryClient', () => {
 
     it('propagates non-conflict errors', async () => {
       const client = new MemoryClient({
-        controlPlaneClient: fakeControlPlane({
+        controlPlaneClient: fakeClient({
           createMemory: () => {
             throw Object.assign(new Error('throttled'), { name: 'ThrottlingException' })
           },
@@ -84,7 +66,7 @@ describe('MemoryClient', () => {
   describe('deleteMemoryAndWait()', () => {
     it('resolves when resource is not found after delete', async () => {
       const client = new MemoryClient({
-        controlPlaneClient: fakeControlPlane({
+        controlPlaneClient: fakeClient({
           deleteMemory: () => Promise.resolve({}),
           getMemory: () => {
             throw Object.assign(new Error(), { name: 'ResourceNotFoundException' })
@@ -101,7 +83,7 @@ describe('MemoryClient', () => {
   describe('getLastKTurns()', () => {
     it('groups messages into turns at USER boundaries', async () => {
       const client = new MemoryClient({
-        dataPlaneClient: fakeDataPlane({
+        dataPlaneClient: fakeClient({
           listEvents: () =>
             Promise.resolve({
               events: [
@@ -114,13 +96,13 @@ describe('MemoryClient', () => {
         }) as unknown as BedrockAgentCore,
       })
 
-      const turns = await client.memory('mem-1').getLastKTurns({ actorId: 'a1', sessionId: 's1', k: 1 })
+      const turns = await client.getLastKTurns({ memoryId: 'mem-1', actorId: 'a1', sessionId: 's1', k: 1 })
       expect(turns).toMatchObject([[{ role: 'USER' }, { role: 'ASSISTANT' }]])
     })
 
     it('returns all turns when k exceeds total', async () => {
       const client = new MemoryClient({
-        dataPlaneClient: fakeDataPlane({
+        dataPlaneClient: fakeClient({
           listEvents: () =>
             Promise.resolve({
               events: [
@@ -131,18 +113,18 @@ describe('MemoryClient', () => {
         }) as unknown as BedrockAgentCore,
       })
 
-      const turns = await client.memory('mem-1').getLastKTurns({ actorId: 'a1', sessionId: 's1', k: 5 })
+      const turns = await client.getLastKTurns({ memoryId: 'mem-1', actorId: 'a1', sessionId: 's1', k: 5 })
       expect(turns).toMatchObject([[{ role: 'USER' }, { role: 'ASSISTANT' }]])
     })
 
     it('returns empty array for empty session', async () => {
       const client = new MemoryClient({
-        dataPlaneClient: fakeDataPlane({
+        dataPlaneClient: fakeClient({
           listEvents: () => Promise.resolve({ events: [] }),
         }) as unknown as BedrockAgentCore,
       })
 
-      const turns = await client.memory('mem-1').getLastKTurns({ actorId: 'a1', sessionId: 's1', k: 5 })
+      const turns = await client.getLastKTurns({ memoryId: 'mem-1', actorId: 'a1', sessionId: 's1', k: 5 })
       expect(turns).toEqual([])
     })
   })
@@ -150,7 +132,7 @@ describe('MemoryClient', () => {
   describe('listBranches()', () => {
     it('aggregates branch info from events', async () => {
       const client = new MemoryClient({
-        dataPlaneClient: fakeDataPlane({
+        dataPlaneClient: fakeClient({
           listEvents: () =>
             Promise.resolve({
               events: [
@@ -162,7 +144,7 @@ describe('MemoryClient', () => {
         }) as unknown as BedrockAgentCore,
       })
 
-      const branches = await client.memory('mem-1').listBranches({ actorId: 'a1', sessionId: 's1' })
+      const branches = await client.listBranches({ memoryId: 'mem-1', actorId: 'a1', sessionId: 's1' })
       expect(branches).toMatchObject([
         { name: 'main', eventCount: 2 },
         { name: 'alt', eventCount: 1, rootEventId: 'e1' },

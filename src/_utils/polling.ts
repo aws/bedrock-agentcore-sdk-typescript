@@ -13,7 +13,7 @@ export async function pollUntil(
     pollIntervalMs: number
     timeoutErrorMessage?: string
     shouldSwallowError?: (err: unknown) => boolean
-  },
+  }
 ): Promise<boolean> {
   const deadline = Date.now() + opts.maxWaitSeconds * 1000
   while (Date.now() < deadline) {

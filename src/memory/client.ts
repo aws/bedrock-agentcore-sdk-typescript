@@ -1,7 +1,4 @@
-import {
-  BedrockAgentCore,
-  type Conversational,
-} from '@aws-sdk/client-bedrock-agentcore'
+import { BedrockAgentCore, type Conversational } from '@aws-sdk/client-bedrock-agentcore'
 import {
   BedrockAgentCoreControl,
   type CreateMemoryCommandInput,
@@ -10,7 +7,6 @@ import {
 } from '@aws-sdk/client-bedrock-agentcore-control'
 import type {
   MemoryClientConfig,
-  ScopedMemory,
   WaitOptions,
   WaitForMemoriesParams,
   GetLastKTurnsParams,
@@ -72,19 +68,12 @@ class MemoryPassthroughClient {
  * Passthrough methods from both AWS SDK clients are available directly on this
  * class (e.g. `client.createEvent(...)`, `client.createMemory(...)`).
  *
- * Use `.memory(memoryId)` for memory-scoped operations.
- *
  * @example
  * ```typescript
  * const client = new MemoryClient({ region: 'us-west-2' });
  *
- * // Passthrough — delegates to the right AWS SDK client
  * await client.createMemory({ name: 'my-mem', eventExpiryDuration: 30, memoryStrategies: [] });
- *
- * // Memory-scoped — memoryId auto-filled
- * const mem = client.memory('mem-123');
- * await mem.listActors();
- * await mem.createEvent({ actorId: 'u1', sessionId: 's1', payload: [], eventTimestamp: new Date() });
+ * await client.createEvent({ memoryId: 'mem-123', actorId: 'u1', sessionId: 's1', payload: [], eventTimestamp: new Date() });
  * ```
  */
 class MemoryClient extends MemoryPassthroughClient {
@@ -92,16 +81,13 @@ class MemoryClient extends MemoryPassthroughClient {
     super(config)
   }
 
-  async createMemoryAndWait(
-    input: CreateMemoryCommandInput,
-    opts?: WaitOptions,
-  ): Promise<CreateMemoryCommandOutput> {
+  async createMemoryAndWait(input: CreateMemoryCommandInput, opts?: WaitOptions): Promise<CreateMemoryCommandOutput> {
     const result = await this.controlPlane.createMemory(input)
     const memoryId = result.memory!.id!
-    await this.controlPlane.waitUntilMemoryCreated(
-      { memoryId } satisfies GetMemoryCommandInput,
-      { maxWaitTime: opts?.maxWaitSeconds ?? 300, minDelay: opts?.pollIntervalMs ? opts.pollIntervalMs / 1000 : 10 },
-    )
+    await this.controlPlane.waitUntilMemoryCreated({ memoryId } satisfies GetMemoryCommandInput, {
+      maxWaitTime: opts?.maxWaitSeconds ?? 300,
+      minDelay: opts?.pollIntervalMs ? opts.pollIntervalMs / 1000 : 10,
+    })
     return result
   }
 
@@ -133,7 +119,7 @@ class MemoryClient extends MemoryPassthroughClient {
         maxWaitSeconds: opts?.maxWaitSeconds ?? 300,
         pollIntervalMs: opts?.pollIntervalMs ?? 10_000,
         timeoutErrorMessage: `Memory ${memoryId} was not deleted within ${opts?.maxWaitSeconds ?? 300}s`,
-      },
+      }
     )
   }
 
@@ -151,7 +137,7 @@ class MemoryClient extends MemoryPassthroughClient {
         maxWaitSeconds: params.maxWaitSeconds ?? 180,
         pollIntervalMs: params.pollIntervalMs ?? 15_000,
         shouldSwallowError: () => true,
-      },
+      }
     )
   }
 
@@ -175,7 +161,9 @@ class MemoryClient extends MemoryPassthroughClient {
     let nextToken: string | undefined
 
     while (turns.length < params.k) {
-      const response = await this.dataPlane.listEvents({ ...listParams, nextToken } as Parameters<BedrockAgentCore['listEvents']>[0])
+      const response = await this.dataPlane.listEvents({ ...listParams, nextToken } as Parameters<
+        BedrockAgentCore['listEvents']
+      >[0])
       const events = response.events ?? []
       if (events.length === 0) break
 
@@ -203,15 +191,18 @@ class MemoryClient extends MemoryPassthroughClient {
     return turns.slice(0, params.k)
   }
 
-  async listBranches(params: {
-    memoryId: string
-    actorId: string
-    sessionId: string
-  }): Promise<BranchInfo[]> {
+  async listBranches(params: { memoryId: string; actorId: string; sessionId: string }): Promise<BranchInfo[]> {
     const allEvents = await paginateAll(
-      (nextToken) => this.dataPlane.listEvents({ memoryId: params.memoryId, actorId: params.actorId, sessionId: params.sessionId, includePayloads: false, nextToken }),
+      (nextToken) =>
+        this.dataPlane.listEvents({
+          memoryId: params.memoryId,
+          actorId: params.actorId,
+          sessionId: params.sessionId,
+          includePayloads: false,
+          nextToken,
+        }),
       (page) => page.events,
-      (page) => page.nextToken,
+      (page) => page.nextToken
     )
 
     const branches = new Map<string, BranchInfo>()
@@ -230,51 +221,6 @@ class MemoryClient extends MemoryPassthroughClient {
     }
     return Array.from(branches.values())
   }
-
-  memory(memoryId: string): ScopedMemory {
-    const dp = this.dataPlane
-    const getLastK = this.getLastKTurns.bind(this)
-    const getBranches = this.listBranches.bind(this)
-
-    const scoped: ScopedMemory = {
-      createEvent: (input) =>
-        dp.createEvent({ ...input, memoryId }),
-
-      listEvents: (input) =>
-        dp.listEvents({ ...input, memoryId }),
-
-      listAllEvents: (input) =>
-        paginateAll(
-          (nextToken) => dp.listEvents({ ...input, memoryId, nextToken }),
-          (page) => page.events,
-          (page) => page.nextToken,
-        ),
-
-      getEvent: (input) =>
-        dp.getEvent({ ...input, memoryId }),
-
-      deleteEvent: (input) =>
-        dp.deleteEvent({ ...input, memoryId }),
-
-      retrieveMemoryRecords: (input) =>
-        dp.retrieveMemoryRecords({ ...input, memoryId }),
-
-      listActors: () =>
-        dp.listActors({ memoryId }),
-
-      listSessions: (input) =>
-        dp.listSessions({ memoryId, actorId: input.actorId }),
-
-      getLastKTurns: (params) =>
-        getLastK({ ...params, memoryId }),
-
-      listBranches: (params) =>
-        getBranches({ ...params, memoryId }),
-    }
-
-    return scoped
-  }
-
 }
 
 function hasName(err: unknown, name: string): boolean {
