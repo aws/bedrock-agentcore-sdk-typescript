@@ -82,13 +82,14 @@ class MemoryClient extends MemoryPassthroughClient {
   }
 
   async createMemoryAndWait(input: CreateMemoryCommandInput, opts?: WaitOptions): Promise<CreateMemoryCommandOutput> {
-    const result = await this.controlPlane.createMemory(input)
-    const memoryId = result.memory!.id!
+    const created = await this.controlPlane.createMemory(input)
+    const memoryId = created.memory!.id!
     await this.controlPlane.waitUntilMemoryCreated({ memoryId } satisfies GetMemoryCommandInput, {
       maxWaitTime: opts?.maxWaitSeconds ?? 300,
       minDelay: opts?.pollIntervalMs ? opts.pollIntervalMs / 1000 : 10,
     })
-    return result
+    const refreshed = await this.controlPlane.getMemory({ memoryId })
+    return { memory: refreshed.memory, $metadata: refreshed.$metadata }
   }
 
   async createOrGetMemory(input: CreateMemoryCommandInput): Promise<CreateMemoryCommandOutput> {
