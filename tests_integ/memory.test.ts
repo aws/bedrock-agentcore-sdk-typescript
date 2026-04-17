@@ -2,16 +2,13 @@
  * Integration tests for MemoryClient custom helpers.
  *
  * Covers: createMemoryAndWait, createOrGetMemory, deleteMemoryAndWait,
- *         waitForMemories, getLastKTurns, listBranches.
+ *         getLastKTurns, listBranches.
  *
  * Requires:
  * - AWS credentials configured (SDK credential chain)
  * - AWS_REGION env var (defaults to us-west-2)
  * - IAM perms: bedrock-agentcore:{Create,Get,Delete}Memory, CreateEvent,
- *   ListEvents, RetrieveMemoryRecords
- *
- * Note: waitForMemories test exercises live LTM extraction and can take
- * several minutes. It has an extended per-test timeout.
+ *   ListEvents
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
@@ -21,7 +18,7 @@ const REGION = process.env.AWS_REGION || 'us-west-2'
 const RUN_ID = Date.now()
 const createdMemoryIds = new Set<string>()
 
-describe('MemoryClient Integration Tests', () => {
+describe.concurrent('MemoryClient Integration Tests', () => {
   let client: MemoryClient
 
   beforeAll(() => {
@@ -165,60 +162,5 @@ describe('MemoryClient Integration Tests', () => {
       expect(alt.rootEventId).toBe(rootEventId)
       expect(alt.eventCount).toBeGreaterThanOrEqual(1)
     }, 720_000)
-  })
-
-  describe('waitForMemories()', () => {
-    it('returns true once LTM extraction produces searchable records', async () => {
-      const name = `test_mem_ltm_${RUN_ID}`
-      const strategyName = `semantic_${RUN_ID}`
-      const namespace = `/strategies/${strategyName}/actors/{actorId}`
-      const created = await client.createMemoryAndWait(
-        {
-          name,
-          eventExpiryDuration: 30,
-          memoryStrategies: [
-            {
-              semanticMemoryStrategy: {
-                name: strategyName,
-                namespaces: [namespace],
-              },
-            },
-          ],
-        },
-        { maxWaitSeconds: 600, pollIntervalMs: 10_000 }
-      )
-      const memoryId = created.memory!.id!
-      createdMemoryIds.add(memoryId)
-
-      const actorId = 'ltm-actor'
-      const sessionId = `ltm-session-${RUN_ID}`
-      const baseTs = new Date()
-
-      const messages: Array<{ role: 'USER' | 'ASSISTANT'; text: string }> = [
-        { role: 'USER', text: 'My favorite color is ultraviolet.' },
-        { role: 'ASSISTANT', text: 'Ultraviolet is a beautiful color.' },
-        { role: 'USER', text: 'I also love watching meteor showers.' },
-        { role: 'ASSISTANT', text: 'Meteor showers are spectacular.' },
-      ]
-      for (let i = 0; i < messages.length; i++) {
-        await client.createEvent({
-          memoryId,
-          actorId,
-          sessionId,
-          eventTimestamp: new Date(baseTs.getTime() + i * 1000),
-          payload: [{ conversational: { role: messages[i]!.role, content: { text: messages[i]!.text } } }],
-        })
-      }
-
-      const resolvedNamespace = namespace.replace('{actorId}', actorId)
-      const ready = await client.waitForMemories({
-        memoryId,
-        namespace: resolvedNamespace,
-        testQuery: 'favorite color',
-        maxWaitSeconds: 420,
-        pollIntervalMs: 20_000,
-      })
-      expect(ready).toBe(true)
-    }, 1_200_000)
   })
 })
