@@ -53,6 +53,10 @@
     "./identity": {
       "import": "./dist/src/identity/index.js",
       "types": "./dist/src/identity/index.d.ts"
+    },
+    "./memory": {
+      "import": "./dist/src/memory/index.js",
+      "types": "./dist/src/memory/index.d.ts"
     }
   },
   "scripts": {

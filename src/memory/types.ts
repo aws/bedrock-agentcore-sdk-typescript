@@ -33,7 +33,10 @@ export type ControlPlaneMethods = Pick<BedrockAgentCoreControl, (typeof CONTROL_
 
 export interface MemoryClientConfig {
   region?: string
-  credentialsProvider?: AwsCredentialIdentityProvider
+  /** Credential provider function (e.g. fromSSO, fromTemporaryCredentials). */
+  credentials?: AwsCredentialIdentityProvider
+  maxAttempts?: number
+  retryMode?: 'standard' | 'adaptive'
   dataPlaneClient?: BedrockAgentCore
   controlPlaneClient?: BedrockAgentCoreControl
 }

@@ -39,7 +39,9 @@ class MemoryPassthroughClient {
     const region = config?.region ?? process.env.AWS_REGION ?? DEFAULT_REGION
     const clientConfig = {
       region,
-      ...(config?.credentialsProvider && { credentials: config.credentialsProvider }),
+      ...(config?.credentials && { credentials: config.credentials }),
+      ...(config?.maxAttempts && { maxAttempts: config.maxAttempts }),
+      ...(config?.retryMode && { retryMode: config.retryMode }),
     }
     this.dataPlane = config?.dataPlaneClient ?? new BedrockAgentCore(clientConfig)
     this.controlPlane = config?.controlPlaneClient ?? new BedrockAgentCoreControl(clientConfig)
@@ -126,6 +128,13 @@ class MemoryClient extends MemoryPassthroughClient {
     )
   }
 
+  /**
+   * Poll the LTM retrieval endpoint until at least one record is returned.
+   *
+   * @returns `true` if records appeared within the timeout, `false` if timed out.
+   *          Transient service errors (throttling, 5xx) are retried silently;
+   *          configuration errors (auth, validation, not-found) are thrown immediately.
+   */
   async waitForMemories(params: WaitForMemoriesParams): Promise<boolean> {
     return pollUntil(
       async () => {
@@ -139,7 +148,14 @@ class MemoryClient extends MemoryPassthroughClient {
       {
         maxWaitSeconds: params.maxWaitSeconds ?? 180,
         pollIntervalMs: params.pollIntervalMs ?? 15_000,
-        shouldSwallowError: () => true,
+        shouldSwallowError: (err) => {
+          const name = (err as { name?: string })?.name
+          return (
+            name === 'ThrottlingException' ||
+            name === 'ServiceUnavailableException' ||
+            name === 'InternalServerException'
+          )
+        },
       }
     )
   }
@@ -159,39 +175,33 @@ class MemoryClient extends MemoryPassthroughClient {
       }
     }
 
+    const allEvents = await paginateAll(
+      (nextToken) =>
+        this.dataPlane.listEvents({ ...listParams, nextToken } as Parameters<BedrockAgentCore['listEvents']>[0]),
+      (page) => page.events,
+      (page) => page.nextToken
+    )
+
     const turns: Conversational[][] = []
     let currentTurn: Conversational[] = []
-    let nextToken: string | undefined
 
-    while (turns.length < params.k) {
-      const response = await this.dataPlane.listEvents({ ...listParams, nextToken } as Parameters<
-        BedrockAgentCore['listEvents']
-      >[0])
-      const events = response.events ?? []
-      if (events.length === 0) break
-
-      for (const event of events) {
-        for (const payloadItem of event.payload ?? []) {
-          if (payloadItem.conversational) {
-            if (payloadItem.conversational.role === 'USER' && currentTurn.length > 0) {
-              turns.push(currentTurn)
-              currentTurn = []
-            }
-            currentTurn.push(payloadItem.conversational)
+    for (const event of allEvents) {
+      for (const payloadItem of event.payload ?? []) {
+        if (payloadItem.conversational) {
+          if (payloadItem.conversational.role === 'USER' && currentTurn.length > 0) {
+            turns.push(currentTurn)
+            currentTurn = []
           }
+          currentTurn.push(payloadItem.conversational)
         }
-        if (turns.length >= params.k) break
       }
-
-      nextToken = response.nextToken
-      if (!nextToken) break
     }
 
-    if (currentTurn.length > 0 && turns.length < params.k) {
+    if (currentTurn.length > 0) {
       turns.push(currentTurn)
     }
 
-    return turns.slice(0, params.k)
+    return turns.slice(-params.k)
   }
 
   async listBranches(params: { memoryId: string; actorId: string; sessionId: string }): Promise<BranchInfo[]> {
@@ -234,7 +244,12 @@ async function findMemoryIdByName(controlPlane: BedrockAgentCoreControl, name: s
   let nextToken: string | undefined
   do {
     const resp = await controlPlane.listMemories({ nextToken })
-    const match = resp.memories?.find((m) => m.id?.startsWith(`${name}-`) || m.id === name)
+    const match = resp.memories?.find((m) => {
+      if (m.id === name) return true
+      if (!m.id?.startsWith(`${name}-`)) return false
+      const suffix = m.id.slice(name.length + 1)
+      return /^[a-z0-9]+$/i.test(suffix)
+    })
     if (match?.id) return match.id
     nextToken = resp.nextToken
   } while (nextToken)
