@@ -182,7 +182,6 @@ class MemoryClient extends MemoryPassthroughClient {
       (page) => page.nextToken
     )
 
-    // Sort by timestamp ascending to guarantee chronological order regardless of API default
     allEvents.sort((a, b) => (a.eventTimestamp?.getTime() ?? 0) - (b.eventTimestamp?.getTime() ?? 0))
 
     const turns: Conversational[][] = []

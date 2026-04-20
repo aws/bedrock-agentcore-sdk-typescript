@@ -105,11 +105,17 @@ describe.concurrent('MemoryClient Integration Tests', () => {
 
       const lastOne = await client.getLastKTurns({ memoryId, actorId, sessionId, k: 1 })
       expect(lastOne).toHaveLength(1)
-      expect(lastOne[0]!.length).toBeGreaterThanOrEqual(1)
+      // k=1 should return the LAST turn (the second USER/ASSISTANT pair)
+      const lastTurnUser = lastOne[0]!.find((m) => m.role === 'USER')
+      expect(lastTurnUser?.content?.text).toBe('how are you?')
+      const lastTurnAssistant = lastOne[0]!.find((m) => m.role === 'ASSISTANT')
+      expect(lastTurnAssistant?.content?.text).toBe('doing well')
 
       const lastMany = await client.getLastKTurns({ memoryId, actorId, sessionId, k: 10 })
-      expect(lastMany.length).toBeGreaterThanOrEqual(1)
-      expect(lastMany.length).toBeLessThanOrEqual(10)
+      expect(lastMany).toHaveLength(2)
+      // First turn in the result should be the earlier one
+      const firstTurnUser = lastMany[0]!.find((m) => m.role === 'USER')
+      expect(firstTurnUser?.content?.text).toBe('hello')
     }, 720_000)
   })
 
