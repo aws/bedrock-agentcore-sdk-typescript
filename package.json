@@ -46,6 +46,10 @@
       "import": "./dist/src/tools/code-interpreter/integrations/strands/index.js",
       "types": "./dist/src/tools/code-interpreter/integrations/strands/index.d.ts"
     },
+    "./experimental/memory/strands": {
+      "import": "./dist/src/memory/integrations/strands/index.js",
+      "types": "./dist/src/memory/integrations/strands/index.d.ts"
+    },
     "./runtime": {
       "import": "./dist/src/runtime/index.js",
       "types": "./dist/src/runtime/index.d.ts"
@@ -90,7 +94,8 @@
   "devDependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.0-beta.67",
     "@aws-sdk/client-cognito-identity-provider": "^3.957.0",
-    "@strands-agents/sdk": "^0.6.0",
+    "@eslint/js": "^10.0.1",
+    "@strands-agents/sdk": "^0.7.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/express": "^5.0.6",
@@ -144,7 +149,7 @@
     "zod": "^4.1.13"
   },
   "peerDependencies": {
-    "@strands-agents/sdk": ">=0.1.0",
+    "@strands-agents/sdk": ">=0.7.0",
     "ai": ">=6.0.0-beta",
     "playwright": ">=1.56.0",
     "react": ">=18.0.0",
