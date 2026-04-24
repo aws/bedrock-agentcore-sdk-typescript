@@ -64,4 +64,29 @@ describe('pollUntil', () => {
       )
     ).rejects.toThrow('fatal')
   })
+
+  it('should run condition at least once even with maxWaitSeconds=0', async () => {
+    let called = false
+    const result = await pollUntil(
+      () => {
+        called = true
+        return Promise.resolve(false)
+      },
+      { maxWaitSeconds: 0, pollIntervalMs: 10 }
+    )
+    expect(called).toBe(true)
+    expect(result).toBe(false)
+  })
+
+  it('should return true on first attempt with maxWaitSeconds=0 when condition is met', async () => {
+    const result = await pollUntil(() => Promise.resolve(true), { maxWaitSeconds: 0, pollIntervalMs: 10 })
+    expect(result).toBe(true)
+  })
+
+  it('should not sleep past the deadline', async () => {
+    const start = Date.now()
+    await pollUntil(() => Promise.resolve(false), { maxWaitSeconds: 0.05, pollIntervalMs: 5000 })
+    const elapsed = Date.now() - start
+    expect(elapsed).toBeLessThan(1000)
+  })
 })

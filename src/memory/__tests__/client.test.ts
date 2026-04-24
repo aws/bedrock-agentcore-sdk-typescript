@@ -51,6 +51,22 @@ describe('MemoryClient', () => {
       expect(result.memory).toMatchObject({ id: 'test-abc123' })
     })
 
+    it('does not match memories with similar name prefixes', async () => {
+      const client = new MemoryClient({
+        controlPlaneClient: fakeClient({
+          createMemory: () => {
+            throw Object.assign(new Error('already exists'), { name: 'ValidationException' })
+          },
+          listMemories: () => Promise.resolve({ memories: [{ id: 'prod-east-abc123' }, { id: 'prod-abc123' }] }),
+          getMemory: (input: { memoryId: string }) =>
+            Promise.resolve({ memory: { id: input.memoryId }, $metadata: {} }),
+        }) as unknown as BedrockAgentCoreControl,
+      })
+
+      const result = await client.createOrGetMemory({ name: 'prod', eventExpiryDuration: 30 })
+      expect(result.memory).toMatchObject({ id: 'prod-abc123' })
+    })
+
     it('propagates non-conflict errors', async () => {
       const client = new MemoryClient({
         controlPlaneClient: fakeClient({
@@ -99,6 +115,28 @@ describe('MemoryClient', () => {
 
       const turns = await client.getLastKTurns({ memoryId: 'mem-1', actorId: 'a1', sessionId: 's1', k: 1 })
       expect(turns).toMatchObject([[{ role: 'USER' }, { role: 'ASSISTANT' }]])
+    })
+
+    it('returns the last K turns, not the first K', async () => {
+      const events = Array.from({ length: 10 }, (_, i) => [
+        { eventId: `e${i * 2}`, payload: [{ conversational: { role: 'USER', content: { text: `q${i + 1}` } } }] },
+        {
+          eventId: `e${i * 2 + 1}`,
+          payload: [{ conversational: { role: 'ASSISTANT', content: { text: `a${i + 1}` } } }],
+        },
+      ]).flat()
+
+      const client = new MemoryClient({
+        dataPlaneClient: fakeClient({
+          listEvents: () => Promise.resolve({ events }),
+        }) as unknown as BedrockAgentCore,
+      })
+
+      const turns = await client.getLastKTurns({ memoryId: 'mem-1', actorId: 'a1', sessionId: 's1', k: 3 })
+      expect(turns).toHaveLength(3)
+      expect(turns[0]![0]).toMatchObject({ role: 'USER', content: { text: 'q8' } })
+      expect(turns[1]![0]).toMatchObject({ role: 'USER', content: { text: 'q9' } })
+      expect(turns[2]![0]).toMatchObject({ role: 'USER', content: { text: 'q10' } })
     })
 
     it('returns all turns when k exceeds total', async () => {

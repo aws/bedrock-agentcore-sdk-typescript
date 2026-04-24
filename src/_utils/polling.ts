@@ -16,12 +16,13 @@ export async function pollUntil(
   }
 ): Promise<boolean> {
   const deadline = Date.now() + opts.maxWaitSeconds * 1000
-  while (Date.now() < deadline) {
+  while (true) {
     try {
       if (await condition()) return true
     } catch (err) {
       if (!opts.shouldSwallowError?.(err)) throw err
     }
+    if (Date.now() + opts.pollIntervalMs > deadline) break
     await new Promise((resolve) => globalThis.setTimeout(resolve, opts.pollIntervalMs))
   }
   if (opts.timeoutErrorMessage) throw new Error(opts.timeoutErrorMessage)
