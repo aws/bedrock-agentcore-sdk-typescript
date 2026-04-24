@@ -376,6 +376,8 @@ describe('BedrockAgentCoreApp', () => {
       }
       const mockReply = {
         sse: mockSSE,
+        raw: { removeHeader: vi.fn() },
+        removeHeader: vi.fn(),
         status: vi.fn().mockReturnThis(),
         send: vi.fn(),
       }
@@ -420,6 +422,8 @@ describe('BedrockAgentCoreApp', () => {
 
       const mockReply = {
         sse: mockSSE,
+        raw: { removeHeader: vi.fn() },
+        removeHeader: vi.fn(),
         status: vi.fn().mockReturnThis(),
         send: vi.fn(),
       }
@@ -469,6 +473,8 @@ describe('BedrockAgentCoreApp', () => {
 
       const mockReply = {
         sse: mockSSE,
+        raw: { removeHeader: vi.fn() },
+        removeHeader: vi.fn(),
         status: vi.fn().mockReturnThis(),
         send: vi.fn(),
       }
@@ -517,7 +523,8 @@ describe('BedrockAgentCoreApp', () => {
 
       const mockReply = {
         sse: mockSSE,
-        raw: { headersSent: true },
+        raw: { headersSent: true, removeHeader: vi.fn() },
+        removeHeader: vi.fn(),
         status: vi.fn().mockReturnThis(),
         send: vi.fn(),
       }
@@ -1195,7 +1202,8 @@ describe('BedrockAgentCoreApp', () => {
 
       const mockReply = {
         sse: mockSSE,
-        raw: { headersSent: true },
+        raw: { headersSent: true, removeHeader: vi.fn() },
+        removeHeader: vi.fn(),
         status: vi.fn().mockReturnThis(),
         send: vi.fn(),
       }

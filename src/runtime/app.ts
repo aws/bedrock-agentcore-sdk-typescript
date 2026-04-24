@@ -450,6 +450,12 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
    */
   private async _handleStreamingResponse(reply: FastifyReply, generator: AsyncGenerator<SSESource>): Promise<void> {
     try {
+      // Fastify sets content-length: 0 when payload is null/undefined, and
+      // @fastify/sse copies it to reply.raw before writeHead(200), causing
+      // HTTP clients to treat the streaming body as empty.
+      reply.raw.removeHeader('content-length')
+      reply.removeHeader('content-length')
+
       await reply.sse.keepAlive()
       // Stream data chunks
       for await (const chunk of generator) {
