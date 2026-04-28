@@ -30,6 +30,14 @@ interface AgentWithSystemPrompt {
   messages: Message[]
 }
 
+// Tracks which AgentCoreMemory instance owns which Agent. Prevents two plugins
+// from both hooking the same agent — that path silently duplicates every
+// extracted event under two actorIds, doubling cost + confusing LTM. A customer
+// who wants multi-actor should use withActor() / withMetadataProvider() forks
+// on separate agents, or construct two plugins on separate agents with distinct
+// contextTags. This guard makes the failure loud instead of silent.
+const AGENT_REGISTRY = new WeakMap<object, AgentCoreMemory>()
+
 export class AgentCoreMemory implements Plugin {
   readonly name = 'agentcore-memory'
 
@@ -83,6 +91,16 @@ export class AgentCoreMemory implements Plugin {
         'AgentCoreMemory plugin already initialized. Use withActor() or withMetadataProvider() to create a new instance for a different agent.'
       )
     }
+    const existing = AGENT_REGISTRY.get(agent as unknown as object)
+    if (existing) {
+      throw new Error(
+        'AgentCoreMemory: another AgentCoreMemory plugin is already registered on this agent. ' +
+          'Registering two plugins on the same agent silently duplicates every extracted event. ' +
+          'If you need multi-actor memory, use separate Agent instances with one plugin each, or ' +
+          'use plugin.withActor() to fork actors within a single agent.'
+      )
+    }
+    AGENT_REGISTRY.set(agent as unknown as object, this)
     this.initialized = true
     this.agent = agent as unknown as AgentWithSystemPrompt
 

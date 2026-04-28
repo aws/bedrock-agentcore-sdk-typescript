@@ -201,6 +201,23 @@ describe('AgentCoreMemory', () => {
       plugin.initAgent(agent as any)
       expect(() => plugin.initAgent(agent as any)).toThrow('AgentCoreMemory plugin already initialized')
     })
+
+    it('M6: throws when a second plugin tries to register on the same agent', () => {
+      const first = new AgentCoreMemory({ ...BASE_CONFIG, actorId: 'A', extraction: true })
+      const second = new AgentCoreMemory({ ...BASE_CONFIG, actorId: 'B', extraction: true })
+      const agent = createMockAgent()
+      first.initAgent(agent as any)
+      expect(() => second.initAgent(agent as any)).toThrow('another AgentCoreMemory plugin is already registered')
+    })
+
+    it('M6: different agents can each have their own plugin', () => {
+      const a = new AgentCoreMemory({ ...BASE_CONFIG, actorId: 'A', extraction: true })
+      const b = new AgentCoreMemory({ ...BASE_CONFIG, actorId: 'B', extraction: true })
+      const agent1 = createMockAgent()
+      const agent2 = createMockAgent()
+      a.initAgent(agent1 as any)
+      expect(() => b.initAgent(agent2 as any)).not.toThrow()
+    })
   })
 
   describe('getTools', () => {
