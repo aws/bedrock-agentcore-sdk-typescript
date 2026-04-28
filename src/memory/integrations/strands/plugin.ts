@@ -6,6 +6,7 @@ import type { LocalAgent, Message, SystemPrompt } from '@strands-agents/sdk'
 import { MemoryClient } from '../../client.js'
 import type {
   AgentCoreMemoryConfig,
+  DroppedEventInfo,
   InjectionConfig,
   MemoryRecordGroup,
   MemoryRecord,
@@ -43,6 +44,7 @@ export class AgentCoreMemory implements Plugin {
   private flushTimer?: ReturnType<typeof globalThis.setTimeout> | undefined
   private pendingFlush: Promise<void> | null = null
   private shuttingDown = false
+  private postShutdownDropWarned = false
   private searchMemoryTool?: Tool
   private tokenCounter = 0
 
@@ -241,10 +243,27 @@ export class AgentCoreMemory implements Plugin {
 
   private shouldBuffer(message: Message): boolean {
     if (!this.extractionConfig) return false
-    if (this.shuttingDown) return false
+    if (this.shuttingDown) {
+      if (!this.postShutdownDropWarned) {
+        this.postShutdownDropWarned = true
+        console.warn('[agentcore-memory] Dropping message received after shutdown()')
+      }
+      this.notifyDropped({ reason: 'post-shutdown', count: 1 })
+      return false
+    }
     const role = message.role
     if (role !== 'user' && role !== 'assistant') return false
     return this.extractionConfig.messageFilter(message)
+  }
+
+  private notifyDropped(info: DroppedEventInfo): void {
+    const cb = this.extractionConfig?.onDroppedEvents
+    if (!cb) return
+    try {
+      cb(info)
+    } catch (err) {
+      console.warn('[agentcore-memory] onDroppedEvents callback threw:', err)
+    }
   }
 
   private bufferMessage(message: Message): void {
@@ -282,9 +301,11 @@ export class AgentCoreMemory implements Plugin {
         await this.flushBuffer()
       }
       if (this.buffer.length > 0) {
+        const stranded = this.buffer.length
         console.warn(
-          `[agentcore-memory] flush reached maxDrainIterations=${this.extractionConfig!.maxDrainIterations} with ${this.buffer.length} message(s) still buffered`
+          `[agentcore-memory] flush reached maxDrainIterations=${this.extractionConfig!.maxDrainIterations} with ${stranded} message(s) still buffered`
         )
+        this.notifyDropped({ reason: 'max-drain-iterations', count: stranded })
       }
     }
 
@@ -326,6 +347,7 @@ export class AgentCoreMemory implements Plugin {
 
     for (const detail of failedDetails) {
       console.warn(`[agentcore-memory] Dropping event after retry (clientToken=${detail.token}):`, detail.reason)
+      this.notifyDropped({ reason: 'retry-failed', count: 1, clientToken: detail.token, cause: detail.reason })
     }
     console.warn(`[agentcore-memory] Dropped ${failedDetails.length} event(s) after retry`)
   }
@@ -362,10 +384,12 @@ export class AgentCoreMemory implements Plugin {
 
     let timer: ReturnType<typeof globalThis.setTimeout> | undefined
     const timeout = new Promise<never>((_, reject) => {
-      timer = globalThis.setTimeout(
-        () => reject(new Error(`[agentcore-memory] createEvent timed out after ${timeoutMs}ms`)),
-        timeoutMs
-      )
+      timer = globalThis.setTimeout(() => {
+        const msg = `[agentcore-memory] createEvent timed out after ${timeoutMs}ms (clientToken=${clientToken}); retry will use same token`
+        console.warn(msg)
+        this.notifyDropped({ reason: 'timeout', count: 1, clientToken, cause: new Error(msg) })
+        reject(new Error(msg))
+      }, timeoutMs)
     })
 
     return Promise.race([call, timeout]).finally(() => {

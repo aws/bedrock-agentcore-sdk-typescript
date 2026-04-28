@@ -7,6 +7,15 @@ export interface NamespaceConfig {
   relevanceScore?: number
 }
 
+export type DroppedEventReason = 'retry-failed' | 'max-drain-iterations' | 'post-shutdown' | 'timeout'
+
+export interface DroppedEventInfo {
+  reason: DroppedEventReason
+  count: number
+  clientToken?: string | undefined
+  cause?: unknown
+}
+
 export interface ExtractionConfig {
   batchSize?: number
   batchTimeoutMs?: number
@@ -14,6 +23,12 @@ export interface ExtractionConfig {
   fireAndForget?: boolean
   flushTimeoutMs?: number
   maxDrainIterations?: number
+  /**
+   * Callback fired whenever extraction drops one or more events. Gives
+   * customers a structured hook for alerting / metrics that `console.warn`
+   * alone doesn't provide. Called synchronously; keep the handler fast.
+   */
+  onDroppedEvents?: (info: DroppedEventInfo) => void
 }
 
 export interface InjectionConfig {
@@ -54,6 +69,7 @@ export interface ResolvedExtractionConfig {
   fireAndForget: boolean
   flushTimeoutMs: number
   maxDrainIterations: number
+  onDroppedEvents: ((info: DroppedEventInfo) => void) | undefined
 }
 
 export type MetadataProviderFn = (message: Message) => Record<string, { stringValue: string }>
@@ -65,6 +81,7 @@ const DEFAULT_EXTRACTION: ResolvedExtractionConfig = {
   fireAndForget: false,
   flushTimeoutMs: 10000,
   maxDrainIterations: 10,
+  onDroppedEvents: undefined,
 }
 
 function isNonNegative(n: number): boolean {
@@ -102,6 +119,7 @@ export function resolveExtractionConfig(
     fireAndForget: config.fireAndForget ?? DEFAULT_EXTRACTION.fireAndForget,
     flushTimeoutMs: config.flushTimeoutMs ?? DEFAULT_EXTRACTION.flushTimeoutMs,
     maxDrainIterations: config.maxDrainIterations ?? DEFAULT_EXTRACTION.maxDrainIterations,
+    onDroppedEvents: config.onDroppedEvents ?? DEFAULT_EXTRACTION.onDroppedEvents,
   })
 }
 

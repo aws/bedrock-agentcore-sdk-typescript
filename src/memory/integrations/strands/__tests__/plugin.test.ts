@@ -786,4 +786,86 @@ describe('AgentCoreMemory', () => {
       expect(mockCreateEvent).not.toHaveBeenCalled()
     })
   })
+
+  describe('observability', () => {
+    it('onDroppedEvents fires with retry-failed when both initial + retry fail', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const dropped: any[] = []
+      mockCreateEvent.mockRejectedValue(new Error('boom'))
+
+      const plugin = new AgentCoreMemory({
+        ...BASE_CONFIG,
+        extraction: { onDroppedEvents: (info) => dropped.push(info) },
+      })
+      const agent = createMockAgent()
+      plugin.initAgent(agent as any)
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('user', 'hi') })
+      await agent.fireHooks('AfterInvocationEvent', { agent })
+
+      expect(
+        dropped.some((d) => d.reason === 'retry-failed' && d.count === 1 && typeof d.clientToken === 'string')
+      ).toBe(true)
+      warnSpy.mockRestore()
+    })
+
+    it('onDroppedEvents fires with timeout when flushTimeoutMs trips', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const dropped: any[] = []
+      // first call hangs, second (retry) resolves so final state is not drop
+      let calls = 0
+      mockCreateEvent.mockImplementation(() => {
+        calls++
+        if (calls === 1) return new Promise(() => {}) // hang
+        return Promise.resolve({})
+      })
+
+      const plugin = new AgentCoreMemory({
+        ...BASE_CONFIG,
+        extraction: { flushTimeoutMs: 50, onDroppedEvents: (info) => dropped.push(info) },
+      })
+      const agent = createMockAgent()
+      plugin.initAgent(agent as any)
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('user', 'hi') })
+
+      const afterInvoke = agent.fireHooks('AfterInvocationEvent', { agent })
+      await vi.advanceTimersByTimeAsync(200)
+      await afterInvoke
+
+      expect(dropped.some((d) => d.reason === 'timeout')).toBe(true)
+      warnSpy.mockRestore()
+    })
+
+    it('post-shutdown MessageAddedEvent warns once and notifies via onDroppedEvents', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const dropped: any[] = []
+
+      const plugin = new AgentCoreMemory({
+        ...BASE_CONFIG,
+        extraction: { onDroppedEvents: (info) => dropped.push(info) },
+      })
+      const agent = createMockAgent()
+      plugin.initAgent(agent as any)
+      await plugin.shutdown()
+
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('user', 'late-1') })
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('user', 'late-2') })
+
+      const postShutdownDrops = dropped.filter((d) => d.reason === 'post-shutdown')
+      expect(postShutdownDrops).toHaveLength(2)
+      // warn is one-shot — only the first drop produces a console.warn
+      const dropWarns = warnSpy.mock.calls.filter((c) => String(c[0]).includes('after shutdown()'))
+      expect(dropWarns).toHaveLength(1)
+      warnSpy.mockRestore()
+    })
+
+    it('shutdown() no-ops when extraction is disabled (R2-A1 + R2-A3 regression)', async () => {
+      const plugin = new AgentCoreMemory({
+        ...BASE_CONFIG,
+        injection: { namespaces: { '/x': {} } },
+      })
+      const agent = createMockAgent()
+      plugin.initAgent(agent as any)
+      await expect(plugin.shutdown()).resolves.toBeUndefined()
+    })
+  })
 })
