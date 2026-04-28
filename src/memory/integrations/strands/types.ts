@@ -1,5 +1,6 @@
 import type { Message, SystemPrompt } from '@strands-agents/sdk'
 import type { MemoryClientConfig } from '../../types.js'
+import type { MemoryClient } from '../../client.js'
 
 export interface NamespaceConfig {
   topK?: number
@@ -11,6 +12,8 @@ export interface ExtractionConfig {
   batchTimeoutMs?: number
   messageFilter?: (message: Message) => boolean
   fireAndForget?: boolean
+  flushTimeoutMs?: number
+  maxDrainIterations?: number
 }
 
 export interface InjectionConfig {
@@ -29,7 +32,7 @@ export interface AgentCoreMemoryConfig {
   extraction?: boolean | ExtractionConfig
   injection?: InjectionConfig
   metadataProvider?: (message: Message) => Record<string, { stringValue: string }>
-  memoryClient?: MemoryClientConfig
+  memoryClient?: MemoryClientConfig | MemoryClient
 }
 
 export interface MemoryRecordGroup {
@@ -49,6 +52,8 @@ export interface ResolvedExtractionConfig {
   batchTimeoutMs: number
   messageFilter: (message: Message) => boolean
   fireAndForget: boolean
+  flushTimeoutMs: number
+  maxDrainIterations: number
 }
 
 export type MetadataProviderFn = (message: Message) => Record<string, { stringValue: string }>
@@ -58,6 +63,8 @@ const DEFAULT_EXTRACTION: ResolvedExtractionConfig = {
   batchTimeoutMs: 5000,
   messageFilter: () => true,
   fireAndForget: false,
+  flushTimeoutMs: 10000,
+  maxDrainIterations: 10,
 }
 
 export function resolveExtractionConfig(
@@ -69,12 +76,45 @@ export function resolveExtractionConfig(
   if (config === true) {
     return { ...DEFAULT_EXTRACTION }
   }
+  if (config.batchSize !== undefined && (!Number.isFinite(config.batchSize) || config.batchSize < 1)) {
+    throw new TypeError(`extraction.batchSize must be a positive integer, got ${config.batchSize}`)
+  }
+  if (config.batchTimeoutMs !== undefined && (!Number.isFinite(config.batchTimeoutMs) || config.batchTimeoutMs < 0)) {
+    throw new TypeError(`extraction.batchTimeoutMs must be a non-negative number, got ${config.batchTimeoutMs}`)
+  }
+  if (config.flushTimeoutMs !== undefined && (!Number.isFinite(config.flushTimeoutMs) || config.flushTimeoutMs < 1)) {
+    throw new TypeError(`extraction.flushTimeoutMs must be a positive number, got ${config.flushTimeoutMs}`)
+  }
+  if (
+    config.maxDrainIterations !== undefined &&
+    (!Number.isInteger(config.maxDrainIterations) || config.maxDrainIterations < 1)
+  ) {
+    throw new TypeError(`extraction.maxDrainIterations must be a positive integer, got ${config.maxDrainIterations}`)
+  }
   return {
     batchSize: config.batchSize ?? DEFAULT_EXTRACTION.batchSize,
     batchTimeoutMs: config.batchTimeoutMs ?? DEFAULT_EXTRACTION.batchTimeoutMs,
     messageFilter: config.messageFilter ?? DEFAULT_EXTRACTION.messageFilter,
     fireAndForget: config.fireAndForget ?? DEFAULT_EXTRACTION.fireAndForget,
+    flushTimeoutMs: config.flushTimeoutMs ?? DEFAULT_EXTRACTION.flushTimeoutMs,
+    maxDrainIterations: config.maxDrainIterations ?? DEFAULT_EXTRACTION.maxDrainIterations,
   }
+}
+
+export function resolveNamespaceTemplate(ns: string, actorId: string, sessionId: string): string {
+  return ns.replace(/\{actorId\}/g, actorId).replace(/\{sessionId\}/g, sessionId)
+}
+
+export function resolveNamespaces(
+  namespaces: Record<string, NamespaceConfig>,
+  actorId: string,
+  sessionId: string
+): Record<string, NamespaceConfig> {
+  const resolved: Record<string, NamespaceConfig> = {}
+  for (const [ns, cfg] of Object.entries(namespaces)) {
+    resolved[resolveNamespaceTemplate(ns, actorId, sessionId)] = cfg
+  }
+  return resolved
 }
 
 export type { SystemPrompt }

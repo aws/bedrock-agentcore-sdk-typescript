@@ -47,9 +47,16 @@ export function createSearchMemoryTool(
       )
 
       const sections: string[] = []
+      const errors: string[] = []
 
-      for (const settled of retrievals) {
-        if (settled.status === 'rejected') continue
+      for (let i = 0; i < retrievals.length; i++) {
+        const settled = retrievals[i]!
+        if (settled.status === 'rejected') {
+          const ns = namespacesToSearch[i]
+          console.warn(`[agentcore-memory] search_memory retrieval failed for namespace ${ns}:`, settled.reason)
+          errors.push(`${ns}: ${settled.reason instanceof Error ? settled.reason.message : String(settled.reason)}`)
+          continue
+        }
 
         const { ns, records, nsConfig } = settled.value
 
@@ -65,7 +72,12 @@ export function createSearchMemoryTool(
         sections.push(`[${label}]\n${lines.join('\n')}`)
       }
 
-      if (sections.length === 0) return 'No relevant memories found.'
+      if (sections.length === 0) {
+        if (errors.length > 0) {
+          return `Memory search failed for all requested namespaces:\n${errors.map((e) => `- ${e}`).join('\n')}`
+        }
+        return 'No relevant memories found.'
+      }
 
       return sections.join('\n\n')
     },

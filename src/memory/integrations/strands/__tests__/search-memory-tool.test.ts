@@ -14,7 +14,7 @@ const mockRetrieveMemoryRecords = vi.fn()
 
 const mockClient = {
   retrieveMemoryRecords: mockRetrieveMemoryRecords,
-} as unknown as import('../../../../client.js').MemoryClient
+} as unknown as import('../../../client.js').MemoryClient
 
 const baseConfig = {
   memoryId: 'mem-123',

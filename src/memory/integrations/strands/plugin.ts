@@ -10,8 +10,9 @@ import type {
   MemoryRecordGroup,
   MemoryRecord,
   ResolvedExtractionConfig,
+  NamespaceConfig,
 } from './types.js'
-import { resolveExtractionConfig } from './types.js'
+import { resolveExtractionConfig, resolveNamespaces } from './types.js'
 import {
   deriveLabel,
   formatMemoryBlock,
@@ -35,12 +36,16 @@ export class AgentCoreMemory implements Plugin {
   private readonly originalConfig: AgentCoreMemoryConfig
   private readonly extractionConfig: ResolvedExtractionConfig | null
   private readonly injectionConfig: InjectionConfig | null
+  private readonly resolvedNamespaces: Record<string, NamespaceConfig>
   private agent!: AgentWithSystemPrompt
   private initialized = false
-  private buffer: Message[] = []
+  private buffer: Array<{ message: Message; clientToken: string }> = []
   private flushTimer?: ReturnType<typeof globalThis.setTimeout> | undefined
   private flushing = false
+  private pendingFlush: Promise<void> | null = null
+  private shuttingDown = false
   private searchMemoryTool?: Tool
+  private tokenCounter = 0
 
   constructor(config: AgentCoreMemoryConfig) {
     this.originalConfig = config
@@ -53,10 +58,14 @@ export class AgentCoreMemory implements Plugin {
       this.client = new MemoryClient(config.memoryClient)
     }
 
+    this.resolvedNamespaces = this.injectionConfig
+      ? resolveNamespaces(this.injectionConfig.namespaces, config.actorId, config.sessionId)
+      : {}
+
     if (this.injectionConfig?.searchTool) {
       this.searchMemoryTool = createSearchMemoryTool(this.client, {
         memoryId: config.memoryId,
-        namespaces: this.injectionConfig.namespaces,
+        namespaces: this.resolvedNamespaces,
       })
     }
 
@@ -102,9 +111,7 @@ export class AgentCoreMemory implements Plugin {
   }
 
   private static cloneWithConfig(source: AgentCoreMemory, config: AgentCoreMemoryConfig): AgentCoreMemory {
-    const instance = new AgentCoreMemory(config)
-    Object.defineProperty(instance, 'client', { value: source.client })
-    return instance
+    return new AgentCoreMemory({ ...config, memoryClient: source.client })
   }
 
   private async handleBeforeInvocation(): Promise<void> {
@@ -124,13 +131,16 @@ export class AgentCoreMemory implements Plugin {
     this.agent.systemPrompt = stripMemoryBlock(this.agent.systemPrompt, tag)
 
     const query = this.getSearchQuery()
-    const namespaceEntries = Object.entries(config.namespaces)
+    const templateKeys = Object.keys(config.namespaces)
+    const resolvedKeys = Object.keys(this.resolvedNamespaces)
 
     const results = await Promise.all(
-      namespaceEntries.map(async ([ns, nsConfig]) => {
+      templateKeys.map(async (templateNs, idx) => {
+        const apiNamespace = resolvedKeys[idx]!
+        const nsConfig = config.namespaces[templateNs]!
         const response = await this.client.retrieveMemoryRecords({
           memoryId: this.originalConfig.memoryId,
-          namespace: ns,
+          namespace: apiNamespace,
           searchCriteria: {
             searchQuery: query,
             topK: nsConfig.topK ?? 5,
@@ -151,8 +161,8 @@ export class AgentCoreMemory implements Plugin {
         }
 
         return {
-          namespace: ns,
-          label: deriveLabel(ns),
+          namespace: apiNamespace,
+          label: deriveLabel(templateNs),
           records,
         } satisfies MemoryRecordGroup
       })
@@ -202,33 +212,90 @@ export class AgentCoreMemory implements Plugin {
     try {
       this.clearFlushTimer()
       if (this.extractionConfig!.fireAndForget) {
-        this.flushBuffer().catch((err) => console.warn('[agentcore-memory] Background flush failed:', err))
+        this.drainUntilEmpty().catch((err) => console.warn('[agentcore-memory] Background flush failed:', err))
       } else {
-        await this.flushBuffer()
+        await this.drainUntilEmpty()
       }
     } catch (err) {
       console.warn('[agentcore-memory] Extraction flush failed:', err)
     }
   }
 
+  /**
+   * Force an immediate flush of any buffered events and wait for completion.
+   * Safe to call from user code when the agent terminates or a checkpoint is needed.
+   * Loops until the buffer is empty or {@link ResolvedExtractionConfig.maxDrainIterations}
+   * is reached.
+   */
+  async flush(): Promise<void> {
+    if (!this.extractionConfig) return
+    this.clearFlushTimer()
+    await this.drainUntilEmpty()
+  }
+
+  /**
+   * Stop accepting new buffered messages, cancel pending timers, and await the
+   * final flush. After shutdown the plugin is inert — subsequent events are ignored.
+   */
+  async shutdown(): Promise<void> {
+    this.shuttingDown = true
+    this.clearFlushTimer()
+    await this.drainUntilEmpty()
+  }
+
   private shouldBuffer(message: Message): boolean {
     if (!this.extractionConfig) return false
+    if (this.shuttingDown) return false
+    const role = message.role
+    if (role !== 'user' && role !== 'assistant') return false
     return this.extractionConfig.messageFilter(message)
   }
 
   private bufferMessage(message: Message): void {
-    this.buffer.push(message)
+    const clientToken = this.generateClientToken()
+    this.buffer.push({ message, clientToken })
 
     if (this.buffer.length >= this.extractionConfig!.batchSize) {
-      this.flushBuffer().catch((err) => console.warn('[agentcore-memory] Early flush failed:', err))
+      this.drainUntilEmpty().catch((err) => console.warn('[agentcore-memory] Early flush failed:', err))
       return
     }
 
     if (!this.flushTimer && this.buffer.length === 1) {
       this.flushTimer = globalThis.setTimeout(() => {
-        this.flushBuffer().catch((err) => console.warn('[agentcore-memory] Timer flush failed:', err))
+        this.drainUntilEmpty().catch((err) => console.warn('[agentcore-memory] Timer flush failed:', err))
       }, this.extractionConfig!.batchTimeoutMs)
     }
+  }
+
+  /**
+   * Drain the buffer across multiple flush passes. Each pass takes a snapshot
+   * of the current buffer; any messages that arrive during the pass (from
+   * concurrent MessageAddedEvent callbacks) are picked up on the next iteration.
+   * Bounded by {@link ResolvedExtractionConfig.maxDrainIterations} to guard against
+   * pathological producers.
+   */
+  private async drainUntilEmpty(): Promise<void> {
+    if (this.pendingFlush) {
+      await this.pendingFlush
+      return
+    }
+
+    const run = async (): Promise<void> => {
+      const maxIter = this.extractionConfig!.maxDrainIterations
+      for (let i = 0; i < maxIter && this.buffer.length > 0; i++) {
+        await this.flushBuffer()
+      }
+      if (this.buffer.length > 0) {
+        console.warn(
+          `[agentcore-memory] flush reached maxDrainIterations=${this.extractionConfig!.maxDrainIterations} with ${this.buffer.length} message(s) still buffered`
+        )
+      }
+    }
+
+    this.pendingFlush = run().finally(() => {
+      this.pendingFlush = null
+    })
+    await this.pendingFlush
   }
 
   private async flushBuffer(): Promise<void> {
@@ -241,15 +308,31 @@ export class AgentCoreMemory implements Plugin {
     this.clearFlushTimer()
 
     try {
-      const results = await Promise.allSettled(toFlush.map((msg, i) => this.createEventFromMessage(msg, i)))
+      const results = await Promise.allSettled(
+        toFlush.map((entry) => this.createEventFromMessage(entry.message, entry.clientToken))
+      )
 
-      const failed = results.map((r, i) => (r.status === 'rejected' ? i : null)).filter((i): i is number => i !== null)
+      const failed: number[] = []
+      for (let i = 0; i < results.length; i++) {
+        if (results[i]!.status === 'rejected') failed.push(i)
+      }
 
       if (failed.length > 0) {
-        const retryResults = await Promise.allSettled(failed.map((i) => this.createEventFromMessage(toFlush[i]!, i)))
-        const stillFailed = retryResults.filter((r) => r.status === 'rejected').length
-        if (stillFailed > 0) {
-          console.warn(`[agentcore-memory] Dropped ${stillFailed} events after retry`)
+        const retryResults = await Promise.allSettled(
+          failed.map((i) => this.createEventFromMessage(toFlush[i]!.message, toFlush[i]!.clientToken))
+        )
+        const failedDetails: Array<{ token: string; reason: unknown }> = []
+        for (let j = 0; j < retryResults.length; j++) {
+          const r = retryResults[j]!
+          if (r.status === 'rejected') {
+            failedDetails.push({ token: toFlush[failed[j]!]!.clientToken, reason: r.reason })
+          }
+        }
+        if (failedDetails.length > 0) {
+          for (const detail of failedDetails) {
+            console.warn(`[agentcore-memory] Dropping event after retry (clientToken=${detail.token}):`, detail.reason)
+          }
+          console.warn(`[agentcore-memory] Dropped ${failedDetails.length} event(s) after retry`)
         }
       }
     } finally {
@@ -257,31 +340,53 @@ export class AgentCoreMemory implements Plugin {
     }
   }
 
-  private createEventFromMessage(message: Message, index: number): Promise<unknown> {
-    const text = extractText(message)
-    const metadata = this.originalConfig.metadataProvider?.(message)
-
-    return this.client.createEvent({
-      memoryId: this.originalConfig.memoryId,
-      actorId: this.originalConfig.actorId,
-      sessionId: this.originalConfig.sessionId,
-      eventTimestamp: new Date(),
-      clientToken: this.generateClientToken(index),
-      payload: [
-        {
-          conversational: {
-            role: mapRole(message),
-            content: { text },
+  /**
+   * Wraps each createEvent call in a Promise.race against flushTimeoutMs so a
+   * hung remote can't stall agent.invoke() indefinitely. The body of the call is
+   * wrapped in Promise.resolve().then(...) so a synchronous throw (e.g. from a
+   * user-supplied metadataProvider) becomes a rejected promise instead of
+   * escaping Promise.allSettled's isolation.
+   */
+  private createEventFromMessage(message: Message, clientToken: string): Promise<unknown> {
+    const timeoutMs = this.extractionConfig!.flushTimeoutMs
+    const call = Promise.resolve().then(() => {
+      const text = extractText(message)
+      const metadata = this.originalConfig.metadataProvider?.(message)
+      return this.client.createEvent({
+        memoryId: this.originalConfig.memoryId,
+        actorId: this.originalConfig.actorId,
+        sessionId: this.originalConfig.sessionId,
+        eventTimestamp: new Date(),
+        clientToken,
+        payload: [
+          {
+            conversational: {
+              role: mapRole(message),
+              content: { text },
+            },
           },
-        },
-      ],
-      ...(metadata && { metadata }),
+        ],
+        ...(metadata && { metadata }),
+      })
+    })
+
+    let timer: ReturnType<typeof globalThis.setTimeout> | undefined
+    const timeout = new Promise<never>((_, reject) => {
+      timer = globalThis.setTimeout(
+        () => reject(new Error(`[agentcore-memory] createEvent timed out after ${timeoutMs}ms`)),
+        timeoutMs
+      )
+    })
+
+    return Promise.race([call, timeout]).finally(() => {
+      if (timer) globalThis.clearTimeout(timer)
     })
   }
 
-  private generateClientToken(index: number): string {
+  private generateClientToken(): string {
     const { sessionId, actorId } = this.originalConfig
-    return `${sessionId}-${actorId}-${Date.now()}-${index}`
+    const counter = this.tokenCounter++
+    return `${sessionId}-${actorId}-${Date.now()}-${counter}-${Math.random().toString(36).slice(2, 10)}`
   }
 
   private clearFlushTimer(): void {

@@ -114,6 +114,8 @@ describe('AgentCoreMemory', () => {
         batchTimeoutMs: 5000,
         messageFilter: expect.any(Function),
         fireAndForget: false,
+        flushTimeoutMs: 10000,
+        maxDrainIterations: 10,
       })
     })
 
@@ -124,6 +126,8 @@ describe('AgentCoreMemory', () => {
         batchTimeoutMs: 5000,
         messageFilter: expect.any(Function),
         fireAndForget: false,
+        flushTimeoutMs: 10000,
+        maxDrainIterations: 10,
       })
     })
 
@@ -240,7 +244,7 @@ describe('AgentCoreMemory', () => {
 
       expect(mockRetrieveMemoryRecords).toHaveBeenCalledWith({
         memoryId: 'mem-1',
-        namespace: '/facts/{actorId}/',
+        namespace: '/facts/user-1/',
         searchCriteria: { searchQuery: 'hello', topK: 5 },
       })
       expect(agent.systemPrompt).toContain('<agentcore_memory>')
@@ -552,7 +556,7 @@ describe('AgentCoreMemory', () => {
       expect(mockCreateEvent).toHaveBeenCalledTimes(2)
     })
 
-    it('guards against concurrent flushes', async () => {
+    it('reentrant flushBuffer calls are serialized (no double-send of in-flight batch)', async () => {
       let resolveFirst!: () => void
       const firstCallPromise = new Promise<void>((resolve) => {
         resolveFirst = resolve
@@ -563,10 +567,9 @@ describe('AgentCoreMemory', () => {
       const plugin = new AgentCoreMemory({ ...BASE_CONFIG, extraction: true })
       const agent = createMockAgent()
       plugin.initAgent(agent as any)
-      ;(plugin as any).buffer = [createMessage('assistant', 'msg1')]
+      ;(plugin as any).buffer = [{ message: createMessage('assistant', 'msg1'), clientToken: 'tok-1' }]
 
       const flush1 = (plugin as any).flushBuffer()
-      ;(plugin as any).buffer = [createMessage('assistant', 'msg2')]
       const flush2 = (plugin as any).flushBuffer()
 
       resolveFirst()
@@ -574,6 +577,31 @@ describe('AgentCoreMemory', () => {
       await flush2
 
       expect(mockCreateEvent).toHaveBeenCalledTimes(1)
+    })
+
+    it('messages buffered during in-flight flush are drained on the next pass (B1 regression)', async () => {
+      let resolveFirst!: () => void
+      const firstCallPromise = new Promise<void>((resolve) => {
+        resolveFirst = resolve
+      })
+      mockCreateEvent.mockImplementationOnce(() => firstCallPromise.then(() => ({})))
+      mockCreateEvent.mockResolvedValue({})
+
+      const plugin = new AgentCoreMemory({ ...BASE_CONFIG, extraction: { batchSize: 2 } })
+      const agent = createMockAgent()
+      plugin.initAgent(agent as any)
+
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('assistant', 'a') })
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('assistant', 'b') })
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('assistant', 'c') })
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('assistant', 'd') })
+      const after = agent.fireHooks('AfterInvocationEvent', { agent })
+
+      resolveFirst()
+      await after
+
+      expect(mockCreateEvent).toHaveBeenCalledTimes(4)
+      expect((plugin as any).buffer).toEqual([])
     })
   })
 
@@ -605,6 +633,157 @@ describe('AgentCoreMemory', () => {
       const cloned = plugin.withMetadataProvider(fn)
       expect((cloned as any).originalConfig.metadataProvider).toBe(fn)
       expect((cloned as any).initialized).toBe(false)
+    })
+  })
+
+  describe('bug bash regressions', () => {
+    it('H1: clientToken is stable across retry', async () => {
+      let firstCall = true
+      const tokensSeen: string[] = []
+      mockCreateEvent.mockImplementation(async (req: any) => {
+        tokensSeen.push(req.clientToken)
+        if (firstCall) {
+          firstCall = false
+          throw new Error('simulated transient failure')
+        }
+        return {}
+      })
+
+      const plugin = new AgentCoreMemory({ ...BASE_CONFIG, extraction: true })
+      const agent = createMockAgent()
+      plugin.initAgent(agent as any)
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('user', 'hi') })
+      await agent.fireHooks('AfterInvocationEvent', { agent })
+
+      expect(tokensSeen).toHaveLength(2)
+      expect(tokensSeen[0]).toBe(tokensSeen[1])
+    })
+
+    it('H2: metadataProvider sync throw does not drop sibling messages', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const plugin = new AgentCoreMemory({
+        ...BASE_CONFIG,
+        extraction: true,
+        metadataProvider: (m) => {
+          const text = m.content[0]?.type === 'textBlock' ? m.content[0].text : ''
+          if (text === 'throw') throw new Error('boom')
+          return { ok: { stringValue: 'yes' } }
+        },
+      })
+      const agent = createMockAgent()
+      plugin.initAgent(agent as any)
+
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('user', 'a') })
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('user', 'throw') })
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('user', 'c') })
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('user', 'd') })
+      await agent.fireHooks('AfterInvocationEvent', { agent })
+
+      // 4 messages attempted; 'throw' rejects both initial + retry; siblings succeed.
+      expect(mockCreateEvent).toHaveBeenCalled()
+      const successTexts = mockCreateEvent.mock.calls
+        .filter((c: any[]) => {
+          // Every call passes. Filter out the throw-message attempts by checking if the promise succeeds.
+          return c[0].payload[0].conversational.content.text !== 'throw'
+        })
+        .map((c: any[]) => c[0].payload[0].conversational.content.text)
+      // Three unique non-throw messages landed: a, c, d
+      expect(new Set(successTexts)).toEqual(new Set(['a', 'c', 'd']))
+      warnSpy.mockRestore()
+    })
+
+    it('H3: {actorId} and {sessionId} templates resolved at construct time', async () => {
+      const plugin = new AgentCoreMemory({
+        ...BASE_CONFIG,
+        actorId: 'aidan',
+        sessionId: 'sess-12345',
+        injection: {
+          namespaces: {
+            '/users/{actorId}/facts': { topK: 3 },
+            '/sessions/{sessionId}/summary': { topK: 2 },
+          },
+        },
+      })
+      const agent = createMockAgent()
+      agent.messages = [createMessage('user', 'hi')]
+      plugin.initAgent(agent as any)
+      await agent.fireHooks('BeforeInvocationEvent', { agent })
+
+      const calls = mockRetrieveMemoryRecords.mock.calls.map((c: any[]) => c[0].namespace)
+      expect(calls).toContain('/users/aidan/facts')
+      expect(calls).toContain('/sessions/sess-12345/summary')
+      expect(calls).not.toContain('/users/{actorId}/facts')
+    })
+
+    it('H3: withActor re-resolves {actorId} templates for fork', async () => {
+      const base = new AgentCoreMemory({
+        ...BASE_CONFIG,
+        actorId: 'user-1',
+        injection: { namespaces: { '/users/{actorId}/facts': {} } },
+      })
+      const fork = base.withActor('user-2')
+      const agent = createMockAgent()
+      fork.initAgent(agent as any)
+      await agent.fireHooks('BeforeInvocationEvent', { agent })
+      const calls = mockRetrieveMemoryRecords.mock.calls.map((c: any[]) => c[0].namespace)
+      expect(calls).toContain('/users/user-2/facts')
+      expect(calls).not.toContain('/users/user-1/facts')
+    })
+
+    it('B2: flushTimeoutMs rejects hung createEvent instead of stalling', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      mockCreateEvent.mockImplementation(() => new Promise(() => {}))
+
+      const plugin = new AgentCoreMemory({
+        ...BASE_CONFIG,
+        extraction: { flushTimeoutMs: 50 },
+      })
+      const agent = createMockAgent()
+      plugin.initAgent(agent as any)
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('user', 'hi') })
+
+      const afterInvoke = agent.fireHooks('AfterInvocationEvent', { agent })
+      await vi.advanceTimersByTimeAsync(200)
+      await afterInvoke
+
+      expect(warnSpy).toHaveBeenCalled()
+      warnSpy.mockRestore()
+    })
+
+    it('public flush() drains buffer synchronously', async () => {
+      const plugin = new AgentCoreMemory({ ...BASE_CONFIG, extraction: { batchTimeoutMs: 60000 } })
+      const agent = createMockAgent()
+      plugin.initAgent(agent as any)
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('user', 'hi') })
+      expect(mockCreateEvent).not.toHaveBeenCalled()
+      await plugin.flush()
+      expect(mockCreateEvent).toHaveBeenCalledTimes(1)
+    })
+
+    it('shutdown() stops accepting new messages', async () => {
+      const plugin = new AgentCoreMemory({ ...BASE_CONFIG, extraction: true })
+      const agent = createMockAgent()
+      plugin.initAgent(agent as any)
+      await plugin.shutdown()
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('user', 'hi') })
+      expect(mockCreateEvent).not.toHaveBeenCalled()
+    })
+
+    it('extraction batchSize: 0 throws at construct time (M3)', () => {
+      expect(() => new AgentCoreMemory({ ...BASE_CONFIG, extraction: { batchSize: 0 } })).toThrow(
+        /batchSize must be a positive integer/
+      )
+    })
+
+    it('silently coerces system/tool roles away (M1) — not buffered', async () => {
+      const plugin = new AgentCoreMemory({ ...BASE_CONFIG, extraction: true })
+      const agent = createMockAgent()
+      plugin.initAgent(agent as any)
+      const sysMsg = { role: 'system', content: [{ type: 'textBlock', text: 'sys' }] }
+      await agent.fireHooks('MessageAddedEvent', { agent, message: sysMsg })
+      await agent.fireHooks('AfterInvocationEvent', { agent })
+      expect(mockCreateEvent).not.toHaveBeenCalled()
     })
   })
 })
