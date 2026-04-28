@@ -67,6 +67,10 @@ const DEFAULT_EXTRACTION: ResolvedExtractionConfig = {
   maxDrainIterations: 10,
 }
 
+function isNonNegative(n: number): boolean {
+  return Number.isFinite(n) && n >= 0 && !Object.is(n, -0)
+}
+
 export function resolveExtractionConfig(
   config: boolean | ExtractionConfig | undefined
 ): ResolvedExtractionConfig | null {
@@ -74,16 +78,16 @@ export function resolveExtractionConfig(
     return null
   }
   if (config === true) {
-    return { ...DEFAULT_EXTRACTION }
+    return Object.freeze({ ...DEFAULT_EXTRACTION })
   }
-  if (config.batchSize !== undefined && (!Number.isFinite(config.batchSize) || config.batchSize < 1)) {
+  if (config.batchSize !== undefined && (!Number.isInteger(config.batchSize) || config.batchSize < 1)) {
     throw new TypeError(`extraction.batchSize must be a positive integer, got ${config.batchSize}`)
   }
-  if (config.batchTimeoutMs !== undefined && (!Number.isFinite(config.batchTimeoutMs) || config.batchTimeoutMs < 0)) {
-    throw new TypeError(`extraction.batchTimeoutMs must be a non-negative number, got ${config.batchTimeoutMs}`)
+  if (config.batchTimeoutMs !== undefined && !isNonNegative(config.batchTimeoutMs)) {
+    throw new TypeError(`extraction.batchTimeoutMs must be a non-negative finite number, got ${config.batchTimeoutMs}`)
   }
-  if (config.flushTimeoutMs !== undefined && (!Number.isFinite(config.flushTimeoutMs) || config.flushTimeoutMs < 1)) {
-    throw new TypeError(`extraction.flushTimeoutMs must be a positive number, got ${config.flushTimeoutMs}`)
+  if (config.flushTimeoutMs !== undefined && (!isNonNegative(config.flushTimeoutMs) || config.flushTimeoutMs < 1)) {
+    throw new TypeError(`extraction.flushTimeoutMs must be a positive finite number, got ${config.flushTimeoutMs}`)
   }
   if (
     config.maxDrainIterations !== undefined &&
@@ -91,14 +95,14 @@ export function resolveExtractionConfig(
   ) {
     throw new TypeError(`extraction.maxDrainIterations must be a positive integer, got ${config.maxDrainIterations}`)
   }
-  return {
+  return Object.freeze({
     batchSize: config.batchSize ?? DEFAULT_EXTRACTION.batchSize,
     batchTimeoutMs: config.batchTimeoutMs ?? DEFAULT_EXTRACTION.batchTimeoutMs,
     messageFilter: config.messageFilter ?? DEFAULT_EXTRACTION.messageFilter,
     fireAndForget: config.fireAndForget ?? DEFAULT_EXTRACTION.fireAndForget,
     flushTimeoutMs: config.flushTimeoutMs ?? DEFAULT_EXTRACTION.flushTimeoutMs,
     maxDrainIterations: config.maxDrainIterations ?? DEFAULT_EXTRACTION.maxDrainIterations,
-  }
+  })
 }
 
 export function resolveNamespaceTemplate(ns: string, actorId: string, sessionId: string): string {

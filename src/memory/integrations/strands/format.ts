@@ -39,7 +39,7 @@ export function truncateToCharBudget(groups: MemoryRecordGroup[], maxChars: numb
   for (const entry of flat) {
     if (budget <= 0) break
     const cost = entry.record.content.length
-    if (cost > budget) break
+    if (cost > budget) continue
     budget -= cost
 
     const list = surviving.get(entry.groupIndex)
@@ -67,7 +67,9 @@ export function stripMemoryBlock(prompt: SystemPrompt | undefined, tag: string):
   if (prompt === undefined) return undefined
 
   const escaped = escapeRegex(tag)
-  const regex = new RegExp(`<${escaped}>[\\s\\S]*?</${escaped}>`, 'g')
+  // Consume the `\n\n` separator that `appendMemoryBlock` prepends, plus any
+  // accumulated leading whitespace, so repeated strip/append cycles don't leak.
+  const regex = new RegExp(`\\n*<${escaped}>[\\s\\S]*?</${escaped}>\\n*`, 'g')
 
   if (typeof prompt === 'string') {
     return prompt.replace(regex, '')

@@ -41,7 +41,6 @@ export class AgentCoreMemory implements Plugin {
   private initialized = false
   private buffer: Array<{ message: Message; clientToken: string }> = []
   private flushTimer?: ReturnType<typeof globalThis.setTimeout> | undefined
-  private flushing = false
   private pendingFlush: Promise<void> | null = null
   private shuttingDown = false
   private searchMemoryTool?: Tool
@@ -209,15 +208,11 @@ export class AgentCoreMemory implements Plugin {
   }
 
   private async handleAfterInvocation(): Promise<void> {
-    try {
-      this.clearFlushTimer()
-      if (this.extractionConfig!.fireAndForget) {
-        this.drainUntilEmpty().catch((err) => console.warn('[agentcore-memory] Background flush failed:', err))
-      } else {
-        await this.drainUntilEmpty()
-      }
-    } catch (err) {
-      console.warn('[agentcore-memory] Extraction flush failed:', err)
+    this.clearFlushTimer()
+    if (this.extractionConfig!.fireAndForget) {
+      void this.drainUntilEmpty()
+    } else {
+      await this.drainUntilEmpty()
     }
   }
 
@@ -240,6 +235,7 @@ export class AgentCoreMemory implements Plugin {
   async shutdown(): Promise<void> {
     this.shuttingDown = true
     this.clearFlushTimer()
+    if (!this.extractionConfig) return
     await this.drainUntilEmpty()
   }
 
@@ -256,13 +252,13 @@ export class AgentCoreMemory implements Plugin {
     this.buffer.push({ message, clientToken })
 
     if (this.buffer.length >= this.extractionConfig!.batchSize) {
-      this.drainUntilEmpty().catch((err) => console.warn('[agentcore-memory] Early flush failed:', err))
+      void this.drainUntilEmpty()
       return
     }
 
     if (!this.flushTimer && this.buffer.length === 1) {
       this.flushTimer = globalThis.setTimeout(() => {
-        this.drainUntilEmpty().catch((err) => console.warn('[agentcore-memory] Timer flush failed:', err))
+        void this.drainUntilEmpty()
       }, this.extractionConfig!.batchTimeoutMs)
     }
   }
@@ -299,45 +295,39 @@ export class AgentCoreMemory implements Plugin {
   }
 
   private async flushBuffer(): Promise<void> {
-    if (this.flushing) return
     if (this.buffer.length === 0) return
 
-    this.flushing = true
     const toFlush = [...this.buffer]
     this.buffer = []
     this.clearFlushTimer()
 
-    try {
-      const results = await Promise.allSettled(
-        toFlush.map((entry) => this.createEventFromMessage(entry.message, entry.clientToken))
-      )
+    const results = await Promise.allSettled(
+      toFlush.map((entry) => this.createEventFromMessage(entry.message, entry.clientToken))
+    )
 
-      const failed: number[] = []
-      for (let i = 0; i < results.length; i++) {
-        if (results[i]!.status === 'rejected') failed.push(i)
-      }
-
-      if (failed.length > 0) {
-        const retryResults = await Promise.allSettled(
-          failed.map((i) => this.createEventFromMessage(toFlush[i]!.message, toFlush[i]!.clientToken))
-        )
-        const failedDetails: Array<{ token: string; reason: unknown }> = []
-        for (let j = 0; j < retryResults.length; j++) {
-          const r = retryResults[j]!
-          if (r.status === 'rejected') {
-            failedDetails.push({ token: toFlush[failed[j]!]!.clientToken, reason: r.reason })
-          }
-        }
-        if (failedDetails.length > 0) {
-          for (const detail of failedDetails) {
-            console.warn(`[agentcore-memory] Dropping event after retry (clientToken=${detail.token}):`, detail.reason)
-          }
-          console.warn(`[agentcore-memory] Dropped ${failedDetails.length} event(s) after retry`)
-        }
-      }
-    } finally {
-      this.flushing = false
+    const failed: number[] = []
+    for (let i = 0; i < results.length; i++) {
+      if (results[i]!.status === 'rejected') failed.push(i)
     }
+
+    if (failed.length === 0) return
+
+    const retryResults = await Promise.allSettled(
+      failed.map((i) => this.createEventFromMessage(toFlush[i]!.message, toFlush[i]!.clientToken))
+    )
+    const failedDetails: Array<{ token: string; reason: unknown }> = []
+    for (let j = 0; j < retryResults.length; j++) {
+      const r = retryResults[j]!
+      if (r.status === 'rejected') {
+        failedDetails.push({ token: toFlush[failed[j]!]!.clientToken, reason: r.reason })
+      }
+    }
+    if (failedDetails.length === 0) return
+
+    for (const detail of failedDetails) {
+      console.warn(`[agentcore-memory] Dropping event after retry (clientToken=${detail.token}):`, detail.reason)
+    }
+    console.warn(`[agentcore-memory] Dropped ${failedDetails.length} event(s) after retry`)
   }
 
   /**
