@@ -157,7 +157,6 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       const mockApp = app['_app'] as any
 
-      delete process.env.PORT
       app.run()
 
       await vi.waitFor(() => {
@@ -165,34 +164,16 @@ describe('BedrockAgentCoreApp', () => {
       })
     })
 
-    it('reads PORT from environment variable', async () => {
+    it('accepts port option', async () => {
       const handler: InvocationHandler = async (_request, _context) => 'test response'
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       const mockApp = app['_app'] as any
 
-      process.env.PORT = '3000'
-      app.run()
-
-      await vi.waitFor(() => {
-        expect(mockApp.listen).toHaveBeenCalledWith({ port: 3000, host: '0.0.0.0' })
-      })
-
-      delete process.env.PORT
-    })
-
-    it('accepts port option that overrides env var', async () => {
-      const handler: InvocationHandler = async (_request, _context) => 'test response'
-      const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
-      const mockApp = app['_app'] as any
-
-      process.env.PORT = '3000'
       app.run({ port: 9090 })
 
       await vi.waitFor(() => {
         expect(mockApp.listen).toHaveBeenCalledWith({ port: 9090, host: '0.0.0.0' })
       })
-
-      delete process.env.PORT
     })
 
     it('accepts host option', async () => {
