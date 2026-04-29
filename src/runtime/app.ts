@@ -98,10 +98,10 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
   }
 
   /**
-   * Starts the Fastify server on port 8080.
+   * Starts the Fastify server on the port specified by the PORT environment variable (default: 8080).
    */
   run(): void {
-    const PORT = 8080
+    const PORT = parseInt(process.env.PORT || '8080', 10)
 
     // Wait for Fastify to be ready (all plugins registered), setup routes, and start the server
     Promise.resolve(this._registerPlugins())
