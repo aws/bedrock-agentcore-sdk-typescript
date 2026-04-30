@@ -1,4 +1,4 @@
-import type { Message, SystemPrompt, SystemContentBlock, ContentBlock, ToolResultContent } from '@strands-agents/sdk'
+import type { Message, SystemPrompt, SystemContentBlock, ContentBlock } from '@strands-agents/sdk'
 import type { MemoryRecordGroup } from './types.js'
 
 export function escapeRegex(str: string): string {
@@ -105,31 +105,17 @@ export function extractText(message: Message): string {
   return parts.join('\n').trim()
 }
 
+// Tool-use, tool-result, and reasoning blocks are agent internals, not user
+// content — excluded from LTM extraction by default so the memory store stays
+// focused on conversational content. Customers who need to persist agent
+// internals can override this via a custom messageFilter on ExtractionConfig.
 function extractContentBlockText(block: ContentBlock): string | undefined {
   switch (block.type) {
     case 'textBlock':
       return block.text
-    case 'toolUseBlock':
-      return `[tool_use: ${block.name}(${JSON.stringify(block.input)})]`
-    case 'toolResultBlock':
-      return extractToolResultText(block.content)
-    case 'reasoningBlock':
-      return block.text ?? undefined
     default:
       return undefined
   }
-}
-
-function extractToolResultText(content: ToolResultContent[]): string | undefined {
-  const parts: string[] = []
-  for (const item of content) {
-    if (item.type === 'textBlock') {
-      parts.push(item.text)
-    } else if (item.type === 'jsonBlock') {
-      parts.push(JSON.stringify(item.json))
-    }
-  }
-  return parts.length > 0 ? parts.join('\n') : undefined
 }
 
 export function mapRole(message: Message): 'USER' | 'ASSISTANT' {

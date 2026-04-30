@@ -884,5 +884,73 @@ describe('AgentCoreMemory', () => {
       plugin.initAgent(agent as any)
       await expect(plugin.shutdown()).resolves.toBeUndefined()
     })
+
+    it('tool-use-only messages are skipped from extraction (jariy17 finding 2)', async () => {
+      const plugin = new AgentCoreMemory({ ...BASE_CONFIG, extraction: true })
+      const agent = createMockAgent()
+      plugin.initAgent(agent as any)
+
+      const toolUseOnly = {
+        role: 'assistant',
+        content: [{ type: 'toolUseBlock', name: 'search', toolUseId: 't1', input: { q: 'test' } }],
+      }
+      await agent.fireHooks('MessageAddedEvent', { agent, message: toolUseOnly })
+      await agent.fireHooks('AfterInvocationEvent', { agent })
+
+      expect(mockCreateEvent).not.toHaveBeenCalled()
+    })
+
+    it('reasoning-only messages are skipped from extraction (jariy17 finding 2)', async () => {
+      const plugin = new AgentCoreMemory({ ...BASE_CONFIG, extraction: true })
+      const agent = createMockAgent()
+      plugin.initAgent(agent as any)
+
+      const reasoningOnly = {
+        role: 'assistant',
+        content: [{ type: 'reasoningBlock', text: 'Let me think about this carefully...' }],
+      }
+      await agent.fireHooks('MessageAddedEvent', { agent, message: reasoningOnly })
+      await agent.fireHooks('AfterInvocationEvent', { agent })
+
+      expect(mockCreateEvent).not.toHaveBeenCalled()
+    })
+
+    it('mixed message lands with only the text content (jariy17 finding 2)', async () => {
+      const plugin = new AgentCoreMemory({ ...BASE_CONFIG, extraction: true })
+      const agent = createMockAgent()
+      plugin.initAgent(agent as any)
+
+      const mixed = {
+        role: 'assistant',
+        content: [
+          { type: 'textBlock', text: 'here is my answer' },
+          { type: 'toolUseBlock', name: 'search', toolUseId: 't1', input: { q: 'test' } },
+          { type: 'reasoningBlock', text: 'internal chain of thought' },
+        ],
+      }
+      await agent.fireHooks('MessageAddedEvent', { agent, message: mixed })
+      await agent.fireHooks('AfterInvocationEvent', { agent })
+
+      expect(mockCreateEvent).toHaveBeenCalledTimes(1)
+      const sentText = mockCreateEvent.mock.calls[0][0].payload[0].conversational.content.text
+      expect(sentText).toBe('here is my answer')
+      expect(sentText).not.toContain('tool_use')
+      expect(sentText).not.toContain('chain of thought')
+    })
+
+    it('empty-content messages are skipped (jariy17 finding 3)', async () => {
+      const plugin = new AgentCoreMemory({ ...BASE_CONFIG, extraction: true })
+      const agent = createMockAgent()
+      plugin.initAgent(agent as any)
+
+      const empty = { role: 'user', content: [] }
+      const imageOnly = { role: 'user', content: [{ type: 'imageBlock' }] }
+
+      await agent.fireHooks('MessageAddedEvent', { agent, message: empty })
+      await agent.fireHooks('MessageAddedEvent', { agent, message: imageOnly })
+      await agent.fireHooks('AfterInvocationEvent', { agent })
+
+      expect(mockCreateEvent).not.toHaveBeenCalled()
+    })
   })
 })

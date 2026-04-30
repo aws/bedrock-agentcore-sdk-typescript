@@ -271,6 +271,9 @@ export class AgentCoreMemory implements Plugin {
     }
     const role = message.role
     if (role !== 'user' && role !== 'assistant') return false
+    // Skip messages with no extractable text (image-only, tool-use-only,
+    // reasoning-only). Prevents wasted createEvent calls with text: "".
+    if (!extractText(message)) return false
     return this.extractionConfig.messageFilter(message)
   }
 

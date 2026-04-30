@@ -268,14 +268,14 @@ describe('extractText', () => {
     expect(extractText(message)).toBe('hello\nworld')
   })
 
-  it('extracts text from tool use blocks', () => {
+  it('skips tool use blocks (agent internals, not user content)', () => {
     const message = msg('assistant', [
       { type: 'toolUseBlock', name: 'search', toolUseId: 't1', input: { query: 'test' } },
     ])
-    expect(extractText(message)).toBe('[tool_use: search({"query":"test"})]')
+    expect(extractText(message)).toBe('')
   })
 
-  it('extracts text from tool result blocks', () => {
+  it('skips tool result blocks (agent internals, not user content)', () => {
     const message = msg('user', [
       {
         type: 'toolResultBlock',
@@ -287,12 +287,12 @@ describe('extractText', () => {
         ],
       },
     ])
-    expect(extractText(message)).toBe('result text\n{"key":"value"}')
+    expect(extractText(message)).toBe('')
   })
 
-  it('extracts text from reasoning blocks', () => {
+  it('skips reasoning blocks (chain-of-thought, not user content)', () => {
     const message = msg('assistant', [{ type: 'reasoningBlock', text: 'thinking...' }])
-    expect(extractText(message)).toBe('thinking...')
+    expect(extractText(message)).toBe('')
   })
 
   it('skips reasoning blocks without text', () => {
@@ -303,12 +303,12 @@ describe('extractText', () => {
     expect(extractText(message)).toBe('visible')
   })
 
-  it('extracts mixed content', () => {
+  it('extracts text and skips tool-use blocks in mixed content', () => {
     const message = msg('assistant', [
       { type: 'textBlock', text: 'I will search' },
       { type: 'toolUseBlock', name: 'lookup', toolUseId: 't1', input: 'q' },
     ])
-    expect(extractText(message)).toBe('I will search\n[tool_use: lookup("q")]')
+    expect(extractText(message)).toBe('I will search')
   })
 
   it('skips binary content blocks', () => {
