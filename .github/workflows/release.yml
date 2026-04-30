@@ -308,10 +308,12 @@ jobs:
           name: dist
           path: .
 
-      - name: Ensure npm 11.5.1+ for trusted publishing
+      - name: Ensure npm 11.x for trusted publishing
         run: |
           echo "Current npm version: $(npm --version)"
-          npm install -g npm@latest
+          # Use npx to bootstrap npm@11 — avoids the broken 'npm install -g npm@latest'
+          # which corrupts the running npm during a major-version self-upgrade.
+          npx npm@11.5.1 install -g npm@11.5.1
           echo "Updated npm version: $(npm --version)"
 
       - name: Get version
