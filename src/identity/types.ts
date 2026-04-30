@@ -10,8 +10,12 @@ export interface OAuth2TokenRequest {
   providerName: string
   /** OAuth2 scopes to request */
   scopes: string[]
+  /** OAuth2 resources to request */
+  resources?: string[] | undefined
+  /** OAuth2 audiences to request */
+  audiences?: string[] | undefined
   /** Authentication flow type */
-  authFlow: 'M2M' | 'USER_FEDERATION'
+  authFlow: 'M2M' | 'USER_FEDERATION' | 'ON_BEHALF_OF_TOKEN_EXCHANGE'
   /** Workload identity token for authentication */
   workloadIdentityToken: string
   /** OAuth2 callback URL (must be pre-registered) */
@@ -52,8 +56,12 @@ export interface OAuth2WrapperConfig {
   providerName: string
   /** OAuth2 scopes to request */
   scopes: string[]
+  /** OAuth2 resources to request */
+  resources?: string[] | undefined
+  /** OAuth2 audiences to request */
+  audiences?: string[] | undefined
   /** Authentication flow type */
-  authFlow: 'M2M' | 'USER_FEDERATION'
+  authFlow: 'M2M' | 'USER_FEDERATION' | 'ON_BEHALF_OF_TOKEN_EXCHANGE'
   /** Callback invoked when authorization URL is returned */
   onAuthUrl?: ((url: string) => void | Promise<void>) | undefined
   /** Force re-authentication even if token exists in vault */

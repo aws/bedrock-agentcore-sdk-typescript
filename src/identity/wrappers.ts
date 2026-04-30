@@ -54,6 +54,8 @@ export function withAccessToken(config: OAuth2WrapperConfig) {
       const token = await client.getOAuth2Token({
         providerName: config.providerName,
         scopes: config.scopes,
+        resources: config.resources,
+        audiences: config.audiences,
         authFlow: config.authFlow,
         workloadIdentityToken: workloadToken,
         onAuthUrl: config.onAuthUrl,
