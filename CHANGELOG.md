@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+
+## [0.2.3] - 2026-04-30
+
+### Added
+- feat: support on-behalf-of token exchange and additional parameters (#149) (91d7e0a)
+
+### Fixed
+- fix: return time_of_last_update as Unix timestamp in seconds (#129) (05b59d1)
+- fix: prevent FST_ERR_REP_INVALID_PAYLOAD_TYPE when streaming SSE responses (#66) (#118) (4bb857e)
+- fix: split labeler into separate workflow with pull_request_target for fork PR permissions (#109) (223d85e)
+
+### Other Changes
+- revert: bump version to 0.2.3 (#152) (0af605c)
+- chore: bump version to 0.2.3 (#150) (a28acfa)
+- chore(deps-dev): bump eslint from 9.39.1 to 10.0.3 (#105) (942e7e3)
+- chore(deps-dev): bump the development-dependencies group across 1 directory with 12 updates (#113) (c3a63a0)
+- chore(deps): bump fast-xml-parser, @aws-sdk/xml-builder, @aws-sdk/client-cognito-identity-provider and @aws-sdk/client-bedrock-runtime (#112) (5cf7d5c)
+- ci(deps): bump actions/checkout from 4 to 6 (#99) (06a3207)
+- ci(deps): bump amannn/action-semantic-pull-request from 5 to 6 (#101) (80e315c)
+- ci(deps): bump trufflesecurity/trufflehog from 3.91.1 to 3.93.8 (#100) (08c23c4)
+- ci(deps): bump slackapi/slack-github-action from 2.0.0 to 3.0.1 (#102) (6f7eda8)
+- chore(deps-dev): bump hono from 4.11.5 to 4.12.7 (#93) (f82f168)
+- chore(deps): bump the production-dependencies group with 10 updates (#104) (3e5a9ae)
+- chore(deps-dev): bump jsdom from 28.1.0 to 29.0.0 (#106) (0b15c39)
+- chore(deps-dev): bump @types/supertest from 6.0.3 to 7.2.0 (#107) (6adc508)
+- feat(browser): support multiple BrowserLiveView instances per page (#97) (975cd37)
+- docs(browser): remove multi-instance section from live-view README (#96) (8778c4e)
+- docs(browser): Add live-view README with usage guide (#95) (095d913)
+
 ## [0.2.2] - 2026-03-12
 
 ### Added
