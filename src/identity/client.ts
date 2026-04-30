@@ -37,7 +37,7 @@ export class IdentityClient {
 
   /**
    * Retrieves an OAuth2 access token from AgentCore Identity.
-   * Handles both M2M (immediate) and USER_FEDERATION (polling) flows.
+   * Handles both M2M (immediate), ON_BEHALF_OF_TOKEN_EXCHANGE (immediate) and USER_FEDERATION (polling) flows.
    *
    * @param request - OAuth2 token request parameters
    * @returns OAuth2 access token
@@ -47,6 +47,8 @@ export class IdentityClient {
     const command = new GetResourceOauth2TokenCommand({
       resourceCredentialProviderName: request.providerName,
       scopes: request.scopes,
+      resources: request.resources,
+      audiences: request.audiences,
       oauth2Flow: request.authFlow,
       workloadIdentityToken: request.workloadIdentityToken,
       resourceOauth2ReturnUrl: request.callbackUrl,
@@ -58,7 +60,7 @@ export class IdentityClient {
 
     const response = await this.dataPlaneClient.send(command)
 
-    // M2M flow - token returned immediately
+    // M2M AND ON_BEHALF_OF_TOKEN_EXCHANGE flow - token returned immediately
     if (response.accessToken) {
       return response.accessToken
     }
@@ -93,6 +95,8 @@ export class IdentityClient {
       const command = new GetResourceOauth2TokenCommand({
         resourceCredentialProviderName: request.providerName,
         scopes: request.scopes,
+        resources: request.resources,
+        audiences: request.audiences,
         oauth2Flow: request.authFlow,
         workloadIdentityToken: request.workloadIdentityToken,
         sessionUri: request.sessionUri,

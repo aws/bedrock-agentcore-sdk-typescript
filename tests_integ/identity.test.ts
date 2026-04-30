@@ -226,22 +226,24 @@ describe('Identity Integration Tests', () => {
         const clientsResponse = await cognito.send(
           new ListUserPoolClientsCommand({
             UserPoolId: userPoolId,
-            MaxResults: 10,
+            MaxResults: 60,
           })
         )
-        const existingClient = clientsResponse.UserPoolClients?.[0]
 
-        if (existingClient) {
+        // Find the M2M client by name — grabbing an arbitrary client may pick one without client_credentials flow
+        const m2mClientSummary = clientsResponse.UserPoolClients?.find((c) => c.ClientName === 'M2MTestClient')
+
+        if (m2mClientSummary) {
           const clientDetails = await cognito.send(
             new DescribeUserPoolClientCommand({
               UserPoolId: userPoolId,
-              ClientId: existingClient.ClientId!,
+              ClientId: m2mClientSummary.ClientId!,
             })
           )
-          clientId = existingClient.ClientId!
+          clientId = m2mClientSummary.ClientId!
           clientSecret = clientDetails.UserPoolClient!.ClientSecret!
         } else {
-          // Create new client for existing pool
+          // Create new M2M client for existing pool
           const clientResponse = await cognito.send(
             new CreateUserPoolClientCommand({
               UserPoolId: userPoolId,
@@ -431,19 +433,22 @@ describe('Identity Integration Tests', () => {
         const clientsResponse = await cognito.send(
           new ListUserPoolClientsCommand({
             UserPoolId: userPoolId,
-            MaxResults: 10,
+            MaxResults: 60,
           })
         )
-        const existingClient = clientsResponse.UserPoolClients?.[0]
 
-        if (existingClient) {
+        const m2mClientSummary = clientsResponse.UserPoolClients?.find(
+          (c) => c.ClientName === 'ConcurrentTestClient' || c.ClientName === 'M2MTestClient'
+        )
+
+        if (m2mClientSummary) {
           const clientDetails = await cognito.send(
             new DescribeUserPoolClientCommand({
               UserPoolId: userPoolId,
-              ClientId: existingClient.ClientId!,
+              ClientId: m2mClientSummary.ClientId!,
             })
           )
-          clientId = existingClient.ClientId!
+          clientId = m2mClientSummary.ClientId!
           clientSecret = clientDetails.UserPoolClient!.ClientSecret!
         } else {
           const clientResponse = await cognito.send(

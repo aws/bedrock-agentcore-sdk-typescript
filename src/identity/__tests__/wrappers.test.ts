@@ -31,6 +31,8 @@ describe('withAccessToken', () => {
     expect(mockGetOAuth2Token).toHaveBeenCalledWith({
       providerName: 'github',
       scopes: ['repo'],
+      resources: undefined,
+      audiences: undefined,
       authFlow: 'M2M',
       workloadIdentityToken: 'workload-token',
       onAuthUrl: undefined,
@@ -79,6 +81,8 @@ describe('withAccessToken', () => {
     expect(mockGetOAuth2Token).toHaveBeenCalledWith({
       providerName: 'github',
       scopes: ['repo', 'user'],
+      resources: undefined,
+      audiences: undefined,
       authFlow: 'USER_FEDERATION',
       workloadIdentityToken: 'workload-token',
       onAuthUrl,
@@ -106,6 +110,183 @@ describe('withAccessToken', () => {
     expect(result.num).toBe(42)
     expect(result.str).toBe('hello')
     expect(result.token).toBe('token')
+  })
+})
+
+describe('withAccessToken with ON_BEHALF_OF_TOKEN_EXCHANGE flow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('passes ON_BEHALF_OF_TOKEN_EXCHANGE authFlow to getOAuth2Token', async () => {
+    const mockGetOAuth2Token = vi.fn().mockResolvedValue('obo-exchanged-token')
+    vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockImplementation(mockGetOAuth2Token)
+
+    const wrappedFn = withAccessToken({
+      workloadIdentityToken: 'workload-token',
+      providerName: 'downstream-service',
+      scopes: ['api:read'],
+      resources: undefined,
+      audiences: undefined,
+      authFlow: 'ON_BEHALF_OF_TOKEN_EXCHANGE',
+    })(async (input: string, token: string) => {
+      return { input, token }
+    })
+
+    const result = await wrappedFn('request-data')
+
+    expect(result.token).toBe('obo-exchanged-token')
+    expect(mockGetOAuth2Token).toHaveBeenCalledWith({
+      providerName: 'downstream-service',
+      scopes: ['api:read'],
+      resources: undefined,
+      audiences: undefined,
+      authFlow: 'ON_BEHALF_OF_TOKEN_EXCHANGE',
+      workloadIdentityToken: 'workload-token',
+      onAuthUrl: undefined,
+      forceAuthentication: undefined,
+      callbackUrl: undefined,
+      customState: undefined,
+      customParameters: undefined,
+    })
+  })
+})
+
+describe('withAccessToken with resources and audiences', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('passes resources array to getOAuth2Token', async () => {
+    const mockGetOAuth2Token = vi.fn().mockResolvedValue('token-with-resources')
+    vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockImplementation(mockGetOAuth2Token)
+
+    const wrappedFn = withAccessToken({
+      workloadIdentityToken: 'workload-token',
+      providerName: 'test-provider',
+      scopes: ['read'],
+      resources: ['https://api.example.com', 'https://api2.example.com'],
+      audiences: undefined,
+      authFlow: 'M2M',
+    })(async (input: string, token: string) => {
+      return token
+    })
+
+    await wrappedFn('test')
+
+    expect(mockGetOAuth2Token).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resources: ['https://api.example.com', 'https://api2.example.com'],
+        audiences: undefined,
+      })
+    )
+  })
+
+  it('passes audiences array to getOAuth2Token', async () => {
+    const mockGetOAuth2Token = vi.fn().mockResolvedValue('token-with-audiences')
+    vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockImplementation(mockGetOAuth2Token)
+
+    const wrappedFn = withAccessToken({
+      workloadIdentityToken: 'workload-token',
+      providerName: 'test-provider',
+      scopes: ['read'],
+      resources: undefined,
+      audiences: ['audience-1', 'audience-2'],
+      authFlow: 'M2M',
+    })(async (input: string, token: string) => {
+      return token
+    })
+
+    await wrappedFn('test')
+
+    expect(mockGetOAuth2Token).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resources: undefined,
+        audiences: ['audience-1', 'audience-2'],
+      })
+    )
+  })
+
+  it('passes both resources and audiences to getOAuth2Token', async () => {
+    const mockGetOAuth2Token = vi.fn().mockResolvedValue('token-full')
+    vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockImplementation(mockGetOAuth2Token)
+
+    const wrappedFn = withAccessToken({
+      workloadIdentityToken: 'workload-token',
+      providerName: 'test-provider',
+      scopes: ['read', 'write'],
+      resources: ['https://api.example.com'],
+      audiences: ['audience-1'],
+      authFlow: 'USER_FEDERATION',
+    })(async (input: string, token: string) => {
+      return token
+    })
+
+    await wrappedFn('test')
+
+    expect(mockGetOAuth2Token).toHaveBeenCalledWith({
+      providerName: 'test-provider',
+      scopes: ['read', 'write'],
+      resources: ['https://api.example.com'],
+      audiences: ['audience-1'],
+      authFlow: 'USER_FEDERATION',
+      workloadIdentityToken: 'workload-token',
+      onAuthUrl: undefined,
+      forceAuthentication: undefined,
+      callbackUrl: undefined,
+      customState: undefined,
+      customParameters: undefined,
+    })
+  })
+
+  it('passes undefined for both resources and audiences when not provided', async () => {
+    const mockGetOAuth2Token = vi.fn().mockResolvedValue('token-no-extras')
+    vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockImplementation(mockGetOAuth2Token)
+
+    const wrappedFn = withAccessToken({
+      workloadIdentityToken: 'workload-token',
+      providerName: 'test-provider',
+      scopes: ['read'],
+      resources: undefined,
+      audiences: undefined,
+      authFlow: 'M2M',
+    })(async (input: string, token: string) => {
+      return token
+    })
+
+    await wrappedFn('test')
+
+    expect(mockGetOAuth2Token).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resources: undefined,
+        audiences: undefined,
+      })
+    )
+  })
+
+  it('passes empty arrays for resources and audiences when explicitly empty', async () => {
+    const mockGetOAuth2Token = vi.fn().mockResolvedValue('token-empty')
+    vi.spyOn(IdentityClient.prototype, 'getOAuth2Token').mockImplementation(mockGetOAuth2Token)
+
+    const wrappedFn = withAccessToken({
+      workloadIdentityToken: 'workload-token',
+      providerName: 'test-provider',
+      scopes: ['read'],
+      resources: [],
+      audiences: [],
+      authFlow: 'M2M',
+    })(async (input: string, token: string) => {
+      return token
+    })
+
+    await wrappedFn('test')
+
+    expect(mockGetOAuth2Token).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resources: [],
+        audiences: [],
+      })
+    )
   })
 })
 
@@ -214,6 +395,8 @@ describe('withAccessToken context integration', () => {
     expect(mockGetOAuth2Token).toHaveBeenCalledWith({
       providerName: 'test-provider',
       scopes: ['read'],
+      resources: undefined,
+      audiences: undefined,
       authFlow: 'M2M',
       workloadIdentityToken: 'context-token-value',
       onAuthUrl: undefined,
@@ -254,6 +437,8 @@ describe('withAccessToken context integration', () => {
     expect(mockGetOAuth2Token).toHaveBeenCalledWith({
       providerName: 'test-provider',
       scopes: ['read'],
+      resources: undefined,
+      audiences: undefined,
       authFlow: 'M2M',
       workloadIdentityToken: 'config-token',
       onAuthUrl: undefined,
@@ -314,6 +499,8 @@ describe('withAccessToken context integration', () => {
     expect(mockGetOAuth2Token).toHaveBeenCalledWith({
       providerName: 'test-provider',
       scopes: ['read'],
+      resources: undefined,
+      audiences: undefined,
       authFlow: 'USER_FEDERATION',
       workloadIdentityToken: 'test-token',
       onAuthUrl: undefined,
@@ -353,6 +540,8 @@ describe('withAccessToken context integration', () => {
     expect(mockGetOAuth2Token).toHaveBeenCalledWith({
       providerName: 'test-provider',
       scopes: ['read'],
+      resources: undefined,
+      audiences: undefined,
       authFlow: 'USER_FEDERATION',
       workloadIdentityToken: 'test-token',
       onAuthUrl: undefined,
@@ -385,6 +574,8 @@ describe('withAccessToken context integration', () => {
     expect(mockGetOAuth2Token).toHaveBeenCalledWith({
       providerName: 'test-provider',
       scopes: ['read'],
+      resources: undefined,
+      audiences: undefined,
       authFlow: 'M2M',
       workloadIdentityToken: 'explicit-token',
       onAuthUrl: undefined,

@@ -171,6 +171,201 @@ describe('IdentityClient', () => {
     })
   })
 
+  describe('getOAuth2Token - ON_BEHALF_OF_TOKEN_EXCHANGE flow', () => {
+    it('should return access token immediately for ON_BEHALF_OF_TOKEN_EXCHANGE flow', async () => {
+      const client = new IdentityClient()
+      const mockSend = vi.fn().mockResolvedValue({ accessToken: 'mock-obo-token' })
+      ;(client as any).dataPlaneClient.send = mockSend
+
+      const token = await client.getOAuth2Token({
+        providerName: 'downstream-service',
+        scopes: ['api:read'],
+        resources: undefined,
+        audiences: undefined,
+        authFlow: 'ON_BEHALF_OF_TOKEN_EXCHANGE',
+        workloadIdentityToken: 'user-identity-token',
+      })
+
+      expect(token).toBe('mock-obo-token')
+      // Should be a single call - no polling
+      expect(mockSend).toHaveBeenCalledTimes(1)
+    })
+
+    it('should pass ON_BEHALF_OF_TOKEN_EXCHANGE oauth2Flow to the SDK command', async () => {
+      const client = new IdentityClient()
+      const mockSend = vi.fn().mockResolvedValue({ accessToken: 'mock-obo-token' })
+      ;(client as any).dataPlaneClient.send = mockSend
+
+      await client.getOAuth2Token({
+        providerName: 'downstream-service',
+        scopes: ['api:read'],
+        resources: undefined,
+        audiences: undefined,
+        authFlow: 'ON_BEHALF_OF_TOKEN_EXCHANGE',
+        workloadIdentityToken: 'user-identity-token',
+      })
+
+      const command = mockSend.mock.calls[0][0]
+      expect(command.input).toMatchObject({
+        oauth2Flow: 'ON_BEHALF_OF_TOKEN_EXCHANGE',
+        resourceCredentialProviderName: 'downstream-service',
+        scopes: ['api:read'],
+        workloadIdentityToken: 'user-identity-token',
+      })
+    })
+
+    it('should throw error if ON_BEHALF_OF_TOKEN_EXCHANGE returns no token', async () => {
+      const client = new IdentityClient()
+      const mockSend = vi.fn().mockResolvedValue({})
+      ;(client as any).dataPlaneClient.send = mockSend
+
+      await expect(
+        client.getOAuth2Token({
+          providerName: 'downstream-service',
+          scopes: ['api:read'],
+          resources: undefined,
+          audiences: undefined,
+          authFlow: 'ON_BEHALF_OF_TOKEN_EXCHANGE',
+          workloadIdentityToken: 'user-identity-token',
+        })
+      ).rejects.toThrow('Identity service did not return a token or authorization URL')
+    })
+
+    it('should handle API errors for ON_BEHALF_OF_TOKEN_EXCHANGE flow', async () => {
+      const client = new IdentityClient()
+      const mockSend = vi.fn().mockRejectedValue(new Error('OBO API Error'))
+      ;(client as any).dataPlaneClient.send = mockSend
+
+      await expect(
+        client.getOAuth2Token({
+          providerName: 'downstream-service',
+          scopes: ['api:read'],
+          resources: undefined,
+          audiences: undefined,
+          authFlow: 'ON_BEHALF_OF_TOKEN_EXCHANGE',
+          workloadIdentityToken: 'user-identity-token',
+        })
+      ).rejects.toThrow('OBO API Error')
+    })
+  })
+
+  describe('getOAuth2Token - resources and audiences', () => {
+    it('should pass resources to SDK command when provided', async () => {
+      const client = new IdentityClient()
+      const mockSend = vi.fn().mockResolvedValue({ accessToken: 'mock-token' })
+      ;(client as any).dataPlaneClient.send = mockSend
+
+      await client.getOAuth2Token({
+        providerName: 'test-provider',
+        scopes: ['read'],
+        resources: ['https://api.example.com', 'https://api2.example.com'],
+        audiences: undefined,
+        authFlow: 'M2M',
+        workloadIdentityToken: 'workload-token',
+      })
+
+      const command = mockSend.mock.calls[0][0]
+      expect(command.input.resources).toEqual(['https://api.example.com', 'https://api2.example.com'])
+      expect(command.input.audiences).toBeUndefined()
+    })
+
+    it('should pass audiences to SDK command when provided', async () => {
+      const client = new IdentityClient()
+      const mockSend = vi.fn().mockResolvedValue({ accessToken: 'mock-token' })
+      ;(client as any).dataPlaneClient.send = mockSend
+
+      await client.getOAuth2Token({
+        providerName: 'test-provider',
+        scopes: ['read'],
+        resources: undefined,
+        audiences: ['audience-1', 'audience-2'],
+        authFlow: 'M2M',
+        workloadIdentityToken: 'workload-token',
+      })
+
+      const command = mockSend.mock.calls[0][0]
+      expect(command.input.resources).toBeUndefined()
+      expect(command.input.audiences).toEqual(['audience-1', 'audience-2'])
+    })
+
+    it('should pass both resources and audiences to SDK command', async () => {
+      const client = new IdentityClient()
+      const mockSend = vi.fn().mockResolvedValue({ accessToken: 'mock-token' })
+      ;(client as any).dataPlaneClient.send = mockSend
+
+      await client.getOAuth2Token({
+        providerName: 'test-provider',
+        scopes: ['read'],
+        resources: ['https://api.example.com'],
+        audiences: ['audience-1'],
+        authFlow: 'ON_BEHALF_OF_TOKEN_EXCHANGE',
+        workloadIdentityToken: 'workload-token',
+      })
+
+      const command = mockSend.mock.calls[0][0]
+      expect(command.input).toMatchObject({
+        resources: ['https://api.example.com'],
+        audiences: ['audience-1'],
+        oauth2Flow: 'ON_BEHALF_OF_TOKEN_EXCHANGE',
+      })
+    })
+
+    it('should pass undefined resources/audiences when not provided (existing behavior)', async () => {
+      const client = new IdentityClient()
+      const mockSend = vi.fn().mockResolvedValue({ accessToken: 'mock-token' })
+      ;(client as any).dataPlaneClient.send = mockSend
+
+      await client.getOAuth2Token({
+        providerName: 'test-provider',
+        scopes: ['read'],
+        resources: undefined,
+        audiences: undefined,
+        authFlow: 'M2M',
+        workloadIdentityToken: 'workload-token',
+      })
+
+      const command = mockSend.mock.calls[0][0]
+      expect(command.input.resources).toBeUndefined()
+      expect(command.input.audiences).toBeUndefined()
+    })
+
+    it('should forward resources and audiences during USER_FEDERATION polling', async () => {
+      vi.useFakeTimers()
+      try {
+        const client = new IdentityClient()
+        const mockSend = vi
+          .fn()
+          .mockResolvedValueOnce({ authorizationUrl: 'https://auth.example.com', sessionUri: 'session-123' })
+          .mockResolvedValueOnce({ accessToken: 'polled-token' })
+        ;(client as any).dataPlaneClient.send = mockSend
+
+        const tokenPromise = client.getOAuth2Token({
+          providerName: 'test-provider',
+          scopes: ['read'],
+          resources: ['https://api.example.com'],
+          audiences: ['audience-1'],
+          authFlow: 'USER_FEDERATION',
+          workloadIdentityToken: 'workload-token',
+        })
+
+        await vi.advanceTimersByTimeAsync(5000)
+        await tokenPromise
+
+        // Both calls should have resources/audiences
+        expect(mockSend).toHaveBeenCalledTimes(2)
+        const initialCommand = mockSend.mock.calls[0][0]
+        const pollCommand = mockSend.mock.calls[1][0]
+
+        expect(initialCommand.input.resources).toEqual(['https://api.example.com'])
+        expect(initialCommand.input.audiences).toEqual(['audience-1'])
+        expect(pollCommand.input.resources).toEqual(['https://api.example.com'])
+        expect(pollCommand.input.audiences).toEqual(['audience-1'])
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
+
   describe('getApiKey', () => {
     it('should return API key successfully', async () => {
       const client = new IdentityClient()
