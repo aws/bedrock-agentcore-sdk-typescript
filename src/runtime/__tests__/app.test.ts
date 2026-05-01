@@ -151,6 +151,56 @@ describe('BedrockAgentCoreApp', () => {
     })
   })
 
+  describe('run', () => {
+    it('defaults to port 8080 and host 0.0.0.0', async () => {
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
+      const mockApp = app['_app'] as any
+
+      app.run()
+
+      await vi.waitFor(() => {
+        expect(mockApp.listen).toHaveBeenCalledWith({ port: 8080, host: '0.0.0.0' })
+      })
+    })
+
+    it('accepts port option', async () => {
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
+      const mockApp = app['_app'] as any
+
+      app.run({ port: 9090 })
+
+      await vi.waitFor(() => {
+        expect(mockApp.listen).toHaveBeenCalledWith({ port: 9090, host: '0.0.0.0' })
+      })
+    })
+
+    it('accepts host option', async () => {
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
+      const mockApp = app['_app'] as any
+
+      app.run({ host: '127.0.0.1' })
+
+      await vi.waitFor(() => {
+        expect(mockApp.listen).toHaveBeenCalledWith({ port: 8080, host: '127.0.0.1' })
+      })
+    })
+
+    it('accepts both port and host options', async () => {
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
+      const mockApp = app['_app'] as any
+
+      app.run({ port: 4000, host: '127.0.0.1' })
+
+      await vi.waitFor(() => {
+        expect(mockApp.listen).toHaveBeenCalledWith({ port: 4000, host: '127.0.0.1' })
+      })
+    })
+  })
+
   describe('routes setup', () => {
     it('registers GET /ping route', () => {
       const handler: InvocationHandler = async (_request, _context) => 'test response'
