@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.2.4] - 2026-05-12
+
+### Fixed
+- fix: resolve tsdoc lint error blocking release workflow (#169) (093e76d)
+
+### Other Changes
+- chore(deps): bump fast-uri from 3.1.0 to 3.1.2 (#162) (aae7635)
+- chore(deps): bump fast-xml-builder from 1.1.5 to 1.2.0 (#161) (8092844)
+- chore: replace PAT token with GitHub App token (#166) (1d57d60)
+- fix(runtime): read PORT from environment instead of hardcoding 8080 (#148) (25a5ef7)
+
 ## [0.2.3] - 2026-04-30
 
 ### Added
