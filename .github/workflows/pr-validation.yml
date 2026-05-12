@@ -44,6 +44,18 @@ jobs:
             The subject found in the pull request title didn't match the configured pattern.
             Please ensure that the subject doesn't start with an uppercase character.
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
       - name: Check for merge conflicts
         env:
           BASE_REF: ${{ github.base_ref }}
