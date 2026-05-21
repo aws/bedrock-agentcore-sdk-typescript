@@ -461,7 +461,7 @@ describe('AgentCoreMemory', () => {
       const msg = createMessage('assistant', 'Hello!')
       await agent.fireHooks('MessageAddedEvent', { agent, message: msg })
 
-      expect((plugin as any).buffer).toHaveLength(1)
+      expect((plugin as any).batcher.size).toBe(1)
     })
 
     it('flushes buffer on AfterInvocationEvent', async () => {
@@ -474,7 +474,7 @@ describe('AgentCoreMemory', () => {
       await agent.fireHooks('AfterInvocationEvent', { agent })
 
       expect(mockCreateEvent).toHaveBeenCalledTimes(2)
-      expect((plugin as any).buffer).toHaveLength(0)
+      expect((plugin as any).batcher.size).toBe(0)
     })
 
     it('applies messageFilter before buffering', async () => {
@@ -488,7 +488,7 @@ describe('AgentCoreMemory', () => {
       await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('user', 'Hi') })
       await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('assistant', 'Hello!') })
 
-      expect((plugin as any).buffer).toHaveLength(1)
+      expect((plugin as any).batcher.size).toBe(1)
     })
 
     it('sends correct payload to createEvent', async () => {
@@ -573,7 +573,7 @@ describe('AgentCoreMemory', () => {
       expect(mockCreateEvent).toHaveBeenCalledTimes(2)
     })
 
-    it('reentrant flushBuffer calls are serialized (no double-send of in-flight batch)', async () => {
+    it('concurrent flush() calls are deduplicated (no double-send of in-flight batch)', async () => {
       let resolveFirst!: () => void
       const firstCallPromise = new Promise<void>((resolve) => {
         resolveFirst = resolve
@@ -584,10 +584,11 @@ describe('AgentCoreMemory', () => {
       const plugin = new AgentCoreMemory({ ...BASE_CONFIG, extraction: true })
       const agent = createMockAgent()
       plugin.initAgent(agent as any)
-      ;(plugin as any).buffer = [{ message: createMessage('assistant', 'msg1'), clientToken: 'tok-1' }]
 
-      const flush1 = (plugin as any).flushBuffer()
-      const flush2 = (plugin as any).flushBuffer()
+      await agent.fireHooks('MessageAddedEvent', { agent, message: createMessage('assistant', 'msg1') })
+
+      const flush1 = plugin.flush()
+      const flush2 = plugin.flush()
 
       resolveFirst()
       await flush1
@@ -618,7 +619,7 @@ describe('AgentCoreMemory', () => {
       await after
 
       expect(mockCreateEvent).toHaveBeenCalledTimes(4)
-      expect((plugin as any).buffer).toEqual([])
+      expect((plugin as any).batcher.size).toBe(0)
     })
   })
 
@@ -636,10 +637,10 @@ describe('AgentCoreMemory', () => {
       expect((cloned as any).client).toBe((plugin as any).client)
     })
 
-    it('has independent buffer', () => {
+    it('has independent batcher', () => {
       const plugin = new AgentCoreMemory({ ...BASE_CONFIG, extraction: true })
       const cloned = plugin.withActor('actor-2')
-      expect((cloned as any).buffer).not.toBe((plugin as any).buffer)
+      expect((cloned as any).batcher).not.toBe((plugin as any).batcher)
     })
   })
 
@@ -932,7 +933,7 @@ describe('AgentCoreMemory', () => {
       await agent.fireHooks('AfterInvocationEvent', { agent })
 
       expect(mockCreateEvent).toHaveBeenCalledTimes(1)
-      const sentText = mockCreateEvent.mock.calls[0][0].payload[0].conversational.content.text
+      const sentText = mockCreateEvent.mock.calls[0]![0].payload[0].conversational.content.text
       expect(sentText).toBe('here is my answer')
       expect(sentText).not.toContain('tool_use')
       expect(sentText).not.toContain('chain of thought')
