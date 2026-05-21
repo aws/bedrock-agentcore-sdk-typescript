@@ -17,11 +17,45 @@ export interface DroppedEventInfo {
 }
 
 export interface ExtractionConfig {
+  /**
+   * Number of buffered messages that triggers an automatic flush.
+   *
+   * Note: this controls *when* the buffer drains, not how many messages are
+   * sent per API call. The service's `createEvent` accepts one event at a
+   * time, so each buffered message becomes one `createEvent` call regardless
+   * of `batchSize`. Lower values reduce buffering latency and memory; higher
+   * values reduce flush overhead at the cost of holding messages in memory
+   * longer.
+   *
+   * Default: 10. Must be a positive integer.
+   */
   batchSize?: number
+  /**
+   * Maximum time (in milliseconds) a message can sit in the buffer before
+   * being flushed. Resets each time the buffer drains.
+   *
+   * Default: 5000. Must be non-negative and finite.
+   */
   batchTimeoutMs?: number
   messageFilter?: (message: Message) => boolean
   fireAndForget?: boolean
+  /**
+   * Per-event timeout (in milliseconds) for `createEvent` requests. If the
+   * service doesn't respond within this window, the request is rejected and
+   * the retry uses the same `clientToken` for idempotency.
+   *
+   * Default: 10000. Must be a positive finite number.
+   */
   flushTimeoutMs?: number
+  /**
+   * Upper bound on the number of flush passes performed in a single drain.
+   * Guards against pathological producers that keep adding messages while
+   * the buffer is being drained. Any messages still buffered after the cap
+   * is reached are reported via `onDroppedEvents` with reason
+   * `'max-drain-iterations'`.
+   *
+   * Default: 10. Must be a positive integer.
+   */
   maxDrainIterations?: number
   /**
    * Callback fired whenever extraction drops one or more events. Gives
