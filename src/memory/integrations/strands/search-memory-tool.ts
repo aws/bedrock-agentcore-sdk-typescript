@@ -1,4 +1,5 @@
 import { tool } from '@strands-agents/sdk'
+import type { InvokableTool } from '@strands-agents/sdk'
 import { z } from 'zod'
 import type { MemoryClient } from '../../client.js'
 import type { NamespaceConfig } from './types.js'
@@ -8,22 +9,26 @@ function namespaceLabel(ns: string): string {
   return parts[parts.length - 1] ?? ns
 }
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type, @typescript-eslint/explicit-module-boundary-types
+const searchMemoryInputSchema = z.object({
+  query: z.string().describe('What to search for in memory'),
+  namespace: z
+    .string()
+    .optional()
+    .describe('Specific namespace to search. If omitted, searches all configured namespaces.'),
+})
+
+export type SearchMemoryInput = z.infer<typeof searchMemoryInputSchema>
+export type SearchMemoryTool = InvokableTool<SearchMemoryInput, string>
+
 export function createSearchMemoryTool(
   client: MemoryClient,
   config: { memoryId: string; namespaces: Record<string, NamespaceConfig> }
-) {
+): SearchMemoryTool {
   return tool({
     name: 'search_memory',
     description:
       'Search long-term memory for relevant user context, preferences, or past interactions. Use this when you need to recall information from previous conversations.',
-    inputSchema: z.object({
-      query: z.string().describe('What to search for in memory'),
-      namespace: z
-        .string()
-        .optional()
-        .describe('Specific namespace to search. If omitted, searches all configured namespaces.'),
-    }),
+    inputSchema: searchMemoryInputSchema,
     callback: async ({ query, namespace }) => {
       const namespacesToSearch: string[] = namespace ? [namespace] : Object.keys(config.namespaces)
 

@@ -1,5 +1,6 @@
 export { AgentCoreMemory } from './plugin.js'
 export { createSearchMemoryTool } from './search-memory-tool.js'
+export type { SearchMemoryInput, SearchMemoryTool } from './search-memory-tool.js'
 export type {
   AgentCoreMemoryConfig,
   ExtractionConfig,
