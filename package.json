@@ -46,6 +46,10 @@
       "import": "./dist/src/tools/code-interpreter/integrations/strands/index.js",
       "types": "./dist/src/tools/code-interpreter/integrations/strands/index.d.ts"
     },
+    "./experimental/memory/strands": {
+      "import": "./dist/src/memory/strands/index.js",
+      "types": "./dist/src/memory/strands/index.d.ts"
+    },
     "./runtime": {
       "import": "./dist/src/runtime/index.js",
       "types": "./dist/src/runtime/index.d.ts"
@@ -132,7 +136,7 @@
   "homepage": "https://github.com/aws/bedrock-agentcore-sdk-typescript#readme",
   "dependencies": {
     "@aws-crypto/sha256-js": "^5.2.0",
-    "@aws-sdk/client-bedrock-agentcore": "^3.996.0",
+    "@aws-sdk/client-bedrock-agentcore": "^3.1065.0",
     "@aws-sdk/client-bedrock-agentcore-control": "^3.996.0",
     "@aws-sdk/credential-providers": "^3.996.0",
     "@aws-sdk/protocol-http": "^3.370.0",
