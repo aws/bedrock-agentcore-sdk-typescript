@@ -124,7 +124,7 @@ These are deliberate v1 gaps with clear upgrade paths; neither blocks use.
 2. Change imports in this folder from `./_strands-memory-types.js` to `@strands-agents/sdk`.
 3. In `AgentCoreBatchTrigger`, the injected `messageAddedEvent` becomes the SDK's real
    `MessageAddedEvent`.
-4. If `AddMessagesContext` carries `seqs`, the deterministic-`clientToken` path activates with no code
-   change (the sender already reads `context.seqs`).
+4. `AddMessagesContext.sequenceNumbers` (from strands-agents/harness-sdk#2721) drives the
+   deterministic-`clientToken` path with no code change — the sender already reads it.
 
 The symbol names in the mirror match the merged interface exactly, so the swap is import-only.

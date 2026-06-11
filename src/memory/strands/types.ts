@@ -44,23 +44,45 @@ export interface AgentCoreWriteOptions {
 }
 
 /**
- * Config for a single {@link AgentCoreMemoryStore}.
- *
- * Identity (`memoryId`/`actorId`/`sessionId`) and the namespace binding are fixed for the store's
- * lifetime; the factory constructs one store per `(actorId, sessionId)` invocation.
+ * Reusable connection + write-identity config, shared across the stores of one
+ * `(actorId, sessionId)`. Build it once and spin up one store per namespace (mirrors the shared-config
+ * pattern used by `BedrockKnowledgeBaseStore`). Fixed for the store's lifetime; a multi-actor server
+ * builds a fresh config per `(actorId, sessionId)`.
+ */
+export interface AgentCoreMemoryConfig {
+  /** AgentCore Memory resource id. */
+  readonly memoryId: string
+  /** AgentCore actor id. */
+  readonly actorId: string
+  /** AgentCore session id. */
+  readonly sessionId: string
+
+  /** Optional per-message metadata attached to each `createEvent`. */
+  readonly metadataProvider?: MetadataProvider | undefined
+  /** Resilience knobs for the write path. */
+  readonly writeOptions?: AgentCoreWriteOptions | undefined
+
+  /** Region for the default client. Ignored if `client` is supplied. */
+  readonly region?: string | undefined
+  /** Credentials for the default client. Ignored if `client` is supplied. */
+  readonly credentialsProvider?: AwsCredentialIdentityProvider | undefined
+  /** Pre-constructed AWS client (e.g. shared across a set of stores). */
+  readonly client?: BedrockAgentCoreClient | undefined
+}
+
+/**
+ * Config for a single {@link AgentCoreMemoryStore}: the shared {@link AgentCoreMemoryConfig} plus this
+ * store's per-namespace identity. The factory builds the shared config once and one of these per
+ * namespace.
  */
 export interface AgentCoreMemoryStoreConfig {
+  /** Shared connection + write identity, reused across the stores of one `(actorId, sessionId)`. */
+  readonly config: AgentCoreMemoryConfig
+
   /** Unique store name (used by MemoryManager to label results and target stores). */
   readonly name: string
   readonly description?: string | undefined
   readonly maxSearchResults?: number | undefined
-
-  /** AgentCore Memory resource id. */
-  readonly memoryId: string
-  /** AgentCore actor id. Fixed for this store's lifetime. */
-  readonly actorId: string
-  /** AgentCore session id. Fixed for this store's lifetime. */
-  readonly sessionId: string
 
   /**
    * The namespace template this store reads from (e.g. `/strategy/{id}/actor/{actorId}/preferences`).
@@ -78,19 +100,6 @@ export interface AgentCoreMemoryStoreConfig {
 
   /** Present only on the writable store; carries the cadence trigger (no extractor). */
   readonly extraction?: ExtractionConfig | undefined
-
-  /** Optional per-message metadata attached to each `createEvent`. */
-  readonly metadataProvider?: MetadataProvider | undefined
-
-  /** Resilience knobs for the write path. */
-  readonly writeOptions?: AgentCoreWriteOptions | undefined
-
-  /** Region for the default client. Ignored if `client` is supplied. */
-  readonly region?: string | undefined
-  /** Credentials for the default client. Ignored if `client` is supplied. */
-  readonly credentialsProvider?: AwsCredentialIdentityProvider | undefined
-  /** Pre-constructed AWS client (e.g. shared across a factory's stores). */
-  readonly client?: BedrockAgentCoreClient | undefined
 }
 
 /**

@@ -6,6 +6,7 @@ export { mapRole, extractText, isUserOrAssistantWithText } from './format.js'
 export { resolveNamespace } from './types.js'
 
 export type {
+  AgentCoreMemoryConfig,
   AgentCoreMemoryStoreConfig,
   ReadMode,
   MetadataProvider,

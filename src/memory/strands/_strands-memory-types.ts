@@ -78,14 +78,18 @@ export interface SearchOptions {
   maxSearchResults?: number
 }
 
-/** Extension point the manager passes to `addMessages`. Empty today; may carry per-message `seqs`. */
+/** Context the manager passes to `addMessages`, carrying per-message sequence numbers. */
 export interface AddMessagesContext {
   /**
-   * NOT YET IN THE MERGED INTERFACE. Requested addition (see `strands-seq-ask.md`): per-message
-   * stable sequence numbers, aligned 1:1 with the `messages` arg, enabling an exactly-once
-   * `clientToken`. Optional so the mirror matches today's empty interface; the sender reads it when present.
+   * Per-message sequence numbers, index-aligned with the (filtered) `messages` arg. A re-fired batch
+   * reuses the same numbers, so a backend can derive an idempotency token that survives the
+   * coordinator's rollback-and-re-fire. Numbers are stable only within one agent run and reset to 0
+   * across runs, so a durable token must combine one with a run-unique id (we use `sessionId`).
+   *
+   * Mirrors `AddMessagesContext.sequenceNumbers` from the upstream Strands interface
+   * (strands-agents/harness-sdk#2721). Optional because it is populated only on the no-extractor path.
    */
-  seqs?: number[]
+  sequenceNumbers?: readonly number[]
 }
 
 export interface MemoryStoreConfig {

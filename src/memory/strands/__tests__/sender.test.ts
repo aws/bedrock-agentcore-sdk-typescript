@@ -79,19 +79,19 @@ describe('AgentCoreEventSender.sendBatch', () => {
     expect(sent[0]!.input.clientToken).toBeUndefined()
   })
 
-  it('derives a deterministic clientToken from seq when provided, identical across calls', async () => {
+  it('derives a deterministic clientToken from sequenceNumbers, identical across calls', async () => {
     const sender = makeSender(send)
     await sender.sendBatch([userMsg('x'), asstMsg('y')], [7, 8])
     const firstTokens = sent.map((c) => c.input.clientToken)
     expect(firstTokens).toEqual(['mem-1-actor-1-sess-1-7', 'mem-1-actor-1-sess-1-8'])
 
-    // Re-fire the same messages/seqs -> identical tokens (re-fire dedups server-side).
+    // Re-fire the same messages/sequence numbers -> identical tokens (re-fire dedups server-side).
     sent = []
     await sender.sendBatch([userMsg('x'), asstMsg('y')], [7, 8])
     expect(sent.map((c) => c.input.clientToken)).toEqual(firstTokens)
   })
 
-  it('gives distinct seqs distinct tokens (no false collapse of identical text)', async () => {
+  it('gives distinct sequence numbers distinct tokens (no false collapse of identical text)', async () => {
     const sender = makeSender(send)
     await sender.sendBatch([userMsg('ok'), userMsg('ok')], [1, 2])
     expect(sent[0]!.input.clientToken).not.toBe(sent[1]!.input.clientToken)

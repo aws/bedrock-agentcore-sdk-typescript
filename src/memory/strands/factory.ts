@@ -2,7 +2,13 @@ import { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
 import type { ExtractionConfig, ExtractionTrigger } from './_strands-memory-types.js'
 import { AgentCoreMemoryStore } from './store.js'
-import { type AgentCoreWriteOptions, DEFAULT_REGION, type MetadataProvider, type ReadMode } from './types.js'
+import {
+  type AgentCoreMemoryConfig,
+  type AgentCoreWriteOptions,
+  DEFAULT_REGION,
+  type MetadataProvider,
+  type ReadMode,
+} from './types.js'
 
 /** Per-namespace read configuration. */
 export interface AgentCoreNamespaceConfig {
@@ -106,7 +112,8 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
       ...(input.credentialsProvider && { credentials: input.credentialsProvider }),
     })
 
-  const common = {
+  // Shared connection + write identity, built once and reused across every store in this set.
+  const config: AgentCoreMemoryConfig = {
     memoryId: input.memoryId,
     actorId: input.actorId,
     sessionId: input.sessionId,
@@ -124,7 +131,7 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
       )
     }
     const store = new AgentCoreMemoryStore({
-      ...common,
+      config,
       name: input.namespaces[0]!.name ?? slugifyNamespace(parent),
       description: input.namespaces[0]!.description,
       maxSearchResults: input.namespaces[0]!.maxSearchResults,
@@ -145,7 +152,7 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
     const isWriter = !writableAssigned && ns.namespace === writeNamespace
     if (isWriter) writableAssigned = true
     return new AgentCoreMemoryStore({
-      ...common,
+      config,
       name: ns.name ?? slugifyNamespace(ns.namespace),
       description: ns.description,
       maxSearchResults: ns.maxSearchResults,

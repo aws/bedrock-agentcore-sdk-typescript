@@ -21,14 +21,16 @@ function record(id: string, text: string, score?: number, namespaces: string[] =
 }
 
 const baseConfig = (send: SendFn, overrides: Partial<AgentCoreMemoryStoreConfig> = {}): AgentCoreMemoryStoreConfig => ({
+  config: {
+    memoryId: 'mem-1',
+    actorId: 'actor-1',
+    sessionId: 'sess-1',
+    client: fakeClient(send),
+  },
   name: 'prefs',
-  memoryId: 'mem-1',
-  actorId: 'actor-1',
-  sessionId: 'sess-1',
   namespace: '/strategy/s/actor/{actorId}/preferences',
   readMode: 'per-namespace',
   writable: false,
-  client: fakeClient(send),
   ...overrides,
 })
 
@@ -151,14 +153,14 @@ describe('AgentCoreMemoryStore.addMessages', () => {
     })
   })
 
-  it('forwards context.seqs to the sender (deterministic token path)', async () => {
+  it('forwards context.sequenceNumbers to the sender (deterministic token path)', async () => {
     const sent: CapturedCommand[] = []
     const send = vi.fn(async (command: CapturedCommand) => {
       sent.push(command)
       return {}
     })
     const store = new AgentCoreMemoryStore(baseConfig(send, { writable: true }))
-    await store.addMessages([userMsg('x')], { seqs: [42] })
+    await store.addMessages([userMsg('x')], { sequenceNumbers: [42] })
     expect(sent[0]!.input.clientToken).toBe('mem-1-actor-1-sess-1-42')
   })
 

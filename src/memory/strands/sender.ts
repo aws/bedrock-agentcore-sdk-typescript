@@ -14,7 +14,7 @@ export interface AgentCoreEventSenderConfig {
   writeOptions?: AgentCoreWriteOptions | undefined
 }
 
-/** A message paired with the seq the coordinator assigned it (when available). */
+/** A message paired with the sequence number the coordinator assigned it (when available). */
 interface SeqMessage {
   message: MessageData
   seq: number | undefined
@@ -28,11 +28,13 @@ interface SeqMessage {
  * sends get exactly one retry; an event still failing after that is dropped (reported, never thrown,
  * so a write failure can't break the agent loop).
  *
- * Idempotency: v1 sends no `clientToken`, so a coordinator rollback-and-re-fire may create duplicate
- * events — which AgentCore's server-side consolidation collapses at the record level. When the
- * framework exposes a stable per-message `seq` (see `AddMessagesContext.seqs`), {@link sendBatch}
- * derives a deterministic `clientToken` so re-fires dedup exactly; distinct messages keep distinct
- * tokens, so genuinely-identical turns are never collapsed.
+ * Idempotency: without sequence numbers the sender sends no `clientToken`, so a coordinator
+ * rollback-and-re-fire may create duplicate events — which AgentCore's server-side consolidation
+ * collapses at the record level. When the framework provides per-message sequence numbers (via
+ * `AddMessagesContext.sequenceNumbers`), {@link sendBatch} derives a deterministic `clientToken` so
+ * re-fires dedup exactly; distinct messages keep distinct tokens, so genuinely-identical turns are
+ * never collapsed. Sequence numbers reset to 0 across agent runs, so the token combines the number
+ * with `sessionId` (the run-unique id) to stay durable.
  */
 export class AgentCoreEventSender {
   private readonly client: BedrockAgentCoreClient
@@ -54,12 +56,12 @@ export class AgentCoreEventSender {
   }
 
   /**
-   * Send a batch. `seqs` (when the framework provides them) align 1:1 with `messages` and key a
-   * deterministic, re-fire-stable `clientToken`.
+   * Send a batch. `sequenceNumbers` (when the framework provides them) are index-aligned with
+   * `messages` and key a deterministic, re-fire-stable `clientToken`.
    */
-  async sendBatch(messages: MessageData[], seqs?: number[]): Promise<void> {
+  async sendBatch(messages: MessageData[], sequenceNumbers?: readonly number[]): Promise<void> {
     const sendable: SeqMessage[] = messages
-      .map((message, i) => ({ message, seq: seqs?.[i] }))
+      .map((message, i) => ({ message, seq: sequenceNumbers?.[i] }))
       .filter((m) => isUserOrAssistantWithText(m.message))
 
     const results = await Promise.allSettled(sendable.map((m) => this.sendOne(m)))

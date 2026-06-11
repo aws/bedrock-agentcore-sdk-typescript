@@ -59,18 +59,19 @@ export class AgentCoreMemoryStore implements MemoryStore {
   private readonly minScore?: number
   private readonly sender?: AgentCoreEventSender
 
-  constructor(config: AgentCoreMemoryStoreConfig) {
-    this.name = config.name
-    if (config.description !== undefined) this.description = config.description
-    if (config.maxSearchResults !== undefined) this.maxSearchResults = config.maxSearchResults
-    this.writable = config.writable
-    if (config.writable && config.extraction !== undefined) this.extraction = config.extraction
+  constructor(storeConfig: AgentCoreMemoryStoreConfig) {
+    const { config } = storeConfig
+    this.name = storeConfig.name
+    if (storeConfig.description !== undefined) this.description = storeConfig.description
+    if (storeConfig.maxSearchResults !== undefined) this.maxSearchResults = storeConfig.maxSearchResults
+    this.writable = storeConfig.writable
+    if (storeConfig.writable && storeConfig.extraction !== undefined) this.extraction = storeConfig.extraction
     this.memoryId = config.memoryId
     this.actorId = config.actorId
     this.sessionId = config.sessionId
-    this.resolvedNamespace = resolveNamespace(config.namespace, config.actorId, config.sessionId)
-    this.readMode = config.readMode
-    if (config.minScore !== undefined) this.minScore = config.minScore
+    this.resolvedNamespace = resolveNamespace(storeConfig.namespace, config.actorId, config.sessionId)
+    this.readMode = storeConfig.readMode
+    if (storeConfig.minScore !== undefined) this.minScore = storeConfig.minScore
 
     this.client =
       config.client ??
@@ -79,7 +80,7 @@ export class AgentCoreMemoryStore implements MemoryStore {
         ...(config.credentialsProvider && { credentials: config.credentialsProvider }),
       })
 
-    if (config.writable) {
+    if (storeConfig.writable) {
       this.sender = new AgentCoreEventSender({
         client: this.client,
         memoryId: config.memoryId,
@@ -138,7 +139,7 @@ export class AgentCoreMemoryStore implements MemoryStore {
       // Not writable: the manager should never call this, but guard so a misconfiguration is loud.
       throw new Error(`AgentCoreMemoryStore "${this.name}" is not writable; addMessages is unavailable`)
     }
-    await this.sender.sendBatch(messages, context?.seqs)
+    await this.sender.sendBatch(messages, context?.sequenceNumbers)
   }
 
   // `add` is intentionally not implemented (see class doc). `add_memory` stays off at the manager.
