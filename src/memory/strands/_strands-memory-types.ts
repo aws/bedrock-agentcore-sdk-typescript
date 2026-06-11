@@ -89,7 +89,7 @@ export interface AddMessagesContext {
    * Mirrors `AddMessagesContext.sequenceNumbers` from the upstream Strands interface
    * (strands-agents/harness-sdk#2721). Optional because it is populated only on the no-extractor path.
    */
-  sequenceNumbers?: readonly number[]
+  readonly sequenceNumbers?: readonly number[]
 }
 
 export interface MemoryStoreConfig {
@@ -97,7 +97,12 @@ export interface MemoryStoreConfig {
   readonly description?: string
   readonly maxSearchResults?: number
   readonly writable?: boolean
-  readonly extraction?: ExtractionConfig
+  /**
+   * `boolean | ExtractionConfig` shorthand (strands-agents/harness-sdk#2719): `true` enables
+   * extraction with defaults (a store implementing `addMessages` defaults to the no-extractor
+   * server-side passthrough); an object configures it explicitly. We always pass a config object.
+   */
+  readonly extraction?: boolean | ExtractionConfig
 }
 
 export interface MemoryStore extends MemoryStoreConfig {
