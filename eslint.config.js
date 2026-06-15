@@ -23,6 +23,9 @@ export default [
         process: 'readonly',
         URL: 'readonly',
         URLSearchParams: 'readonly',
+        AbortSignal: 'readonly',
+        TextEncoder: 'readonly',
+        TextDecoder: 'readonly',
       },
     },
     plugins: {
@@ -53,6 +56,8 @@ export default [
         setTimeout: 'readonly',
         Buffer: 'readonly',
         URL: 'readonly',
+        TextEncoder: 'readonly',
+        TextDecoder: 'readonly',
       },
     },
     plugins: {
