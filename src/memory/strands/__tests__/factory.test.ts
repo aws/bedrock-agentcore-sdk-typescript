@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
-import { createAgentCoreMemoryStores } from '../factory.js'
+import { createAgentCoreMemoryStores, createAgentCoreMemoryStore } from '../factory.js'
 import type { CreateAgentCoreMemoryStoresInput } from '../factory.js'
 import type { ExtractionTrigger, ExtractionTriggerContext } from '../_strands-memory-types.js'
 
@@ -19,7 +19,7 @@ const baseInput = (overrides: Partial<CreateAgentCoreMemoryStoresInput> = {}): C
     { namespace: '/strategy/s/actor/{actorId}/facts' },
     { namespace: '/strategy/s/actor/{actorId}/preferences' },
   ],
-  trigger: new FakeTrigger(),
+  extraction: { cadence: new FakeTrigger() },
   client: fakeClient,
   ...overrides,
 })
@@ -43,13 +43,43 @@ describe('createAgentCoreMemoryStores - per-namespace (default)', () => {
     expect(stores.find((s) => !s.writable)!.extraction).toBeUndefined()
   })
 
-  it('honors an explicit writeNamespace', () => {
-    const stores = createAgentCoreMemoryStores(baseInput({ writeNamespace: '/strategy/s/actor/{actorId}/preferences' }))
+  it('honors an explicit extraction.namespace', () => {
+    const stores = createAgentCoreMemoryStores(
+      baseInput({ extraction: { cadence: new FakeTrigger(), namespace: '/strategy/s/actor/{actorId}/preferences' } })
+    )
     expect(stores.find((s) => s.writable)!.name).toBe('strategy-s-actor-preferences')
   })
 
-  it('throws if writeNamespace matches nothing', () => {
-    expect(() => createAgentCoreMemoryStores(baseInput({ writeNamespace: '/nope' }))).toThrow(/did not match/)
+  it('throws if extraction.namespace matches nothing', () => {
+    expect(() =>
+      createAgentCoreMemoryStores(baseInput({ extraction: { cadence: new FakeTrigger(), namespace: '/nope' } }))
+    ).toThrow(/did not match/)
+  })
+
+  it('recall-only: no store is writable when extraction is omitted', () => {
+    const { extraction: _omit, ...recallOnly } = baseInput()
+    const stores = createAgentCoreMemoryStores(recallOnly)
+    expect(stores).toHaveLength(2)
+    expect(stores.every((s) => !s.writable)).toBe(true)
+    expect(stores.every((s) => s.extraction === undefined)).toBe(true)
+  })
+
+  it('recall-only: extraction: false is also recall-only', () => {
+    const stores = createAgentCoreMemoryStores(baseInput({ extraction: false }))
+    expect(stores.every((s) => !s.writable)).toBe(true)
+  })
+
+  it('extraction: true builds a default trigger (given messageAddedEvent)', () => {
+    const stores = createAgentCoreMemoryStores(
+      baseInput({ extraction: true, messageAddedEvent: { name: 'MessageAddedEvent' } })
+    )
+    const writable = stores.filter((s) => s.writable)
+    expect(writable).toHaveLength(1)
+    expect(writable[0]!.extraction).toBeDefined()
+  })
+
+  it('extraction: true without messageAddedEvent throws (cannot build default trigger)', () => {
+    expect(() => createAgentCoreMemoryStores(baseInput({ extraction: true }))).toThrow(/messageAddedEvent/)
   })
 
   it('derives unique names and respects explicit names', () => {
@@ -107,6 +137,46 @@ describe('createAgentCoreMemoryStores - subtree', () => {
         })
       )
     ).toThrow(/common parent/)
+  })
+})
+
+describe('createAgentCoreMemoryStore (singular)', () => {
+  it('returns a single store for one namespace', () => {
+    const store = createAgentCoreMemoryStore({
+      memoryId: 'mem-1',
+      actorId: 'actor-1',
+      sessionId: 'sess-1',
+      namespace: '/users/{actorId}/facts',
+      extraction: { cadence: new FakeTrigger() },
+      client: fakeClient,
+    })
+    expect(store.name).toBe('users-facts')
+    expect(store.writable).toBe(true)
+    expect(store.extraction).toBeDefined()
+  })
+
+  it('is recall-only when extraction is omitted', () => {
+    const store = createAgentCoreMemoryStore({
+      memoryId: 'mem-1',
+      actorId: 'actor-1',
+      sessionId: 'sess-1',
+      namespace: '/users/{actorId}/facts',
+      client: fakeClient,
+    })
+    expect(store.writable).toBe(false)
+    expect(store.extraction).toBeUndefined()
+  })
+
+  it('honors an explicit name', () => {
+    const store = createAgentCoreMemoryStore({
+      memoryId: 'mem-1',
+      actorId: 'actor-1',
+      sessionId: 'sess-1',
+      namespace: '/users/{actorId}/facts',
+      name: 'facts',
+      client: fakeClient,
+    })
+    expect(store.name).toBe('facts')
   })
 })
 

@@ -125,14 +125,12 @@ describe('AgentCoreMemoryStore.search', () => {
     expect(await store.search('q')).toEqual([])
   })
 
-  it('fails open: returns [] when retrieve rejects (never throws into the loop)', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  it('propagates retrieve errors (MemoryManager isolates them via allSettled)', async () => {
     send = vi.fn(async () => {
       throw new Error('throttled')
     })
     const store = new AgentCoreMemoryStore(baseConfig(send))
-    await expect(store.search('q')).resolves.toEqual([])
-    warn.mockRestore()
+    await expect(store.search('q')).rejects.toThrow('throttled')
   })
 })
 

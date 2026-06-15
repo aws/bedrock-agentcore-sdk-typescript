@@ -1,6 +1,7 @@
 import { type BedrockAgentCoreClient, CreateEventCommand } from '@aws-sdk/client-bedrock-agentcore'
 import type { MessageData } from './_strands-memory-types.js'
 import { extractText, isUserOrAssistantWithText, mapRole } from './format.js'
+import { logger } from './logger.js'
 import type { AgentCoreWriteOptions, DropReason, MetadataProvider } from './types.js'
 
 const DEFAULT_SEND_TIMEOUT_MS = 10000
@@ -130,7 +131,7 @@ export class AgentCoreEventSender {
       this.onDropped?.({ reason, text: extractText(message), ...(cause !== undefined && { cause }) })
     } catch (err) {
       // Never let a customer callback break the write path.
-      console.warn('[agentcore-memory] onDropped callback threw:', err)
+      logger.warn('[agentcore-memory] onDropped callback threw:', err)
     }
   }
 }

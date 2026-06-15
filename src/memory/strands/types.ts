@@ -1,6 +1,6 @@
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
 import type { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
-import type { ExtractionConfig, MessageData } from './_strands-memory-types.js'
+import type { ExtractionConfig, MemoryStoreConfig, MessageData } from './_strands-memory-types.js'
 
 /** Default region used when none is supplied and `AWS_REGION` is unset. */
 export const DEFAULT_REGION = 'us-west-2'
@@ -71,18 +71,16 @@ export interface AgentCoreMemoryConfig {
 }
 
 /**
- * Config for a single {@link AgentCoreMemoryStore}: the shared {@link AgentCoreMemoryConfig} plus this
- * store's per-namespace identity. The factory builds the shared config once and one of these per
- * namespace.
+ * Config for a single {@link AgentCoreMemoryStore}.
+ *
+ * Extends the framework's {@link MemoryStoreConfig} (contributing `name` / `description` /
+ * `maxSearchResults` / `writable` / `extraction`) with the shared {@link AgentCoreMemoryConfig} and
+ * this store's per-namespace identity. The factory builds the shared `config` once and one of these
+ * per namespace.
  */
-export interface AgentCoreMemoryStoreConfig {
+export interface AgentCoreMemoryStoreConfig extends MemoryStoreConfig {
   /** Shared connection + write identity, reused across the stores of one `(actorId, sessionId)`. */
   readonly config: AgentCoreMemoryConfig
-
-  /** Unique store name (used by MemoryManager to label results and target stores). */
-  readonly name: string
-  readonly description?: string | undefined
-  readonly maxSearchResults?: number | undefined
 
   /**
    * The namespace template this store reads from (e.g. `/strategy/{id}/actor/{actorId}/preferences`).
@@ -93,13 +91,13 @@ export interface AgentCoreMemoryStoreConfig {
   readonly readMode: ReadMode
 
   /** Optional client-side relevance floor; records scoring below it are dropped from results. */
-  readonly minScore?: number | undefined
+  readonly minScore?: number
 
-  /** Whether this store hosts the single write stream. Exactly one store in a factory set is writable. */
+  /** Required here (the base leaves it optional): exactly one store in a factory set is writable. */
   readonly writable: boolean
 
-  /** Present only on the writable store; carries the cadence trigger (no extractor). */
-  readonly extraction?: ExtractionConfig | undefined
+  /** Present only on the writable store; AgentCore uses server-side extraction, so no client extractor. */
+  readonly extraction?: ExtractionConfig
 }
 
 /**

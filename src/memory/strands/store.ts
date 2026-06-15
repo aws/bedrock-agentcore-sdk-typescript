@@ -108,17 +108,11 @@ export class AgentCoreMemoryStore implements MemoryStore {
         : { namespace: this.resolvedNamespace }),
     })
 
-    let summaries: MemoryRecordSummary[]
-    try {
-      const out = await this.client.send(command)
-      summaries = out.memoryRecordSummaries ?? []
-    } catch (err) {
-      // Fail-open: a failed recall must never break the agent loop. Return nothing for this store.
-      console.warn(`[agentcore-memory] search failed for store "${this.name}":`, err)
-      return []
-    }
-
-    return summaries
+    // Errors propagate: MemoryManager.search wraps each store's search() in Promise.allSettled, so a
+    // throw is isolated to this store and surfaced through the manager's partial-failure handling
+    // rather than swallowed here.
+    const out = await this.client.send(command)
+    return (out.memoryRecordSummaries ?? [])
       .filter((r) => this.minScore == null || (r.score ?? 0) >= this.minScore)
       .slice(0, want)
       .map((r) => this.toEntry(r))

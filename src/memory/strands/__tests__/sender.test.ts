@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
 import { AgentCoreEventSender } from '../sender.js'
+import { logger } from '../logger.js'
 import type { MessageData } from '../_strands-memory-types.js'
 import type { DroppedEventInfo } from '../types.js'
 
@@ -148,7 +149,7 @@ describe('AgentCoreEventSender.sendBatch', () => {
   })
 
   it('never lets a throwing onDropped callback break the write path', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     const alwaysFail = vi.fn(async () => {
       throw new Error('boom')
     })

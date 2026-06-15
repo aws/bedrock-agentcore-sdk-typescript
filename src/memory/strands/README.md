@@ -27,7 +27,7 @@ server-side extraction into long-term records.
 import { Agent, MemoryManager, MessageAddedEvent } from '@strands-agents/sdk'
 import { createAgentCoreMemoryStores, AgentCoreBatchTrigger } from 'bedrock-agentcore/memory/strands'
 
-// One call per (actorId, sessionId). `per-namespace` (default) -> one store per namespace.
+// One call per (actorId, sessionId). `per-namespace` (default) gives one store per namespace.
 const stores = createAgentCoreMemoryStores({
   memoryId: 'mem-abc',
   actorId: 'user-123',
@@ -36,8 +36,11 @@ const stores = createAgentCoreMemoryStores({
     { namespace: '/strategy/{id}/actor/{actorId}/facts' },
     { namespace: '/strategy/{id}/actor/{actorId}/preferences', minScore: 0.5 },
   ],
-  // Custom write cadence: flush after 10 messages or 5s, whichever first.
-  trigger: new AgentCoreBatchTrigger({ messageCount: 10, maxDelayMs: 5000, messageAddedEvent: MessageAddedEvent }),
+  // `extraction` is the single write switch. Object form: custom cadence (and optionally which
+  // namespace writes). Omit it entirely for recall-only; use `true` for the default cadence.
+  extraction: {
+    cadence: new AgentCoreBatchTrigger({ messageCount: 10, maxDelayMs: 5000, messageAddedEvent: MessageAddedEvent }),
+  },
 })
 
 const agent = new Agent({
@@ -45,6 +48,8 @@ const agent = new Agent({
   memoryManager: new MemoryManager({ stores }), // search_memory on; add_memory left off
 })
 ```
+
+For a single namespace, `createAgentCoreMemoryStore` (singular) returns one store directly.
 
 ### Subtree reads
 
@@ -60,15 +65,16 @@ const stores = createAgentCoreMemoryStores({
     { namespace: '/strategy/{id}/actor/{actorId}/preferences' },
   ],
   readMode: 'subtree', // 1 store, reads the common parent via namespacePath
-  trigger: new AgentCoreBatchTrigger({ messageAddedEvent: MessageAddedEvent }),
+  extraction: { cadence: new AgentCoreBatchTrigger({ messageAddedEvent: MessageAddedEvent }) },
 })
 ```
 
 ## Design notes
 
 - **One writable store per `(actorId, sessionId)`.** `createEvent` is namespace-free, so writes
-  collapse to a single stream regardless of `readMode`. In `per-namespace` mode exactly one store
-  (the `writeNamespace`, else the first) is writable; the rest are search-only.
+  collapse to a single stream regardless of `readMode`. When `extraction` is enabled, exactly one store
+  in `per-namespace` mode is writable (the `extraction.namespace`, else the first); the rest are
+  search-only. Omit `extraction` for a fully recall-only topology.
 - **No `add()`.** AgentCore's conversation path is role-aware; a flat string would discard role, so we
   implement only `addMessages`. The `add_memory` tool is therefore off (the manager handles this when
   no store implements `add`).
@@ -81,7 +87,9 @@ const stores = createAgentCoreMemoryStores({
 - **Eventual consistency.** Writes and extraction are async; a fact written this turn may not be
   retrievable next turn. `MemoryManager.flush()` drains in-flight `createEvent` calls (not server-side
   extraction).
-- **Reads fail open.** A failed `search()` returns `[]` and logs; it never throws into the agent loop.
+- **Read errors propagate to the manager.** `search()` lets retrieval errors throw; `MemoryManager`
+  wraps each store's `search()` in `Promise.allSettled`, so a failure is isolated to this store and
+  surfaced through the manager's partial-failure handling rather than breaking the agent loop.
 
 ## Out of scope: memory-resource setup
 
@@ -101,17 +109,16 @@ CDK). None of these reach the runtime read/write surface (`createEvent` / `retri
 
 These are deliberate v1 gaps with clear upgrade paths; neither blocks use.
 
-1. **Metadata-filtered recall (indexed keys) is not exposed through the agent.** AgentCore supports
-   `metadataFilters` on `retrieveMemoryRecords` (gated on indexed keys declared at resource creation),
-   but the generic Strands `MemoryStore.search(query, { maxSearchResults })` interface has no slot to
-   carry a filter — so the `search_memory` tool cannot express one. Reachable only by calling a store's
-   `search` directly with extended options. Closing this needs a metadata-filter field on the upstream
-   `SearchOptions` (requested; see `strands-searchoptions-ask.md`). Until then, indexed-key filtering is
-   a resource/CLI feature, not an agent-recall feature.
+1. **Metadata-filtered recall (indexed keys) is app-scoped, not model-chosen.** AgentCore supports
+   `metadataFilters` on `retrieveMemoryRecords` (gated on indexed keys declared at resource creation).
+   The supported path is **per-instance store defaults** — bake the filter into the store's config so
+   it applies on every `retrieveMemoryRecords` call (like `minScore`). The model-facing `search_memory`
+   tool intentionally does not let the agent choose filter values; a per-turn, model-chosen filter would
+   need a custom search tool.
 2. **Write idempotency tolerates error-path duplicates.** See "Idempotency (v1)" above. Exactly-once
-   writes are an additive upgrade gated on a per-message `seq` from `AddMessagesContext` (requested;
-   see `strands-seq-ask.md`). AgentCore consolidation collapses duplicates at the record level in the
-   meantime, so this is a cost/cleanliness gap, not a correctness one.
+   writes use the per-message `sequenceNumbers` on `AddMessagesContext` (merged upstream,
+   strands-agents/harness-sdk#2721). AgentCore consolidation collapses duplicates at the record level in
+   the meantime, so this is a cost/cleanliness gap, not a correctness one.
 
 ## Requirements
 

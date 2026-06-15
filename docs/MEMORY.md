@@ -50,18 +50,34 @@ const stores = createAgentCoreMemoryStores({
   memoryId: process.env.MEMORY_MYMEMORY_ID!, // injected by the deploy (see below)
   actorId, // see "Who is the actor?"
   sessionId, // from the runtime request context
-  namespaces: [
-    { namespace: '/users/{actorId}/facts' },
-    { namespace: '/users/{actorId}/preferences' },
-  ],
-  trigger: new AgentCoreBatchTrigger({ messageCount: 4, maxDelayMs: 3000, messageAddedEvent: MessageAddedEvent }),
+  namespaces: [{ namespace: '/users/{actorId}/facts' }, { namespace: '/users/{actorId}/preferences' }],
+  // `extraction` is the single write switch: omit for recall-only; `true` for default cadence;
+  // or an object for a custom cadence / which namespace writes.
+  extraction: {
+    cadence: new AgentCoreBatchTrigger({ messageCount: 4, maxDelayMs: 3000, messageAddedEvent: MessageAddedEvent }),
+  },
 })
 
 const agent = new Agent({ model, memoryManager: new MemoryManager({ stores }) })
 ```
 
+For a single namespace, use the singular convenience:
+
+```typescript
+import { createAgentCoreMemoryStore } from 'bedrock-agentcore/experimental/memory/strands'
+
+const store = createAgentCoreMemoryStore({
+  memoryId: process.env.MEMORY_MYMEMORY_ID!,
+  actorId,
+  sessionId,
+  namespace: '/users/{actorId}/facts',
+  extraction: { cadence: new AgentCoreBatchTrigger({ messageAddedEvent: MessageAddedEvent }) },
+})
+const agent = new Agent({ model, memoryManager: new MemoryManager({ stores: [store] }) })
+```
+
 See [`src/memory/strands/README.md`](../src/memory/strands/index.ts) for `readMode` (`per-namespace`
-vs `subtree`), `minScore`, `writeOptions`, and the full factory surface.
+vs `subtree`), `minScore`, `writeOptions`, recall-only setup, and the full factory surface.
 
 ## Deploying with the AgentCore CLI / CDK
 
@@ -117,22 +133,25 @@ IDs accordingly (a UUID-based value is comfortably long enough).
 - **No `add()` / no `add_memory` tool.** The conversation path is role-aware (`addMessages` →
   role-tagged `createEvent`); a flat-string `add()` would discard role, so it is intentionally not
   implemented, and the `add_memory` tool is off.
-- **Reads fail open.** A failed `search()` returns `[]` and logs; memory never throws into the agent
-  loop.
+- **Read errors propagate.** `search()` lets retrieval errors throw; `MemoryManager` isolates them
+  per-store via `Promise.allSettled`, so a failure never breaks the agent loop while still being
+  surfaced (rather than silently swallowed).
 - **Resource setup is out of scope.** Strategies, indexed keys, record streaming, expiry, and
   encryption are control-plane concerns configured at `CreateMemory` (via the CLI/CDK), not through
   this store.
 
 ## Known limitations
 
-1. **Metadata-filtered recall (indexed keys) is not exposed to the agent.** AgentCore supports
-   `metadataFilters` on retrieval (gated on indexed keys declared at resource creation), but the
-   generic `MemoryStore.search(query, { maxSearchResults })` interface has no slot to carry a filter,
-   so the `search_memory` tool can't express one. Pending an upstream `SearchOptions` addition.
+1. **Metadata-filtered recall (indexed keys) is app-scoped, not model-chosen.** AgentCore supports
+   `metadataFilters` on retrieval (gated on indexed keys declared at resource creation). The supported
+   path is **per-instance store defaults**: bake the filter into the store's config so it applies to
+   every `retrieveMemoryRecords` call (the same way `minScore` does). The model-facing `search_memory`
+   tool intentionally does **not** let the agent choose filter values. A use case needing
+   per-turn, model-chosen filters would register its own custom search tool.
 2. **Write idempotency tolerates error-path duplicates.** On a write-failure re-fire, duplicate events
    can be written; AgentCore consolidation collapses them at the record level (a cost/cleanliness gap,
-   not a correctness one). An exactly-once upgrade is pending a per-message `seq` from the upstream
-   `AddMessagesContext`.
+   not a correctness one). An exactly-once upgrade uses the per-message `sequenceNumbers` on
+   `AddMessagesContext` (merged upstream in strands-agents/harness-sdk#2721).
 
 ## Release status
 
