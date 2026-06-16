@@ -23,6 +23,8 @@ export default [
         process: 'readonly',
         URL: 'readonly',
         URLSearchParams: 'readonly',
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
       },
     },
     plugins: {

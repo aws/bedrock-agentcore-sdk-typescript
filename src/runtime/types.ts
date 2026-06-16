@@ -493,3 +493,109 @@ export interface WebSocketConnection {
    */
   headers: Record<string, string>
 }
+
+// =============================================================================
+// Shell (InvokeAgentRuntimeCommandShell) Types
+// =============================================================================
+
+// ── Layer 1 — Auth helpers ────────────────────────────────────────────────────
+
+/** Result of connectShellSigV4 — URL and SigV4-signed headers. */
+export interface ShellConnectionSigV4 {
+  url: string
+  headers: Record<string, string>
+}
+
+/** Result of connectShellPresigned — auth embedded in query string. */
+export interface ShellConnectionPresigned {
+  url: string
+}
+
+/** Result of connectShellOAuth — URL and Sec-WebSocket-Protocol subprotocols. */
+export interface ShellConnectionOAuth {
+  url: string
+  subprotocols: string[]
+}
+
+/** Parameters for connectShellSigV4. shellId and sessionId are required — caller owns ID management. */
+export interface ConnectShellSigV4Params {
+  runtimeArn: string
+  shellId: string
+  sessionId: string
+  endpointName?: string | undefined
+}
+
+/** Parameters for connectShellPresigned. */
+export interface ConnectShellPresignedParams {
+  runtimeArn: string
+  shellId: string
+  sessionId: string
+  endpointName?: string | undefined
+  /** Seconds until URL expires. Max 300. Default 300. */
+  expires?: number | undefined
+}
+
+/** Parameters for connectShellOAuth. */
+export interface ConnectShellOAuthParams {
+  runtimeArn: string
+  shellId: string
+  sessionId: string
+  endpointName?: string | undefined
+  bearerToken: string
+}
+
+// ── Layer 2 — Managed session ─────────────────────────────────────────────────
+
+/** Authentication mode for openShell. */
+export type ShellAuthMode = 'sigv4' | { type: 'presigned'; expires?: number } | { type: 'oauth'; bearerToken: string }
+
+/** Parameters for openShell. */
+export interface OpenShellParams {
+  /** Full agent runtime ARN. */
+  runtimeArn: string
+
+  /**
+   * Runtime session ID — routes to an existing VM.
+   * Auto-generated UUID if omitted, stable across reconnects.
+   */
+  sessionId?: string
+
+  /**
+   * Client-chosen shell name (1–128 chars, alphanumeric, _ or - allowed, must start with alphanumeric).
+   * Auto-generated UUID if omitted. Pass the same ID to reconnect to an existing PTY.
+   */
+  shellId?: string
+
+  /** Endpoint qualifier (default: DEFAULT). */
+  endpointName?: string
+
+  /**
+   * Authentication mode.
+   * - `'sigv4'` (default) — SigV4-signed headers. Correct for server-side use.
+   * - `{ type: 'presigned', expires }` — Auth in URL query string.
+   * - `{ type: 'oauth', bearerToken }` — Bearer token in Sec-WebSocket-Protocol header.
+   */
+  auth?: ShellAuthMode
+
+  /** Auto-reconnect configuration. When omitted, disconnects are not retried. */
+  reconnectConfig?: import('./shell/config.js').ReconnectConfig
+
+  /**
+   * Interval in milliseconds between RFC 6455 Ping frames sent to keep the connection
+   * alive through the KARP proxy (~60s idle timeout). Defaults to 30000ms.
+   * Set to 0 to disable (e.g. when managing keepalive externally).
+   */
+  keepaliveIntervalMs?: number
+
+  /**
+   * Optional logger for diagnostic output from `ShellSession`.
+   * When omitted, all logging is silent.
+   * Pass `console` to enable, or any object implementing `{ debug, info, warn }`.
+   *
+   * @example
+   * ```typescript
+   * const shell = await client.openShell({ runtimeArn, logger: console })
+   * ```
+   */
+  logger?: import('./shell/config.js').Logger
+}
