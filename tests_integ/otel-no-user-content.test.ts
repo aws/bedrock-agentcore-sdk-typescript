@@ -169,10 +169,9 @@ describe('OTEL spans must not contain user content', () => {
       const port = fastify.server.address().port
 
       await new Promise<void>((resolve, reject) => {
-        const ws = new WebSocket(
-          `ws://127.0.0.1:${port}/ws`,
-          { headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session' } },
-        )
+        const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+          headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'test-session' },
+        })
 
         ws.on('open', () => {
           ws.send(JSON.stringify({ prompt: SENTINEL_PROMPT }))
