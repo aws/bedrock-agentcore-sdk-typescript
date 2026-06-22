@@ -18,6 +18,9 @@ function fakeClient(send: SendFn): BedrockAgentCoreClient {
 const userMsg = (text: string): MessageData => ({ role: 'user', content: [{ text }] })
 const asstMsg = (text: string): MessageData => ({ role: 'assistant', content: [{ text }] })
 
+// A minimal valid tool-only message (used to assert it is skipped).
+const toolOnlyMsg: MessageData = { role: 'user', content: [{ toolUse: { toolUseId: 't1', name: 'noop', input: {} } }] }
+
 function makeSender(
   send: SendFn,
   overrides: Partial<ConstructorParameters<typeof AgentCoreEventSender>[0]> = {}
@@ -62,11 +65,7 @@ describe('AgentCoreEventSender.sendBatch', () => {
 
   it('skips messages with no extractable text (tool-only / empty)', async () => {
     const sender = makeSender(send)
-    await sender.sendBatch([
-      { role: 'user', content: [{ toolUse: {} }] },
-      userMsg('real'),
-      { role: 'assistant', content: [{ text: '  ' }] },
-    ])
+    await sender.sendBatch([toolOnlyMsg, userMsg('real'), { role: 'assistant', content: [{ text: '  ' }] }])
     expect(send).toHaveBeenCalledTimes(1)
     expect(sent[0]!.input).toMatchObject({
       payload: [{ conversational: { role: 'USER', content: { text: 'real' } } }],
@@ -165,7 +164,7 @@ describe('AgentCoreEventSender.sendBatch', () => {
 
   it('resolves without sending anything when no message has extractable text', async () => {
     const sender = makeSender(send)
-    await expect(sender.sendBatch([{ role: 'user', content: [{ toolUse: {} }] }])).resolves.toBeUndefined()
+    await expect(sender.sendBatch([toolOnlyMsg])).resolves.toBeUndefined()
     expect(send).not.toHaveBeenCalled()
   })
 })

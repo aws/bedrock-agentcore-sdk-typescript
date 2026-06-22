@@ -162,3 +162,16 @@ upstream, so the integration should not yet be relied on for GA workloads.
 
 - `@aws-sdk/client-bedrock-agentcore` >= 3.1020 (for the typed `namespacePath` field used by `subtree` reads).
 - `@strands-agents/sdk` >= 1.5.0 (memory / extraction module).
+
+## Testing
+
+- **Unit tests** (`src/memory/strands/__tests__/`, run with `npm test`) mock the AWS clients and cover
+  the factory topology, store search/write mapping, sender idempotency, the batch trigger, and the
+  message formatter.
+- **Integration + E2E tests** (`tests_integ/memory.test.ts`, run with `npm run test:integ`) exercise the
+  store against the live AgentCore data plane. They create a throwaway memory resource (with a semantic
+  strategy) in `beforeAll`, drive the store and a real `MemoryManager` + `Agent` through a
+  write → server-side extraction → recall round trip, and delete the resource in `afterAll`. Because
+  extraction is asynchronous, recall is verified by polling with a generous timeout, so a full run takes
+  several minutes. Requires AWS credentials with `bedrock-agentcore-control:{Create,Get,Delete}Memory`,
+  `bedrock-agentcore:{CreateEvent,RetrieveMemoryRecords}`, and (for the E2E case) `bedrock:InvokeModel*`.

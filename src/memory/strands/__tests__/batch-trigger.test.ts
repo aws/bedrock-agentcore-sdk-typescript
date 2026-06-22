@@ -36,7 +36,10 @@ function makeAgentContext(): {
 }
 
 const msg = (text = 'hi'): MessageData => ({ role: 'user', content: [{ text }] })
-const toolMsg = (): MessageData => ({ role: 'user', content: [{ toolUse: { name: 'x', input: {} } }] })
+const toolMsg = (): MessageData => ({
+  role: 'user',
+  content: [{ toolUse: { toolUseId: 't1', name: 'x', input: {} } }],
+})
 
 describe('AgentCoreBatchTrigger validation', () => {
   it('rejects non-positive messageCount', () => {

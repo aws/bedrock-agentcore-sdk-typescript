@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
 import { createAgentCoreMemoryStores, createAgentCoreMemoryStore } from '../factory.js'
 import type { CreateAgentCoreMemoryStoresInput } from '../factory.js'
-import { ExtractionTrigger, type ExtractionTriggerContext } from '@strands-agents/sdk'
+import { ExtractionTrigger, type ExtractionTriggerContext, type MemoryContentBlockType } from '@strands-agents/sdk'
 
 const fakeClient = { send: vi.fn(async () => ({})) } as unknown as BedrockAgentCoreClient
 
@@ -51,7 +51,7 @@ describe('createAgentCoreMemoryStores - per-namespace (default)', () => {
   })
 
   it('threads the extraction filter through to the writable store', () => {
-    const filter = { exclude: ['toolUse', 'toolResult', 'image'] as const }
+    const filter = { exclude: ['toolUse', 'toolResult', 'image'] satisfies MemoryContentBlockType[] }
     const stores = createAgentCoreMemoryStores(baseInput({ extraction: { cadence: new FakeTrigger(), filter } }))
     const writable = stores.find((s) => s.writable)!
     expect(writable.extraction).toMatchObject({ filter })
