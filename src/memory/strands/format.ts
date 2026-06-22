@@ -1,4 +1,4 @@
-import type { MessageData, Role, TextBlockData } from './_strands-memory-types.js'
+import type { MessageData, Role, TextBlockData } from '@strands-agents/sdk'
 
 /** AgentCore conversational role. Mirrors the SDK `Role` enum values we emit. */
 export type AgentCoreRole = 'USER' | 'ASSISTANT'

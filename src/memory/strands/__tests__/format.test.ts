@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { extractText, isUserOrAssistantWithText, mapRole } from '../format.js'
-import type { MessageData } from '../_strands-memory-types.js'
+import type { MessageData } from '@strands-agents/sdk'
 
 const msg = (role: MessageData['role'], content: MessageData['content']): MessageData => ({ role, content })
 
