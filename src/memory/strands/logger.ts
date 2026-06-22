@@ -4,8 +4,8 @@
  *
  * Strands exports `configureLogging` and the `Logger` type but not its global `logger` instance, so an
  * external package cannot import that instance. We therefore own a console-backed default here that
- * matches the SDK's shape. At the release flip this can delegate to the SDK logger if desired; the
- * call sites (`logger.warn(...)`) stay unchanged.
+ * matches the SDK's shape; if Strands later exposes its instance, this can delegate to it without
+ * touching the call sites (`logger.warn(...)`).
  */
 
 export interface Logger {

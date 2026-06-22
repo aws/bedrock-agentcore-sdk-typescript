@@ -7,15 +7,7 @@ export { resolveNamespace } from './types.js'
 export { configureMemoryLogging } from './logger.js'
 export type { Logger } from './logger.js'
 
-export type {
-  AgentCoreMemoryConfig,
-  AgentCoreMemoryStoreConfig,
-  ReadMode,
-  MetadataProvider,
-  AgentCoreWriteOptions,
-  DroppedEventInfo,
-  DropReason,
-} from './types.js'
+export type { AgentCoreMemoryConfig, AgentCoreMemoryStoreConfig, ReadMode, MetadataProvider } from './types.js'
 export type {
   CreateAgentCoreMemoryStoresInput,
   AgentCoreNamespaceConfig,

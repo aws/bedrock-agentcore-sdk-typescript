@@ -1,10 +1,7 @@
 import { type BedrockAgentCoreClient, CreateEventCommand } from '@aws-sdk/client-bedrock-agentcore'
-import type { MessageData } from './_strands-memory-types.js'
+import type { MessageData } from '@strands-agents/sdk'
 import { extractText, isUserOrAssistantWithText, mapRole } from './format.js'
-import { logger } from './logger.js'
-import type { AgentCoreWriteOptions, DropReason, MetadataProvider } from './types.js'
-
-const DEFAULT_SEND_TIMEOUT_MS = 10000
+import type { MetadataProvider } from './types.js'
 
 export interface AgentCoreEventSenderConfig {
   client: BedrockAgentCoreClient
@@ -12,7 +9,12 @@ export interface AgentCoreEventSenderConfig {
   actorId: string
   sessionId: string
   metadataProvider?: MetadataProvider | undefined
-  writeOptions?: AgentCoreWriteOptions | undefined
+  /**
+   * Run-unique id anchoring the idempotency `clientToken`. Defaults to a fresh UUID per sender. A new
+   * sender is built per `(actorId, sessionId)` per process, so this distinguishes runs even when the
+   * framework's per-message sequence numbers reset to 0 (e.g. on session restore).
+   */
+  runId?: string
 }
 
 /** A message paired with the sequence number the coordinator assigned it (when available). */
@@ -24,18 +26,20 @@ interface SeqMessage {
 /**
  * Turns a batch of role-tagged messages into one `createEvent` per message.
  *
- * Resilience core (carried over in behavior from the shipped plugin's AsyncBatcher, without the
- * buffer — the extraction coordinator owns batching now): each send races a per-send timeout; failed
- * sends get exactly one retry; an event still failing after that is dropped (reported, never thrown,
- * so a write failure can't break the agent loop).
+ * Error handling is delegated to the Strands `ExtractionCoordinator`: a failed `createEvent` throws
+ * out of {@link sendBatch}, which makes the coordinator roll back its high-water mark and re-fire the
+ * batch on the next trigger (with its own backoff and repeated-failure logging). The sender therefore
+ * keeps no retry/timeout/drop machinery of its own — that would duplicate or fight the coordinator. A
+ * caller that wants a per-request timeout configures it on the `client` it passes in (which also bounds
+ * the read path).
  *
- * Idempotency: without sequence numbers the sender sends no `clientToken`, so a coordinator
- * rollback-and-re-fire may create duplicate events — which AgentCore's server-side consolidation
- * collapses at the record level. When the framework provides per-message sequence numbers (via
- * `AddMessagesContext.sequenceNumbers`), {@link sendBatch} derives a deterministic `clientToken` so
- * re-fires dedup exactly; distinct messages keep distinct tokens, so genuinely-identical turns are
- * never collapsed. Sequence numbers reset to 0 across agent runs, so the token combines the number
- * with `sessionId` (the run-unique id) to stay durable.
+ * Idempotency: when the framework provides per-message sequence numbers (via
+ * `AddMessagesContext.sequenceNumbers`), {@link sendBatch} derives a deterministic `clientToken` so a
+ * coordinator re-fire dedups exactly — distinct messages keep distinct tokens, so genuinely-identical
+ * turns are never collapsed. Because sequence numbers reset to 0 across runs, the token combines the
+ * number with a run-unique id (see {@link AgentCoreEventSenderConfig.runId}). Without sequence numbers
+ * the sender sends no token; a re-fire may then create duplicate events, which AgentCore's server-side
+ * consolidation collapses at the record level (wasteful but not incorrect).
  */
 export class AgentCoreEventSender {
   private readonly client: BedrockAgentCoreClient
@@ -43,8 +47,7 @@ export class AgentCoreEventSender {
   private readonly actorId: string
   private readonly sessionId: string
   private readonly metadataProvider: MetadataProvider | undefined
-  private readonly sendTimeoutMs: number
-  private readonly onDropped: AgentCoreWriteOptions['onDropped'] | undefined
+  private readonly runId: string
 
   constructor(config: AgentCoreEventSenderConfig) {
     this.client = config.client
@@ -52,30 +55,28 @@ export class AgentCoreEventSender {
     this.actorId = config.actorId
     this.sessionId = config.sessionId
     this.metadataProvider = config.metadataProvider
-    this.sendTimeoutMs = config.writeOptions?.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS
-    this.onDropped = config.writeOptions?.onDropped
+    this.runId = config.runId ?? globalThis.crypto.randomUUID()
   }
 
   /**
    * Send a batch. `sequenceNumbers` (when the framework provides them) are index-aligned with
-   * `messages` and key a deterministic, re-fire-stable `clientToken`.
+   * `messages` and key a deterministic, re-fire-stable `clientToken`. Throws if any `createEvent`
+   * fails, so the coordinator retries the batch.
    */
   async sendBatch(messages: MessageData[], sequenceNumbers?: readonly number[]): Promise<void> {
     const sendable: SeqMessage[] = messages
       .map((message, i) => ({ message, seq: sequenceNumbers?.[i] }))
       .filter((m) => isUserOrAssistantWithText(m.message))
 
+    // Surface the first failure (others are reported by AggregateError) so the coordinator re-fires.
     const results = await Promise.allSettled(sendable.map((m) => this.sendOne(m)))
-
-    const failed = sendable.filter((_, i) => results[i]!.status === 'rejected')
-    if (failed.length === 0) return
-
-    const retried = await Promise.allSettled(failed.map((m) => this.sendOne(m)))
-    retried.forEach((r, i) => {
-      if (r.status === 'rejected') {
-        this.reportDropped(failed[i]!.message, 'retry-failed', (r as PromiseRejectedResult).reason)
-      }
-    })
+    const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures.map((f) => f.reason),
+        `AgentCore createEvent failed for ${failures.length} of ${sendable.length} message(s)`
+      )
+    }
   }
 
   private async sendOne(item: SeqMessage): Promise<void> {
@@ -91,47 +92,28 @@ export class AgentCoreEventSender {
       eventTimestamp: new Date(),
       payload: [{ conversational: { role: mapRole(message), content: { text } } }],
       ...(clientToken !== undefined && { clientToken }),
-      ...(metadata && { metadata }),
+      ...(metadata && { metadata: toAgentCoreMetadata(metadata) }),
     })
 
-    await this.withTimeout(
-      // Promise.resolve().then(...) so a synchronous throw becomes a rejection (preserves allSettled isolation).
-      Promise.resolve().then(() => this.client.send(command)),
-      message
-    )
+    await this.client.send(command)
   }
 
   /**
    * Deterministic when a stable `seq` is present (re-fire-safe idempotency); otherwise undefined
-   * (v1: tolerate error-path duplicates, consolidation is the backstop). Never time/random-based,
-   * which would defeat dedup across a re-fire.
+   * (tolerate error-path duplicates, consolidation is the backstop). Never time/random-based per call,
+   * which would defeat dedup across a re-fire; the run-unique part is fixed for the sender's lifetime.
    */
   private clientTokenFor(item: SeqMessage): string | undefined {
     if (item.seq === undefined) return undefined
-    return `${this.memoryId}-${this.actorId}-${this.sessionId}-${item.seq}`
+    return `${this.memoryId}-${this.actorId}-${this.runId}-${item.seq}`
   }
+}
 
-  private async withTimeout(send: Promise<unknown>, message: MessageData): Promise<void> {
-    let timer: ReturnType<typeof globalThis.setTimeout> | undefined
-    const timeout = new Promise<never>((_, reject) => {
-      timer = globalThis.setTimeout(() => {
-        this.reportDropped(message, 'timeout')
-        reject(new Error(`createEvent timed out after ${this.sendTimeoutMs}ms`))
-      }, this.sendTimeoutMs)
-    })
-    try {
-      await Promise.race([send, timeout])
-    } finally {
-      if (timer) globalThis.clearTimeout(timer)
-    }
+/** Map a lenient metadata bag to AgentCore's `{ stringValue }` event-metadata shape. */
+function toAgentCoreMetadata(metadata: Record<string, unknown>): Record<string, { stringValue: string }> {
+  const out: Record<string, { stringValue: string }> = {}
+  for (const [key, value] of Object.entries(metadata)) {
+    out[key] = { stringValue: typeof value === 'string' ? value : JSON.stringify(value) }
   }
-
-  private reportDropped(message: MessageData, reason: DropReason, cause?: unknown): void {
-    try {
-      this.onDropped?.({ reason, text: extractText(message), ...(cause !== undefined && { cause }) })
-    } catch (err) {
-      // Never let a customer callback break the write path.
-      logger.warn('[agentcore-memory] onDropped callback threw:', err)
-    }
-  }
+  return out
 }

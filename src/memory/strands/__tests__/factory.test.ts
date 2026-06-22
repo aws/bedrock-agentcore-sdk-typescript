@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import type { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
 import { createAgentCoreMemoryStores, createAgentCoreMemoryStore } from '../factory.js'
 import type { CreateAgentCoreMemoryStoresInput } from '../factory.js'
-import type { ExtractionTrigger, ExtractionTriggerContext } from '../_strands-memory-types.js'
+import { ExtractionTrigger, type ExtractionTriggerContext } from '@strands-agents/sdk'
 
 const fakeClient = { send: vi.fn(async () => ({})) } as unknown as BedrockAgentCoreClient
 
-class FakeTrigger implements ExtractionTrigger {
+class FakeTrigger extends ExtractionTrigger {
   readonly name = 'fake'
   attach(_context: ExtractionTriggerContext): void {}
 }
@@ -43,6 +43,20 @@ describe('createAgentCoreMemoryStores - per-namespace (default)', () => {
     expect(stores.find((s) => !s.writable)!.extraction).toBeUndefined()
   })
 
+  it('a custom cadence becomes an ExtractionConfig with that trigger', () => {
+    const trigger = new FakeTrigger()
+    const stores = createAgentCoreMemoryStores(baseInput({ extraction: { cadence: trigger } }))
+    const writable = stores.find((s) => s.writable)!
+    expect(writable.extraction).toEqual({ trigger })
+  })
+
+  it('threads the extraction filter through to the writable store', () => {
+    const filter = { exclude: ['toolUse', 'toolResult', 'image'] as const }
+    const stores = createAgentCoreMemoryStores(baseInput({ extraction: { cadence: new FakeTrigger(), filter } }))
+    const writable = stores.find((s) => s.writable)!
+    expect(writable.extraction).toMatchObject({ filter })
+  })
+
   it('honors an explicit extraction.namespace', () => {
     const stores = createAgentCoreMemoryStores(
       baseInput({ extraction: { cadence: new FakeTrigger(), namespace: '/strategy/s/actor/{actorId}/preferences' } })
@@ -69,17 +83,13 @@ describe('createAgentCoreMemoryStores - per-namespace (default)', () => {
     expect(stores.every((s) => !s.writable)).toBe(true)
   })
 
-  it('extraction: true builds a default trigger (given messageAddedEvent)', () => {
-    const stores = createAgentCoreMemoryStores(
-      baseInput({ extraction: true, messageAddedEvent: { name: 'MessageAddedEvent' } })
-    )
+  it('extraction: true passes the boolean through (MemoryManager applies its default cadence)', () => {
+    const stores = createAgentCoreMemoryStores(baseInput({ extraction: true }))
     const writable = stores.filter((s) => s.writable)
     expect(writable).toHaveLength(1)
-    expect(writable[0]!.extraction).toBeDefined()
-  })
-
-  it('extraction: true without messageAddedEvent throws (cannot build default trigger)', () => {
-    expect(() => createAgentCoreMemoryStores(baseInput({ extraction: true }))).toThrow(/messageAddedEvent/)
+    // Passed straight through as `true`, not eagerly wrapped in an AgentCoreBatchTrigger — the MM
+    // resolves the default trigger itself.
+    expect(writable[0]!.extraction).toBe(true)
   })
 
   it('derives unique names and respects explicit names', () => {
@@ -99,18 +109,8 @@ describe('createAgentCoreMemoryStores - per-namespace (default)', () => {
     expect(stores[0]!.name).toBe('agentcore-memory')
   })
 
-  it('throws on duplicate explicit names', () => {
-    expect(() =>
-      createAgentCoreMemoryStores(
-        baseInput({
-          namespaces: [
-            { namespace: '/a/{actorId}', name: 'dup' },
-            { namespace: '/b/{actorId}', name: 'dup' },
-          ],
-        })
-      )
-    ).toThrow(/duplicate store name/)
-  })
+  // Store-name uniqueness is enforced by the MemoryManager constructor, not the factory, so the
+  // factory no longer throws on duplicates (deferred per review).
 })
 
 describe('createAgentCoreMemoryStores - subtree', () => {

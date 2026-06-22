@@ -1,40 +1,16 @@
-import { ExtractionTrigger, type ExtractionTriggerContext, type MessageData } from './_strands-memory-types.js'
-import { extractText } from './format.js'
+import { ExtractionTrigger, type ExtractionTriggerContext, MessageAddedEvent } from '@strands-agents/sdk'
+import { extractText, isUserOrAssistantWithText } from './format.js'
 
 const DEFAULT_MESSAGE_COUNT = 10
 const DEFAULT_MAX_DELAY_MS = 5000
 
-/**
- * Constructor injected so the trigger can subscribe to message-added events without importing the
- * SDK's concrete `MessageAddedEvent` (which is not in a published `@strands-agents/sdk` yet). At the
- * release flip this defaults to the real `MessageAddedEvent`.
- */
 export interface AgentCoreBatchTriggerOptions {
   /** Fire after this many messages accumulate since the last fire. Default 10. */
   messageCount?: number
-  /** Fire once accumulated message text reaches this many characters. Default: unset (off). */
+  /** Fire once accumulated message text reaches this many bytes (UTF-8). Default: unset (off). */
   maxBytes?: number
   /** Fire at most this long after the first un-fired message, in ms. Default 5000. `0` disables the timer. */
   maxDelayMs?: number
-  /**
-   * The hook-event constructor to subscribe to (the SDK's `MessageAddedEvent`). Injected so this
-   * file does not depend on the unpublished SDK memory/hook surface; the factory supplies it.
-   */
-  messageAddedEvent: unknown
-}
-
-/** Shape of the message-added hook event we read (structural; matches the SDK's `MessageAddedEvent`). */
-interface MessageAddedLike {
-  message: MessageData
-}
-
-function hasMessage(event: unknown): event is MessageAddedLike {
-  return (
-    typeof event === 'object' &&
-    event !== null &&
-    'message' in event &&
-    typeof (event as { message?: unknown }).message === 'object'
-  )
 }
 
 /**
@@ -52,9 +28,8 @@ export class AgentCoreBatchTrigger extends ExtractionTrigger {
   private readonly messageCount: number
   private readonly maxBytes: number | undefined
   private readonly maxDelayMs: number
-  private readonly messageAddedEvent: unknown
 
-  constructor(options: AgentCoreBatchTriggerOptions) {
+  constructor(options: AgentCoreBatchTriggerOptions = {}) {
     super()
     const messageCount = options.messageCount ?? DEFAULT_MESSAGE_COUNT
     if (!Number.isInteger(messageCount) || messageCount < 1) {
@@ -70,7 +45,6 @@ export class AgentCoreBatchTrigger extends ExtractionTrigger {
     this.messageCount = messageCount
     this.maxBytes = options.maxBytes
     this.maxDelayMs = maxDelayMs
-    this.messageAddedEvent = options.messageAddedEvent
   }
 
   attach(context: ExtractionTriggerContext): void {
@@ -95,10 +69,19 @@ export class AgentCoreBatchTrigger extends ExtractionTrigger {
       context.fire() // fire-and-forget; coordinator only processes messages past the high-water mark
     }
 
-    context.agent.addHook(this.messageAddedEvent, (event: unknown) => {
+    context.agent.addHook(MessageAddedEvent, (event) => {
+      // Count only user/assistant turns carrying text — the messages that become AgentCore events.
+      // This matches the coordinator's per-turn write accounting (it filters with the same predicate)
+      // and ignores tool-only / empty turns, which the sender skips anyway.
+      // `event.message` is a `Message` class; toJSON() gives the plain `MessageData` the formatters want.
+      const message = event.message.toJSON()
+      if (!isUserOrAssistantWithText(message)) {
+        return
+      }
       n++
-      if (maxBytes !== undefined && hasMessage(event)) {
-        bytes += extractText(event.message).length
+      if (maxBytes !== undefined) {
+        // UTF-8 byte length (not .length) so the cap matches the bytes AgentCore actually receives.
+        bytes += globalThis.Buffer.byteLength(extractText(message), 'utf8')
       }
       if (!timer && maxDelayMs > 0) {
         timer = globalThis.setTimeout(fire, maxDelayMs)

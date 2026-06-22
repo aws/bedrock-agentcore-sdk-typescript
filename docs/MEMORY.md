@@ -5,11 +5,9 @@ Memory](https://docs.aws.amazon.com/bedrock-agentcore/). This is the conceptual 
 the per-call API reference lives alongside the code in
 [`src/memory/strands/README.md`](../src/memory/strands/index.ts).
 
-> **Status: experimental / pre-release.** This integration implements the Strands `MemoryManager` /
-> `MemoryStore` interface from the upstream extraction work (`strands-agents/harness-sdk` #2671). That
-> interface is merged upstream but not yet in a published `@strands-agents/sdk`, so the module is
-> currently built against a local mirror of the interface and is **not yet GA**. See
-> [Release status](#release-status).
+> **Status: experimental.** This integration implements the Strands `MemoryManager` / `MemoryStore`
+> extraction interface, consumed directly from `@strands-agents/sdk` (>= 1.5.0). The upstream surface
+> is still evolving, so the module is **experimental**, not yet GA. See [Release status](#release-status).
 
 ## What you get
 
@@ -43,7 +41,7 @@ Two consequences the integration leans on:
 ## Quick start
 
 ```typescript
-import { Agent, MemoryManager, MessageAddedEvent } from '@strands-agents/sdk'
+import { Agent, MemoryManager } from '@strands-agents/sdk'
 import { createAgentCoreMemoryStores, AgentCoreBatchTrigger } from 'bedrock-agentcore/experimental/memory/strands'
 
 const stores = createAgentCoreMemoryStores({
@@ -54,7 +52,7 @@ const stores = createAgentCoreMemoryStores({
   // `extraction` is the single write switch: omit for recall-only; `true` for default cadence;
   // or an object for a custom cadence / which namespace writes.
   extraction: {
-    cadence: new AgentCoreBatchTrigger({ messageCount: 4, maxDelayMs: 3000, messageAddedEvent: MessageAddedEvent }),
+    cadence: new AgentCoreBatchTrigger({ messageCount: 4, maxDelayMs: 3000 }),
   },
 })
 
@@ -71,13 +69,13 @@ const store = createAgentCoreMemoryStore({
   actorId,
   sessionId,
   namespace: '/users/{actorId}/facts',
-  extraction: { cadence: new AgentCoreBatchTrigger({ messageAddedEvent: MessageAddedEvent }) },
+  extraction: { cadence: new AgentCoreBatchTrigger() },
 })
 const agent = new Agent({ model, memoryManager: new MemoryManager({ stores: [store] }) })
 ```
 
 See [`src/memory/strands/README.md`](../src/memory/strands/index.ts) for `readMode` (`per-namespace`
-vs `subtree`), `minScore`, `writeOptions`, recall-only setup, and the full factory surface.
+vs `subtree`), `minScore`, the `extraction` switch, recall-only setup, and the full factory surface.
 
 ## Deploying with the AgentCore CLI / CDK
 
@@ -133,6 +131,12 @@ IDs accordingly (a UUID-based value is comfortably long enough).
 - **No `add()` / no `add_memory` tool.** The conversation path is role-aware (`addMessages` →
   role-tagged `createEvent`); a flat-string `add()` would discard role, so it is intentionally not
   implemented, and the `add_memory` tool is off.
+- **Write errors propagate to the coordinator.** `addMessages` throws on a failed `createEvent`, so the
+  `ExtractionCoordinator` re-fires the batch (with its own backoff). The store keeps no retry/drop layer
+  of its own; bound a slow request via a timeout on the AWS `client` you supply.
+- **`extraction: true` uses the framework's default cadence.** Passing `true` defers to the
+  MemoryManager's own trigger (turn-based), matching the rest of Strands. Pass an `AgentCoreBatchTrigger`
+  via `extraction: { cadence }` for AgentCore-tuned message-count / byte / time batching.
 - **Read errors propagate.** `search()` lets retrieval errors throw; `MemoryManager` isolates them
   per-store via `Promise.allSettled`, so a failure never breaks the agent loop while still being
   surfaced (rather than silently swallowed).
@@ -148,18 +152,13 @@ IDs accordingly (a UUID-based value is comfortably long enough).
    every `retrieveMemoryRecords` call (the same way `minScore` does). The model-facing `search_memory`
    tool intentionally does **not** let the agent choose filter values. A use case needing
    per-turn, model-chosen filters would register its own custom search tool.
-2. **Write idempotency tolerates error-path duplicates.** On a write-failure re-fire, duplicate events
-   can be written; AgentCore consolidation collapses them at the record level (a cost/cleanliness gap,
-   not a correctness one). An exactly-once upgrade uses the per-message `sequenceNumbers` on
-   `AddMessagesContext` (merged upstream in strands-agents/harness-sdk#2721).
-
 ## Release status
 
-The module is built against a local mirror of the upstream interface
-(`src/memory/strands/_strands-memory-types.ts`) because `@strands-agents/sdk` has not yet published
-its memory module. When it does, the "release flip" is import-only — see the
-[Release flip checklist](../src/memory/strands/index.ts) in the module README. Until then this is
-experimental and should not be relied on for GA workloads.
+This module is **experimental**. It consumes the Strands memory `MemoryManager` / `MemoryStore` /
+extraction surface directly from `@strands-agents/sdk` (>= 1.5.0). That surface is still evolving
+upstream, so the integration should not yet be relied on for GA workloads.
 
-**SDK requirements:** `@aws-sdk/client-bedrock-agentcore` >= 3.1020 (for the typed `namespacePath`
-field used by `subtree` reads).
+**SDK requirements:**
+
+- `@aws-sdk/client-bedrock-agentcore` >= 3.1020 (for the typed `namespacePath` field used by `subtree` reads).
+- `@strands-agents/sdk` >= 1.5.0 (memory / extraction module).

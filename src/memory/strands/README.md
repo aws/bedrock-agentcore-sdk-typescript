@@ -5,10 +5,9 @@ first-class [Strands](https://strandsagents.com) `MemoryStore`: the agent recall
 through `search_memory`, and conversation turns are written to AgentCore (role-preserved) for
 server-side extraction into long-term records.
 
-> **Status: pre-release.** This integration targets the Strands `MemoryManager` / `MemoryStore`
-> interface from the extraction PR (`strands-agents/harness-sdk` #2671), which is merged upstream but
-> not yet in a published `@strands-agents/sdk`. Until it publishes, the interface is mirrored locally
-> in `_strands-memory-types.ts`; see "Release flip" below.
+> **Status: experimental.** This integration implements the Strands `MemoryManager` / `MemoryStore`
+> extraction interface, consumed directly from `@strands-agents/sdk` (>= 1.5.0). The surface is still
+> evolving upstream, so treat it as experimental rather than GA.
 
 ## What it does
 
@@ -16,15 +15,16 @@ server-side extraction into long-term records.
   subtree (`namespacePath`).
 - **Write** — `addMessages()` maps each role-tagged message to a `createEvent`. No client-side
   extractor and no LLM pass: AgentCore extracts and consolidates server-side.
-- **Cadence** — a custom `AgentCoreBatchTrigger` fires writes by message count, content size, or
-  wall-clock time, so you control API call volume from one place.
+- **Cadence** — `extraction: true` uses the framework's default trigger; or pass an
+  `AgentCoreBatchTrigger` to fire writes by message count, content size, or wall-clock time and control
+  API call volume from one place.
 - **Topology** — `createAgentCoreMemoryStores(...)` returns the stores ready to spread into
   `MemoryManagerConfig.stores`.
 
 ## Usage
 
 ```typescript
-import { Agent, MemoryManager, MessageAddedEvent } from '@strands-agents/sdk'
+import { Agent, MemoryManager } from '@strands-agents/sdk'
 import { createAgentCoreMemoryStores, AgentCoreBatchTrigger } from 'bedrock-agentcore/memory/strands'
 
 // One call per (actorId, sessionId). `per-namespace` (default) gives one store per namespace.
@@ -39,7 +39,7 @@ const stores = createAgentCoreMemoryStores({
   // `extraction` is the single write switch. Object form: custom cadence (and optionally which
   // namespace writes). Omit it entirely for recall-only; use `true` for the default cadence.
   extraction: {
-    cadence: new AgentCoreBatchTrigger({ messageCount: 10, maxDelayMs: 5000, messageAddedEvent: MessageAddedEvent }),
+    cadence: new AgentCoreBatchTrigger({ messageCount: 10, maxDelayMs: 5000 }),
   },
 })
 
@@ -65,7 +65,7 @@ const stores = createAgentCoreMemoryStores({
     { namespace: '/strategy/{id}/actor/{actorId}/preferences' },
   ],
   readMode: 'subtree', // 1 store, reads the common parent via namespacePath
-  extraction: { cadence: new AgentCoreBatchTrigger({ messageAddedEvent: MessageAddedEvent }) },
+  extraction: { cadence: new AgentCoreBatchTrigger() },
 })
 ```
 
@@ -78,12 +78,19 @@ const stores = createAgentCoreMemoryStores({
 - **No `add()`.** AgentCore's conversation path is role-aware; a flat string would discard role, so we
   implement only `addMessages`. The `add_memory` tool is therefore off (the manager handles this when
   no store implements `add`).
-- **Idempotency (v1).** Writes set no dedup token. The extraction coordinator may re-fire a batch on
-  failure ("stores should expect duplicates"); duplicate _events_ are collapsed by AgentCore's
-  server-side consolidation at the _record_ level, so they are wasteful but not incorrect. When the
-  framework surfaces a stable per-message `seq` (via `AddMessagesContext`), the sender derives a
-  deterministic `clientToken` for exact-once writes — distinct messages keep distinct tokens, so
-  genuinely-identical turns are never collapsed. See `strands-seq-ask.md`.
+- **Write errors propagate to the coordinator.** `addMessages` throws on any `createEvent` failure
+  (as an `AggregateError`). The `ExtractionCoordinator` then rolls back its high-water mark and re-fires
+  the batch on the next trigger, with its own backoff and repeated-failure logging — so the sender keeps
+  no retry/timeout/drop machinery of its own (that would duplicate or fight the coordinator). To bound a
+  slow `createEvent`, configure a request timeout on the `client` you pass in (it also bounds reads).
+- **Idempotency.** When the manager provides per-message sequence numbers (`AddMessagesContext.sequenceNumbers`,
+  available on the no-extractor path this store uses), the sender derives a deterministic `clientToken`
+  for exact-once writes — distinct messages keep distinct tokens, so genuinely-identical turns are never
+  collapsed, and a coordinator re-fire dedups exactly. Sequence numbers reset to 0 across runs (e.g. on
+  session restore) and `sessionId` does not refresh, so the token is anchored on a **run-unique id**
+  minted per sender (a UUID by default; override via `runId`) rather than `sessionId`. If sequence
+  numbers are absent, the sender sends no token; duplicate _events_ are then collapsed by AgentCore's
+  server-side consolidation at the _record_ level, so they are wasteful but not incorrect.
 - **Eventual consistency.** Writes and extraction are async; a fact written this turn may not be
   retrievable next turn. `MemoryManager.flush()` drains in-flight `createEvent` calls (not server-side
   extraction).
@@ -107,7 +114,7 @@ CDK). None of these reach the runtime read/write surface (`createEvent` / `retri
 
 ## Known limitations
 
-These are deliberate v1 gaps with clear upgrade paths; neither blocks use.
+A deliberate v1 gap with a clear upgrade path; it does not block use.
 
 1. **Metadata-filtered recall (indexed keys) is app-scoped, not model-chosen.** AgentCore supports
    `metadataFilters` on `retrieveMemoryRecords` (gated on indexed keys declared at resource creation).
@@ -115,23 +122,8 @@ These are deliberate v1 gaps with clear upgrade paths; neither blocks use.
    it applies on every `retrieveMemoryRecords` call (like `minScore`). The model-facing `search_memory`
    tool intentionally does not let the agent choose filter values; a per-turn, model-chosen filter would
    need a custom search tool.
-2. **Write idempotency tolerates error-path duplicates.** See "Idempotency (v1)" above. Exactly-once
-   writes use the per-message `sequenceNumbers` on `AddMessagesContext` (merged upstream,
-   strands-agents/harness-sdk#2721). AgentCore consolidation collapses duplicates at the record level in
-   the meantime, so this is a cost/cleanliness gap, not a correctness one.
 
 ## Requirements
 
 - `@aws-sdk/client-bedrock-agentcore` >= 3.1020 (typed `namespacePath`).
-- `@strands-agents/sdk` with the memory module (see status note).
-
-## Release flip (when `@strands-agents/sdk` publishes the memory module)
-
-1. Delete `_strands-memory-types.ts`.
-2. Change imports in this folder from `./_strands-memory-types.js` to `@strands-agents/sdk`.
-3. In `AgentCoreBatchTrigger`, the injected `messageAddedEvent` becomes the SDK's real
-   `MessageAddedEvent`.
-4. `AddMessagesContext.sequenceNumbers` (from strands-agents/harness-sdk#2721) drives the
-   deterministic-`clientToken` path with no code change — the sender already reads it.
-
-The symbol names in the mirror match the merged interface exactly, so the swap is import-only.
+- `@strands-agents/sdk` >= 1.5.0 (the memory `MemoryManager` / `MemoryStore` / extraction surface).

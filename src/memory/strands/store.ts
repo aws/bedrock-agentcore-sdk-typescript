@@ -11,7 +11,7 @@ import type {
   MemoryStore,
   MessageData,
   SearchOptions,
-} from './_strands-memory-types.js'
+} from '@strands-agents/sdk'
 import {
   type AgentCoreMemoryStoreConfig,
   DEFAULT_MAX_SEARCH_RESULTS,
@@ -22,6 +22,7 @@ import {
   resolveNamespace,
 } from './types.js'
 import { AgentCoreEventSender } from './sender.js'
+import { logger } from './logger.js'
 
 /** Extract the text of a `MemoryContent` union member, if it is a text member. */
 function memoryContentText(content: MemoryRecordSummary['content']): string {
@@ -48,7 +49,7 @@ export class AgentCoreMemoryStore implements MemoryStore {
   readonly description?: string
   readonly maxSearchResults?: number
   readonly writable: boolean
-  readonly extraction?: ExtractionConfig
+  readonly extraction?: boolean | ExtractionConfig
 
   private readonly client: BedrockAgentCoreClient
   private readonly memoryId: string
@@ -87,8 +88,13 @@ export class AgentCoreMemoryStore implements MemoryStore {
         actorId: config.actorId,
         sessionId: config.sessionId,
         metadataProvider: config.metadataProvider,
-        writeOptions: config.writeOptions,
       })
+    } else if (storeConfig.extraction !== undefined) {
+      // extraction config on a non-writable store would be silently ignored (no write sink), so warn.
+      logger.warn(
+        `[agentcore-memory] store "${this.name}" has an extraction config but writable is false; ` +
+          'extraction will not run for this store.'
+      )
     }
   }
 
@@ -119,10 +125,12 @@ export class AgentCoreMemoryStore implements MemoryStore {
   }
 
   private toEntry(record: MemoryRecordSummary): MemoryEntry {
+    // Underscore-prefixed so these store-provided keys never collide with user-defined metadata.
     const metadata: Record<string, JSONValue> = {}
-    if (record.memoryRecordId !== undefined) metadata.id = record.memoryRecordId
-    if (record.score !== undefined) metadata.score = record.score
-    if (record.namespaces !== undefined) metadata.namespaces = record.namespaces
+    if (record.memoryRecordId !== undefined) metadata._id = record.memoryRecordId
+    if (record.score !== undefined) metadata._score = record.score
+    if (record.namespaces !== undefined) metadata._namespaces = record.namespaces
+    if (record.createdAt !== undefined) metadata._createdAt = record.createdAt.toISOString()
     return { content: memoryContentText(record.content), metadata }
   }
 

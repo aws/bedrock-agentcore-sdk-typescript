@@ -1,12 +1,10 @@
 import { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
-import type { ExtractionConfig, ExtractionTrigger } from './_strands-memory-types.js'
-import { AgentCoreBatchTrigger } from './batch-trigger.js'
+import type { ExtractionConfig, ExtractionTrigger, MemoryMessageFilter } from '@strands-agents/sdk'
 import { AgentCoreMemoryStore } from './store.js'
 import {
   type AgentCoreMemoryConfig,
   type AgentCoreMemoryStoreConfig,
-  type AgentCoreWriteOptions,
   DEFAULT_REGION,
   type MetadataProvider,
   type ReadMode,
@@ -25,14 +23,20 @@ export interface AgentCoreNamespaceConfig {
 
 /**
  * Object form of the {@link CreateAgentCoreMemoryStoresInput.extraction} switch: writable, with
- * optional control over write cadence and which namespace owns the write stream.
+ * optional control over write cadence, which messages to write, and which namespace owns the stream.
  */
 export interface AgentCoreExtractionConfig {
   /**
-   * Write cadence. Omit to use the default {@link AgentCoreBatchTrigger} (requires `messageAddedEvent`
-   * on the factory input so the default can be constructed).
+   * Write cadence. Omit to defer to the MemoryManager's default trigger (its `IntervalTrigger`, every
+   * few turns) — the same default the rest of Strands uses. Pass an {@link AgentCoreBatchTrigger} (or
+   * any `ExtractionTrigger`) for message-count / byte / time batching tuned to AgentCore.
    */
   cadence?: ExtractionTrigger | ExtractionTrigger[]
+  /**
+   * Which message content blocks to exclude before writing (the extraction `filter`). Omit to use the
+   * framework default (drops tool use/result). Forwarded to the store's `ExtractionConfig.filter`.
+   */
+  filter?: MemoryMessageFilter
   /**
    * Which namespace hosts the single write stream (by `namespace` template). Defaults to the first
    * namespace. Ignored for `subtree` (its one store is the writer).
@@ -58,20 +62,12 @@ export interface CreateAgentCoreMemoryStoresInput {
    * The single write switch (mirrors the framework's `boolean | config` shorthand). For AgentCore,
    * writable, extraction-enabled, and "writes via createEvent" are one concept, so they collapse here:
    * omitted or `false` means recall-only (every store search-only, no writes); `true` means writable
-   * with the default cadence (needs `messageAddedEvent`); `{ cadence?, namespace? }` means writable
-   * with a custom cadence and/or a chosen write namespace.
+   * with the framework's default cadence; `{ cadence?, filter?, namespace? }` means writable with a
+   * custom cadence/filter and/or a chosen write namespace.
    */
   extraction?: boolean | AgentCoreExtractionConfig
 
-  /**
-   * The SDK's `MessageAddedEvent` constructor, used to build the default cadence trigger when
-   * `extraction` is `true` or `{ cadence }` is omitted. Required only when a default trigger is needed.
-   * (Injected because `MessageAddedEvent` is not yet in a published `@strands-agents/sdk`.)
-   */
-  messageAddedEvent?: unknown
-
   metadataProvider?: MetadataProvider
-  writeOptions?: AgentCoreWriteOptions
 
   region?: string
   credentialsProvider?: AwsCredentialIdentityProvider
@@ -104,16 +100,6 @@ function commonParent(namespaces: string[]): string | undefined {
   return joined.length > 0 ? joined : undefined
 }
 
-function ensureUniqueNames(stores: AgentCoreMemoryStore[]): void {
-  const seen = new Set<string>()
-  for (const s of stores) {
-    if (seen.has(s.name)) {
-      throw new Error(`createAgentCoreMemoryStores: duplicate store name "${s.name}"; names must be unique`)
-    }
-    seen.add(s.name)
-  }
-}
-
 /**
  * Build one store's config. Optional identity fields are spread conditionally so explicit `undefined`
  * never violates `exactOptionalPropertyTypes`.
@@ -125,7 +111,7 @@ function buildStoreConfig(args: {
   namespace: string
   readMode: ReadMode
   writable: boolean
-  extraction: ExtractionConfig | undefined
+  extraction: boolean | ExtractionConfig | undefined
 }): AgentCoreMemoryStoreConfig {
   const { config, ns, fallbackName, namespace, readMode, writable, extraction } = args
   return {
@@ -160,12 +146,21 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
 
   const readMode: ReadMode = input.readMode ?? 'per-namespace'
 
-  // Resolve the single `extraction` switch into: is writing enabled, with what cadence, on which namespace.
+  // Resolve the single `extraction` switch into the store-facing `boolean | ExtractionConfig` value
+  // and the chosen write namespace. We pass `true` straight through (rather than eagerly building a
+  // trigger) so the MemoryManager applies its own default cadence; we only build an `ExtractionConfig`
+  // when the caller supplies a custom cadence and/or filter.
   const writeEnabled = input.extraction !== undefined && input.extraction !== false
   const extractionObj: AgentCoreExtractionConfig = typeof input.extraction === 'object' ? input.extraction : {}
-  const extraction: ExtractionConfig | undefined = writeEnabled
-    ? { trigger: extractionObj.cadence ?? defaultTrigger(input.messageAddedEvent) }
-    : undefined
+  const hasCustomConfig = extractionObj.cadence !== undefined || extractionObj.filter !== undefined
+  const extraction: boolean | ExtractionConfig | undefined = !writeEnabled
+    ? undefined
+    : hasCustomConfig
+      ? {
+          ...(extractionObj.cadence !== undefined && { trigger: extractionObj.cadence }),
+          ...(extractionObj.filter !== undefined && { filter: extractionObj.filter }),
+        }
+      : true
 
   const client =
     input.client ??
@@ -180,7 +175,6 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
     actorId: input.actorId,
     sessionId: input.sessionId,
     ...(input.metadataProvider !== undefined && { metadataProvider: input.metadataProvider }),
-    ...(input.writeOptions !== undefined && { writeOptions: input.writeOptions }),
     client,
   }
 
@@ -232,7 +226,8 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
     )
   }
 
-  ensureUniqueNames(stores)
+  // Store-name uniqueness is validated by the MemoryManager constructor (it throws on duplicates), so
+  // we don't re-check here.
   return stores
 }
 
@@ -252,7 +247,7 @@ export interface CreateAgentCoreMemoryStoreInput
  * const store = createAgentCoreMemoryStore({
  *   memoryId, actorId, sessionId,
  *   namespace: '/users/{actorId}/facts',
- *   extraction: { cadence: new AgentCoreBatchTrigger({ messageAddedEvent: MessageAddedEvent }) },
+ *   extraction: { cadence: new AgentCoreBatchTrigger() },
  * })
  * new MemoryManager({ stores: [store] })
  * ```
@@ -267,16 +262,4 @@ export function createAgentCoreMemoryStore(input: CreateAgentCoreMemoryStoreInpu
     ...(minScore !== undefined && { minScore }),
   }
   return createAgentCoreMemoryStores({ ...rest, namespaces: [ns], readMode: 'per-namespace' })[0]!
-}
-
-/** Build the default write-cadence trigger; requires the SDK's MessageAddedEvent to be supplied. */
-function defaultTrigger(messageAddedEvent: unknown): ExtractionTrigger {
-  if (messageAddedEvent === undefined) {
-    throw new Error(
-      'createAgentCoreMemoryStores: enabling extraction without an explicit cadence requires ' +
-        '`messageAddedEvent` (the SDK MessageAddedEvent) so the default trigger can be built; ' +
-        'pass it, or provide extraction.cadence.'
-    )
-  }
-  return new AgentCoreBatchTrigger({ messageAddedEvent })
 }

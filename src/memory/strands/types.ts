@@ -1,6 +1,6 @@
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
 import type { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
-import type { ExtractionConfig, MemoryStoreConfig, MessageData } from './_strands-memory-types.js'
+import type { ExtractionConfig, JSONValue, MemoryStoreConfig, MessageData } from '@strands-agents/sdk'
 
 /** Default region used when none is supplied and `AWS_REGION` is unset. */
 export const DEFAULT_REGION = 'us-west-2'
@@ -21,27 +21,11 @@ export const MAX_TOPK = 100
  */
 export type ReadMode = 'per-namespace' | 'subtree'
 
-/** Per-message metadata attached to each `createEvent`. Values use the AgentCore metadata shape. */
-export type MetadataProvider = (message: MessageData) => Record<string, { stringValue: string }>
-
-/** Reason a buffered write was dropped, surfaced to {@link AgentCoreWriteOptions.onDropped}. */
-export type DropReason = 'retry-failed' | 'timeout'
-
-/** Information about a dropped event write. */
-export interface DroppedEventInfo {
-  reason: DropReason
-  /** The text of the message whose event was dropped, for diagnostics. */
-  text: string
-  cause?: unknown
-}
-
-/** Batching/resilience knobs for the write fan-out. */
-export interface AgentCoreWriteOptions {
-  /** Per-`createEvent` timeout in ms (a slow send is dropped, not retried forever). Default 10000. */
-  sendTimeoutMs?: number
-  /** Called when an event is dropped after its single retry or on timeout. */
-  onDropped?: (info: DroppedEventInfo) => void
-}
+/**
+ * Per-message metadata attached to each `createEvent`. Returns a lenient JSON bag; the sender maps
+ * each value to AgentCore's `{ stringValue }` event-metadata shape (stringifying non-strings).
+ */
+export type MetadataProvider = (message: MessageData) => Record<string, JSONValue>
 
 /**
  * Reusable connection + write-identity config, shared across the stores of one
@@ -59,8 +43,6 @@ export interface AgentCoreMemoryConfig {
 
   /** Optional per-message metadata attached to each `createEvent`. */
   readonly metadataProvider?: MetadataProvider | undefined
-  /** Resilience knobs for the write path. */
-  readonly writeOptions?: AgentCoreWriteOptions | undefined
 
   /** Region for the default client. Ignored if `client` is supplied. */
   readonly region?: string | undefined
@@ -96,8 +78,12 @@ export interface AgentCoreMemoryStoreConfig extends MemoryStoreConfig {
   /** Required here (the base leaves it optional): exactly one store in a factory set is writable. */
   readonly writable: boolean
 
-  /** Present only on the writable store; AgentCore uses server-side extraction, so no client extractor. */
-  readonly extraction?: ExtractionConfig
+  /**
+   * Present only on the writable store; AgentCore uses server-side extraction, so no client extractor.
+   * `true` defers to the MemoryManager's default cadence (its `IntervalTrigger`); an object sets a
+   * custom trigger/filter.
+   */
+  readonly extraction?: boolean | ExtractionConfig
 }
 
 /**

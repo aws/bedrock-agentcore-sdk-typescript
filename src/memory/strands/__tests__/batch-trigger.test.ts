@@ -1,47 +1,52 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  Message,
+  MessageAddedEvent,
+  type ExtractionTriggerContext,
+  type LocalAgent,
+  type MessageData,
+} from '@strands-agents/sdk'
 import { AgentCoreBatchTrigger } from '../batch-trigger.js'
-import type { ExtractionTriggerContext, LocalAgent, MessageData } from '../_strands-memory-types.js'
-
-/** A sentinel "event constructor" object the trigger subscribes to. */
-const MESSAGE_ADDED_EVENT = { name: 'MessageAddedEvent' }
 
 /**
- * Fake agent that captures the hook callback registered for MESSAGE_ADDED_EVENT and lets a test
- * drive message-added events directly.
+ * Fake agent that captures the hook callback registered for the real `MessageAddedEvent` and lets a
+ * test drive message-added events directly. `LocalAgent` is a sealed interface, so we build the
+ * minimal slice the trigger touches (`addHook`) and cast. `emit` delivers a real `Message` instance
+ * (as the runtime hook does), so the trigger's `message.toJSON()` path is exercised faithfully.
  */
 function makeAgentContext(): {
-  agent: LocalAgent
   fire: ReturnType<typeof vi.fn>
   emit: (message: MessageData) => void
   context: ExtractionTriggerContext
 } {
-  let cb: ((event: unknown) => void) | undefined
-  const agent: LocalAgent = {
-    addHook: (eventType, callback) => {
-      if (eventType === MESSAGE_ADDED_EVENT) cb = callback
+  let cb: ((event: { message: Message }) => void) | undefined
+  const agent = {
+    addHook: (eventType: unknown, callback: (event: never) => void) => {
+      if (eventType === MessageAddedEvent) cb = callback as (event: { message: Message }) => void
       return () => {}
     },
-  }
+  } as unknown as LocalAgent
   const fire = vi.fn()
   const context: ExtractionTriggerContext = { agent, fire }
   const emit = (message: MessageData): void => {
     if (!cb) throw new Error('no hook registered')
-    cb({ message })
+    cb({ message: Message.fromMessageData(message) })
   }
-  return { agent, fire, emit, context }
+  return { fire, emit, context }
 }
 
 const msg = (text = 'hi'): MessageData => ({ role: 'user', content: [{ text }] })
+const toolMsg = (): MessageData => ({ role: 'user', content: [{ toolUse: { name: 'x', input: {} } }] })
 
 describe('AgentCoreBatchTrigger validation', () => {
   it('rejects non-positive messageCount', () => {
-    expect(() => new AgentCoreBatchTrigger({ messageCount: 0, messageAddedEvent: MESSAGE_ADDED_EVENT })).toThrow()
+    expect(() => new AgentCoreBatchTrigger({ messageCount: 0 })).toThrow()
   })
   it('rejects non-positive maxBytes', () => {
-    expect(() => new AgentCoreBatchTrigger({ maxBytes: -1, messageAddedEvent: MESSAGE_ADDED_EVENT })).toThrow()
+    expect(() => new AgentCoreBatchTrigger({ maxBytes: -1 })).toThrow()
   })
   it('rejects negative maxDelayMs', () => {
-    expect(() => new AgentCoreBatchTrigger({ maxDelayMs: -5, messageAddedEvent: MESSAGE_ADDED_EVENT })).toThrow()
+    expect(() => new AgentCoreBatchTrigger({ maxDelayMs: -5 })).toThrow()
   })
 })
 
@@ -51,9 +56,7 @@ describe('AgentCoreBatchTrigger cadence', () => {
 
   it('fires on messageCount', () => {
     const { context, fire, emit } = makeAgentContext()
-    new AgentCoreBatchTrigger({ messageCount: 3, maxDelayMs: 0, messageAddedEvent: MESSAGE_ADDED_EVENT }).attach(
-      context
-    )
+    new AgentCoreBatchTrigger({ messageCount: 3, maxDelayMs: 0 }).attach(context)
     emit(msg())
     emit(msg())
     expect(fire).not.toHaveBeenCalled()
@@ -61,11 +64,20 @@ describe('AgentCoreBatchTrigger cadence', () => {
     expect(fire).toHaveBeenCalledTimes(1)
   })
 
+  it('counts only user/assistant messages with text (skips tool-only / empty turns)', () => {
+    const { context, fire, emit } = makeAgentContext()
+    new AgentCoreBatchTrigger({ messageCount: 2, maxDelayMs: 0 }).attach(context)
+    emit(msg('real-1'))
+    emit(toolMsg()) // not counted
+    emit({ role: 'assistant', content: [{ text: '   ' }] }) // empty, not counted
+    expect(fire).not.toHaveBeenCalled()
+    emit(msg('real-2')) // second counted message -> fire
+    expect(fire).toHaveBeenCalledTimes(1)
+  })
+
   it('resets the counter after firing (fires again every N)', () => {
     const { context, fire, emit } = makeAgentContext()
-    new AgentCoreBatchTrigger({ messageCount: 2, maxDelayMs: 0, messageAddedEvent: MESSAGE_ADDED_EVENT }).attach(
-      context
-    )
+    new AgentCoreBatchTrigger({ messageCount: 2, maxDelayMs: 0 }).attach(context)
     emit(msg())
     emit(msg()) // fire 1
     emit(msg())
@@ -79,7 +91,6 @@ describe('AgentCoreBatchTrigger cadence', () => {
       messageCount: 100,
       maxBytes: 10,
       maxDelayMs: 0,
-      messageAddedEvent: MESSAGE_ADDED_EVENT,
     }).attach(context)
     emit(msg('12345')) // 5
     expect(fire).not.toHaveBeenCalled()
@@ -89,9 +100,7 @@ describe('AgentCoreBatchTrigger cadence', () => {
 
   it('fires on maxDelayMs after the first un-fired message', () => {
     const { context, fire, emit } = makeAgentContext()
-    new AgentCoreBatchTrigger({ messageCount: 100, maxDelayMs: 5000, messageAddedEvent: MESSAGE_ADDED_EVENT }).attach(
-      context
-    )
+    new AgentCoreBatchTrigger({ messageCount: 100, maxDelayMs: 5000 }).attach(context)
     emit(msg())
     expect(fire).not.toHaveBeenCalled()
     vi.advanceTimersByTime(5000)
@@ -100,9 +109,7 @@ describe('AgentCoreBatchTrigger cadence', () => {
 
   it('clears the pending timer when a count-fire happens first (no double fire)', () => {
     const { context, fire, emit } = makeAgentContext()
-    new AgentCoreBatchTrigger({ messageCount: 2, maxDelayMs: 5000, messageAddedEvent: MESSAGE_ADDED_EVENT }).attach(
-      context
-    )
+    new AgentCoreBatchTrigger({ messageCount: 2, maxDelayMs: 5000 }).attach(context)
     emit(msg()) // arms timer
     emit(msg()) // count-fire, should clear timer
     expect(fire).toHaveBeenCalledTimes(1)
@@ -114,7 +121,6 @@ describe('AgentCoreBatchTrigger cadence', () => {
     const trigger = new AgentCoreBatchTrigger({
       messageCount: 2,
       maxDelayMs: 0,
-      messageAddedEvent: MESSAGE_ADDED_EVENT,
     })
     const a = makeAgentContext()
     const b = makeAgentContext()
