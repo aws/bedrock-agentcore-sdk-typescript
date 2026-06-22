@@ -185,6 +185,44 @@ describe('createAgentCoreMemoryStores - validation', () => {
     expect(() => createAgentCoreMemoryStores(baseInput({ namespaces: [] }))).toThrow(/at least one namespace/)
   })
 
+  it('throws when a namespace entry is empty/whitespace', () => {
+    expect(() => createAgentCoreMemoryStores(baseInput({ namespaces: [{ namespace: '   ' }] }))).toThrow(
+      /namespaces\[0\]\.namespace must be a non-empty/
+    )
+  })
+
+  it.each([
+    ['empty actorId', { actorId: '' }],
+    ['empty sessionId', { sessionId: '  ' }],
+    ['empty memoryId', { memoryId: '' }],
+  ])('throws on %s (propagated from the store constructor)', (_label, override) => {
+    expect(() => createAgentCoreMemoryStores(baseInput(override))).toThrow(/must be a non-empty string/)
+  })
+
+  it('throws when a namespace still has an unresolved placeholder after substitution', () => {
+    expect(() =>
+      createAgentCoreMemoryStores(
+        baseInput({ namespaces: [{ namespace: '/strategies/{memoryStrategyId}/actors/{actorId}' }] })
+      )
+    ).toThrow(/unresolved placeholder "\{memoryStrategyId\}"/)
+  })
+
+  it('subtree commonParent over placeholder-bearing templates surfaces the unresolved placeholder loudly', () => {
+    // commonParent yields `/strategies/{memoryStrategyId}/actors/{actorId}`; after {actorId} resolves,
+    // {memoryStrategyId} remains -> the store constructor throws rather than querying a brace string.
+    expect(() =>
+      createAgentCoreMemoryStores(
+        baseInput({
+          readMode: 'subtree',
+          namespaces: [
+            { namespace: '/strategies/{memoryStrategyId}/actors/{actorId}/facts' },
+            { namespace: '/strategies/{memoryStrategyId}/actors/{actorId}/preferences' },
+          ],
+        })
+      )
+    ).toThrow(/unresolved placeholder "\{memoryStrategyId\}"/)
+  })
+
   it('binds actorId/sessionId so a multi-actor server gets distinct stores per call', () => {
     const a = createAgentCoreMemoryStores(baseInput({ actorId: 'user-A' }))
     const b = createAgentCoreMemoryStores(baseInput({ actorId: 'user-B' }))

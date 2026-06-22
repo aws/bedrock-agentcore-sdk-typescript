@@ -211,3 +211,50 @@ describe('AgentCoreMemoryStore construction', () => {
     warn.mockRestore()
   })
 })
+
+describe('AgentCoreMemoryStore validation', () => {
+  const send = vi.fn(async () => ({}))
+  const cfg = (
+    overrides: Partial<AgentCoreMemoryStoreConfig> = {},
+    identity: Partial<AgentCoreMemoryStoreConfig['config']> = {}
+  ) =>
+    baseConfig(send, {
+      config: { memoryId: 'mem-1', actorId: 'actor-1', sessionId: 'sess-1', client: fakeClient(send), ...identity },
+      ...overrides,
+    })
+
+  it.each([
+    ['memoryId', { memoryId: '' }],
+    ['actorId', { actorId: '   ' }],
+    ['sessionId', { sessionId: '' }],
+  ] as const)('throws on empty/whitespace %s', (field, identity) => {
+    expect(() => new AgentCoreMemoryStore(cfg({}, identity))).toThrow(new RegExp(`${field} must be a non-empty`))
+  })
+
+  it('throws on an empty namespace', () => {
+    expect(() => new AgentCoreMemoryStore(cfg({ namespace: '   ' }))).toThrow(/namespace must be a non-empty/)
+  })
+
+  it('throws when the resolved namespace still contains an unresolved placeholder', () => {
+    // {memoryStrategyId} is not resolved client-side; the AgentCore read path rejects "{"/"}".
+    expect(
+      () => new AgentCoreMemoryStore(cfg({ namespace: '/strategies/{memoryStrategyId}/actors/{actorId}/facts' }))
+    ).toThrow(/unresolved placeholder "\{memoryStrategyId\}"/)
+  })
+
+  it('accepts a namespace whose only placeholders are {actorId}/{sessionId}', () => {
+    expect(() => new AgentCoreMemoryStore(cfg({ namespace: '/users/{actorId}/facts' }))).not.toThrow()
+  })
+
+  it.each([NaN, -0.1, 1.5, Infinity])('throws on invalid minScore %s', (minScore) => {
+    expect(() => new AgentCoreMemoryStore(cfg({ minScore }))).toThrow(
+      /minScore must be a finite number between 0 and 1/
+    )
+  })
+
+  it.each([0, -1, 2.5])('throws on maxSearchResults %s', (maxSearchResults) => {
+    expect(() => new AgentCoreMemoryStore(cfg({ maxSearchResults }))).toThrow(
+      /maxSearchResults must be a positive integer/
+    )
+  })
+})

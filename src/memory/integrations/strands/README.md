@@ -1,4 +1,4 @@
-# AgentCore Memory for Strands (`bedrock-agentcore/memory/strands`)
+# AgentCore Memory for Strands (`bedrock-agentcore/experimental/memory/strands`)
 
 `AgentCoreMemoryStore` makes [AgentCore Memory](https://docs.aws.amazon.com/bedrock-agentcore/) a
 first-class [Strands](https://strandsagents.com) `MemoryStore`: the agent recalls long-term memories
@@ -97,6 +97,30 @@ const stores = createAgentCoreMemoryStores({
 - **Read errors propagate to the manager.** `search()` lets retrieval errors throw; `MemoryManager`
   wraps each store's `search()` in `Promise.allSettled`, so a failure is isolated to this store and
   surfaced through the manager's partial-failure handling rather than breaking the agent loop.
+
+## The namespace contract (read this if recall comes back empty)
+
+Recall only works when the namespace this store **queries** matches where AgentCore **stored** the
+records. That handshake has sharp edges:
+
+- **AgentCore resolves placeholders at _write_ time, not _read_ time.** When a strategy's
+  `namespaceTemplates` contain `{actorId}`/`{sessionId}`/`{memoryStrategyId}`, the service substitutes
+  them when it extracts a record and stores it under the concrete path (e.g.
+  `/strategies/sem-abc123/actors/user-7/facts`). On retrieval it does **not** substitute anything — it
+  matches your query string as a **prefix** against those stored paths.
+- **This store only resolves `{actorId}` and `{sessionId}` (client-side).** Any other placeholder left
+  in the namespace (notably `{memoryStrategyId}`) would survive into the query. AgentCore rejects `{`/`}`
+  in a namespace, so the store **throws at construction** with a clear message rather than letting recall
+  fail later. Provide a namespace whose only placeholders are `{actorId}`/`{sessionId}` (or pre-substitute
+  a concrete strategy id).
+- **Match the convention you provisioned.** The AgentCore CLI provisions strategies with
+  `{actorId}`/`{sessionId}`-only templates — e.g. SEMANTIC `/users/{actorId}/facts`, USER_PREFERENCE
+  `/users/{actorId}/preferences`, SUMMARIZATION `/summaries/{actorId}/{sessionId}`. Query with the same
+  template you provisioned. Do **not** copy a `/strategies/{memoryStrategyId}/...` template from other
+  SDK docs into a CLI-provisioned setup — it's a different, incompatible convention.
+- **`{sessionId}` namespaces are per-session.** For SUMMARIZATION/EPISODIC templates that include
+  `{sessionId}`, a store built for session B will not see session A's records. Use a stable `sessionId`
+  (or an `{actorId}`-only namespace) when you want cross-session recall.
 
 ## Out of scope: memory-resource setup
 

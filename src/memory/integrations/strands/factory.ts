@@ -143,6 +143,11 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
   if (input.namespaces.length === 0) {
     throw new Error('createAgentCoreMemoryStores: at least one namespace is required')
   }
+  input.namespaces.forEach((ns, i) => {
+    if (ns.namespace === undefined || ns.namespace.trim().length === 0) {
+      throw new Error(`createAgentCoreMemoryStores: namespaces[${i}].namespace must be a non-empty string`)
+    }
+  })
 
   const readMode: ReadMode = input.readMode ?? 'per-namespace'
 

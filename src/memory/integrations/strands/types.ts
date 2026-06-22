@@ -88,8 +88,42 @@ export interface AgentCoreMemoryStoreConfig extends MemoryStoreConfig {
 
 /**
  * Resolve a namespace template against an actor/session, substituting `{actorId}` and `{sessionId}`.
- * Unknown placeholders are left intact (e.g. `{memoryStrategyId}`, which the service resolves).
+ *
+ * Only these two placeholders are resolved client-side. AgentCore resolves every placeholder (including
+ * `{memoryStrategyId}`) at *extraction* time and stores records under the fully-resolved concrete path,
+ * but `retrieveMemoryRecords` does NOT resolve placeholders on the *read* path — and in fact rejects a
+ * `{`/`}` in the namespace with a `ValidationException`. So any unresolved placeholder left here would
+ * make recall fail. {@link assertResolvedNamespace} catches that at construction with a clear message.
  */
 export function resolveNamespace(template: string, actorId: string, sessionId: string): string {
   return template.replace(/\{actorId\}/g, actorId).replace(/\{sessionId\}/g, sessionId)
+}
+
+/** Matches any `{placeholder}` token left in a string. */
+const UNRESOLVED_PLACEHOLDER = /\{[^{}]*\}/
+
+/**
+ * Throw if `resolved` still contains a `{placeholder}`. AgentCore's retrieve path rejects brace
+ * characters, so an unresolved token guarantees a failed recall; failing here turns that into a clear,
+ * construction-time error instead of an opaque service `ValidationException` at first search.
+ */
+export function assertResolvedNamespace(resolved: string, template: string): void {
+  const match = resolved.match(UNRESOLVED_PLACEHOLDER)
+  if (match) {
+    throw new Error(
+      `AgentCoreMemoryStore: namespace "${template}" still contains the unresolved placeholder ` +
+        `"${match[0]}" after substitution. Only {actorId} and {sessionId} are resolved client-side; ` +
+        `the AgentCore retrieve path does not resolve placeholders and rejects "{"/"}". Provide a ` +
+        `namespace whose only placeholders are {actorId}/{sessionId}, or pre-substitute the others ` +
+        `(e.g. a concrete strategy id) before constructing the store.`
+    )
+  }
+}
+
+/** Throw if a required string field is missing or whitespace-only. */
+export function assertNonEmpty(value: string | undefined, field: string): string {
+  if (value === undefined || value.trim().length === 0) {
+    throw new Error(`AgentCoreMemoryStore: ${field} must be a non-empty string`)
+  }
+  return value
 }

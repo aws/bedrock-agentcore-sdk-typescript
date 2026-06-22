@@ -47,8 +47,8 @@
       "types": "./dist/src/tools/code-interpreter/integrations/strands/index.d.ts"
     },
     "./experimental/memory/strands": {
-      "import": "./dist/src/memory/strands/index.js",
-      "types": "./dist/src/memory/strands/index.d.ts"
+      "import": "./dist/src/memory/integrations/strands/index.js",
+      "types": "./dist/src/memory/integrations/strands/index.d.ts"
     },
     "./runtime": {
       "import": "./dist/src/runtime/index.js",

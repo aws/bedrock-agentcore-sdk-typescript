@@ -3,7 +3,7 @@
 How to give a Strands agent persistent, cross-session memory backed by [Amazon Bedrock AgentCore
 Memory](https://docs.aws.amazon.com/bedrock-agentcore/). This is the conceptual + deployment guide;
 the per-call API reference lives alongside the code in
-[`src/memory/strands/README.md`](../src/memory/strands/index.ts).
+[`src/memory/integrations/strands/README.md`](../src/memory/integrations/strands/index.ts).
 
 > **Status: experimental.** This integration implements the Strands `MemoryManager` / `MemoryStore`
 > extraction interface, consumed directly from `@strands-agents/sdk` (>= 1.5.0). The upstream surface
@@ -26,7 +26,7 @@ A single store, `AgentCoreMemoryStore`, that plugs into Strands' `MemoryManager`
 AgentCore Memory is event-sourced with two tiers:
 
 1. **Short-term events** — `createEvent` records each role-tagged turn for an `(actorId, sessionId)`.
-2. **Long-term records** — configured *strategies* (semantic, summary, user-preference, episodic)
+2. **Long-term records** — configured _strategies_ (semantic, summary, user-preference, episodic)
    asynchronously extract and **consolidate** events into namespaced records, retrieved via
    `retrieveMemoryRecords`.
 
@@ -36,7 +36,7 @@ Two consequences the integration leans on:
   server-side extraction runs. `MemoryManager.flush()` drains in-flight `createEvent` calls (it does
   not wait for extraction).
 - **Consolidation is the dedup backstop.** Because consolidation merges facts at the record level, a
-  duplicate *event* (e.g. from a retry) does not become a duplicate long-term memory.
+  duplicate _event_ (e.g. from a retry) does not become a duplicate long-term memory.
 
 ## Quick start
 
@@ -74,12 +74,12 @@ const store = createAgentCoreMemoryStore({
 const agent = new Agent({ model, memoryManager: new MemoryManager({ stores: [store] }) })
 ```
 
-See [`src/memory/strands/README.md`](../src/memory/strands/index.ts) for `readMode` (`per-namespace`
+See [`src/memory/integrations/strands/README.md`](../src/memory/integrations/strands/index.ts) for `readMode` (`per-namespace`
 vs `subtree`), `minScore`, the `extraction` switch, recall-only setup, and the full factory surface.
 
 ## Deploying with the AgentCore CLI / CDK
 
-Memory is a **resource** you create once (strategies, namespaces, expiry) and then *consume* from the
+Memory is a **resource** you create once (strategies, namespaces, expiry) and then _consume_ from the
 agent. The integration never creates the resource — it takes an existing `memoryId`.
 
 ### The memory ID reaches the agent as an environment variable
@@ -92,6 +92,25 @@ const memoryId = process.env.MEMORY_MYMEMORY_ID
 ```
 
 No manual wiring is needed — declare the memory in `agentcore.json` and read the env var.
+
+### Namespaces must match between provisioning and recall
+
+The single most common cause of "the agent doesn't remember" is a namespace mismatch. AgentCore stores
+each extracted record under the strategy's `namespaceTemplate` with placeholders **resolved at
+extraction time**; on retrieval it matches your query namespace as a **prefix** against those stored
+paths and does not resolve placeholders. So:
+
+- **Query with the same template you provisioned.** The CLI provisions `{actorId}`/`{sessionId}`-only
+  templates (e.g. SEMANTIC `/users/{actorId}/facts`, SUMMARIZATION `/summaries/{actorId}/{sessionId}`).
+  Pass the _same_ string to `createAgentCoreMemoryStores`. The store resolves `{actorId}`/`{sessionId}`
+  for you.
+- **Don't mix conventions.** A `/strategies/{memoryStrategyId}/...` template (used by some other SDK
+  defaults) is a different, incompatible convention. This store only resolves `{actorId}`/`{sessionId}`
+  and **throws at construction** if any other placeholder (like `{memoryStrategyId}`) survives, since the
+  AgentCore retrieve path rejects `{`/`}` — a loud error instead of silent empty recall.
+- **`{sessionId}` namespaces are per-session.** Summaries/episodes scoped by `{sessionId}` are only
+  recalled by a store using that same `sessionId`. For cross-session recall, use an `{actorId}`-only
+  namespace.
 
 ### Who is the actor? (`actorId`)
 
@@ -113,8 +132,7 @@ identity** — the platform does not send one. `actorId` is therefore applicatio
      ([header allowlist docs](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-header-allowlist.html)).
    - Read it from the request context in your handler:
      ```typescript
-     const actorId =
-       context.headers['x-amzn-bedrock-agentcore-runtime-custom-actor-id'] ?? sessionId
+     const actorId = context.headers['x-amzn-bedrock-agentcore-runtime-custom-actor-id'] ?? sessionId
      ```
    - Callers send it with `agentcore invoke ... -H "X-Amzn-Bedrock-AgentCore-Runtime-Custom-Actor-Id: user-123"`.
 
@@ -152,6 +170,7 @@ IDs accordingly (a UUID-based value is comfortably long enough).
    every `retrieveMemoryRecords` call (the same way `minScore` does). The model-facing `search_memory`
    tool intentionally does **not** let the agent choose filter values. A use case needing
    per-turn, model-chosen filters would register its own custom search tool.
+
 ## Release status
 
 This module is **experimental**. It consumes the Strands memory `MemoryManager` / `MemoryStore` /
@@ -165,7 +184,7 @@ upstream, so the integration should not yet be relied on for GA workloads.
 
 ## Testing
 
-- **Unit tests** (`src/memory/strands/__tests__/`, run with `npm test`) mock the AWS clients and cover
+- **Unit tests** (`src/memory/integrations/strands/__tests__/`, run with `npm test`) mock the AWS clients and cover
   the factory topology, store search/write mapping, sender idempotency, the batch trigger, and the
   message formatter.
 - **Integration + E2E tests** (`tests_integ/memory.test.ts`, run with `npm run test:integ`) exercise the

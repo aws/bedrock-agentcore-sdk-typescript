@@ -14,6 +14,8 @@ import type {
 } from '@strands-agents/sdk'
 import {
   type AgentCoreMemoryStoreConfig,
+  assertNonEmpty,
+  assertResolvedNamespace,
   DEFAULT_MAX_SEARCH_RESULTS,
   DEFAULT_REGION,
   MAX_TOPK,
@@ -64,15 +66,31 @@ export class AgentCoreMemoryStore implements MemoryStore {
     const { config } = storeConfig
     this.name = storeConfig.name
     if (storeConfig.description !== undefined) this.description = storeConfig.description
-    if (storeConfig.maxSearchResults !== undefined) this.maxSearchResults = storeConfig.maxSearchResults
+    if (storeConfig.maxSearchResults !== undefined) {
+      if (!Number.isInteger(storeConfig.maxSearchResults) || storeConfig.maxSearchResults < 1) {
+        throw new Error(
+          `AgentCoreMemoryStore: maxSearchResults must be a positive integer, got ${storeConfig.maxSearchResults}`
+        )
+      }
+      this.maxSearchResults = storeConfig.maxSearchResults
+    }
     this.writable = storeConfig.writable
     if (storeConfig.writable && storeConfig.extraction !== undefined) this.extraction = storeConfig.extraction
-    this.memoryId = config.memoryId
-    this.actorId = config.actorId
-    this.sessionId = config.sessionId
-    this.resolvedNamespace = resolveNamespace(storeConfig.namespace, config.actorId, config.sessionId)
+    this.memoryId = assertNonEmpty(config.memoryId, 'memoryId')
+    this.actorId = assertNonEmpty(config.actorId, 'actorId')
+    this.sessionId = assertNonEmpty(config.sessionId, 'sessionId')
+    assertNonEmpty(storeConfig.namespace, 'namespace')
+    this.resolvedNamespace = resolveNamespace(storeConfig.namespace, this.actorId, this.sessionId)
+    assertResolvedNamespace(this.resolvedNamespace, storeConfig.namespace)
     this.readMode = storeConfig.readMode
-    if (storeConfig.minScore !== undefined) this.minScore = storeConfig.minScore
+    if (storeConfig.minScore !== undefined) {
+      if (!Number.isFinite(storeConfig.minScore) || storeConfig.minScore < 0 || storeConfig.minScore > 1) {
+        throw new Error(
+          `AgentCoreMemoryStore: minScore must be a finite number between 0 and 1, got ${storeConfig.minScore}`
+        )
+      }
+      this.minScore = storeConfig.minScore
+    }
 
     this.client =
       config.client ??
