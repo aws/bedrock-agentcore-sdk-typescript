@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { type BedrockAgentCoreClient, CreateEventCommand } from '@aws-sdk/client-bedrock-agentcore'
 import type { MessageData } from '@strands-agents/sdk'
 import { extractText, isUserOrAssistantWithText, mapRole } from './format.js'
@@ -73,7 +74,7 @@ export class AgentCoreEventSender {
     this.actorId = config.actorId
     this.sessionId = config.sessionId
     this.metadataProvider = config.metadataProvider
-    this.runId = config.runId ?? globalThis.crypto.randomUUID()
+    this.runId = config.runId ?? randomUUID()
     const cap = config.maxTurnsPerEvent ?? DEFAULT_MAX_TURNS_PER_EVENT
     if (!Number.isInteger(cap) || cap < 1) {
       throw new Error(`AgentCoreEventSender: maxTurnsPerEvent must be a positive integer, got ${cap}`)
