@@ -8,11 +8,18 @@ export const DEFAULT_REGION = 'us-west-2'
 /** Default per-store result cap when neither call-level nor store-level `maxSearchResults` is set. */
 export const DEFAULT_MAX_SEARCH_RESULTS = 5
 
-/** Over-fetch multiplier applied to `topK` when a `minScore` floor is configured (see store search). */
-export const OVERFETCH_FACTOR = 4
+/** Default over-fetch multiplier applied to `topK` when a `minScore` floor is configured (see store search). */
+export const DEFAULT_OVERFETCH_FACTOR = 4
 
 /** Hard cap on `topK` so over-fetching never requests an unbounded page. */
 export const MAX_TOPK = 100
+
+/**
+ * Prefix for the store-provided metadata keys on a returned {@link MemoryStore} entry (`_id`, `_score`,
+ * `_namespaces`, `_createdAt`). Underscored so they never collide with user-defined metadata; callers
+ * should avoid this prefix for their own keys.
+ */
+export const RESERVED_METADATA_PREFIX = '_'
 
 /**
  * How a store's `search()` targets AgentCore long-term records.
@@ -74,6 +81,13 @@ export interface AgentCoreMemoryStoreConfig extends MemoryStoreConfig {
 
   /** Optional client-side relevance floor; records scoring below it are dropped from results. */
   readonly minScore?: number
+
+  /**
+   * Multiplier applied to `topK` when `minScore` is set, so the client-side floor doesn't under-deliver
+   * when above-floor records sit deeper in the ranking. Defaults to {@link DEFAULT_OVERFETCH_FACTOR}.
+   * Ignored when no `minScore` floor is configured. The over-fetched `topK` is capped at {@link MAX_TOPK}.
+   */
+  readonly overFetchFactor?: number
 
   /** Required here (the base leaves it optional): exactly one store in a factory set is writable. */
   readonly writable: boolean

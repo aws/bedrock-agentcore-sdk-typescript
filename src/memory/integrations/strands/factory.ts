@@ -19,6 +19,8 @@ export interface AgentCoreNamespaceConfig {
   description?: string
   maxSearchResults?: number
   minScore?: number
+  /** Over-fetch multiplier when `minScore` is set (see {@link AgentCoreMemoryStoreConfig.overFetchFactor}). */
+  overFetchFactor?: number
 }
 
 /**
@@ -123,6 +125,7 @@ function buildStoreConfig(args: {
     ...(ns.description !== undefined && { description: ns.description }),
     ...(ns.maxSearchResults !== undefined && { maxSearchResults: ns.maxSearchResults }),
     ...(ns.minScore !== undefined && { minScore: ns.minScore }),
+    ...(ns.overFetchFactor !== undefined && { overFetchFactor: ns.overFetchFactor }),
     ...(writable && extraction !== undefined && { extraction }),
   }
 }
@@ -258,13 +261,14 @@ export interface CreateAgentCoreMemoryStoreInput
  * ```
  */
 export function createAgentCoreMemoryStore(input: CreateAgentCoreMemoryStoreInput): AgentCoreMemoryStore {
-  const { namespace, name, description, maxSearchResults, minScore, ...rest } = input
+  const { namespace, name, description, maxSearchResults, minScore, overFetchFactor, ...rest } = input
   const ns: AgentCoreNamespaceConfig = {
     namespace,
     ...(name !== undefined && { name }),
     ...(description !== undefined && { description }),
     ...(maxSearchResults !== undefined && { maxSearchResults }),
     ...(minScore !== undefined && { minScore }),
+    ...(overFetchFactor !== undefined && { overFetchFactor }),
   }
   return createAgentCoreMemoryStores({ ...rest, namespaces: [ns], readMode: 'per-namespace' })[0]!
 }

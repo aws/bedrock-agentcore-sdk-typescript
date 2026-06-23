@@ -17,10 +17,11 @@ import {
   assertNonEmpty,
   assertResolvedNamespace,
   DEFAULT_MAX_SEARCH_RESULTS,
+  DEFAULT_OVERFETCH_FACTOR,
   DEFAULT_REGION,
   MAX_TOPK,
-  OVERFETCH_FACTOR,
   type ReadMode,
+  RESERVED_METADATA_PREFIX,
   resolveNamespace,
 } from './types.js'
 import { AgentCoreEventSender } from './sender.js'
@@ -60,6 +61,7 @@ export class AgentCoreMemoryStore implements MemoryStore {
   private readonly resolvedNamespace: string
   private readonly readMode: ReadMode
   private readonly minScore?: number
+  private readonly overFetchFactor: number
   private readonly sender?: AgentCoreEventSender
 
   constructor(storeConfig: AgentCoreMemoryStoreConfig) {
@@ -91,6 +93,13 @@ export class AgentCoreMemoryStore implements MemoryStore {
       }
       this.minScore = storeConfig.minScore
     }
+    if (
+      storeConfig.overFetchFactor !== undefined &&
+      (!Number.isFinite(storeConfig.overFetchFactor) || storeConfig.overFetchFactor < 1)
+    ) {
+      throw new Error(`AgentCoreMemoryStore: overFetchFactor must be a number >= 1, got ${storeConfig.overFetchFactor}`)
+    }
+    this.overFetchFactor = storeConfig.overFetchFactor ?? DEFAULT_OVERFETCH_FACTOR
 
     this.client =
       config.client ??
@@ -122,7 +131,7 @@ export class AgentCoreMemoryStore implements MemoryStore {
     const want = options?.maxSearchResults ?? this.maxSearchResults ?? DEFAULT_MAX_SEARCH_RESULTS
     // With a minScore floor, over-fetch then trim so the client-side filter doesn't under-deliver
     // when above-floor records exist deeper in the ranking. With no floor, topK == want.
-    const topK = this.minScore == null ? want : Math.min(want * OVERFETCH_FACTOR, MAX_TOPK)
+    const topK = this.minScore == null ? want : Math.min(want * this.overFetchFactor, MAX_TOPK)
 
     const command = new RetrieveMemoryRecordsCommand({
       memoryId: this.memoryId,
@@ -143,12 +152,13 @@ export class AgentCoreMemoryStore implements MemoryStore {
   }
 
   private toEntry(record: MemoryRecordSummary): MemoryEntry {
-    // Underscore-prefixed so these store-provided keys never collide with user-defined metadata.
+    // Keys carry RESERVED_METADATA_PREFIX so these store-provided fields never collide with user metadata.
+    const p = RESERVED_METADATA_PREFIX
     const metadata: Record<string, JSONValue> = {}
-    if (record.memoryRecordId !== undefined) metadata._id = record.memoryRecordId
-    if (record.score !== undefined) metadata._score = record.score
-    if (record.namespaces !== undefined) metadata._namespaces = record.namespaces
-    if (record.createdAt !== undefined) metadata._createdAt = record.createdAt.toISOString()
+    if (record.memoryRecordId !== undefined) metadata[`${p}id`] = record.memoryRecordId
+    if (record.score !== undefined) metadata[`${p}score`] = record.score
+    if (record.namespaces !== undefined) metadata[`${p}namespaces`] = record.namespaces
+    if (record.createdAt !== undefined) metadata[`${p}createdAt`] = record.createdAt.toISOString()
     return { content: memoryContentText(record.content), metadata }
   }
 

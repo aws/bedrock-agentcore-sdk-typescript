@@ -97,6 +97,13 @@ const stores = createAgentCoreMemoryStores({
 - **Read errors propagate to the manager.** `search()` lets retrieval errors throw; `MemoryManager`
   wraps each store's `search()` in `Promise.allSettled`, so a failure is isolated to this store and
   surfaced through the manager's partial-failure handling rather than breaking the agent loop.
+- **Reserved result metadata.** Each returned `MemoryEntry.metadata` carries store-provided fields under
+  the `RESERVED_METADATA_PREFIX` (`_`): `_id`, `_score`, `_namespaces`, `_createdAt`. Avoid that prefix
+  for your own metadata keys so they never collide.
+- **`minScore` over-fetch is tunable.** When a `minScore` floor is set, the store over-fetches `topK`
+  (default `4×`, capped at 100) so the client-side filter doesn't under-deliver; override per store via
+  `overFetchFactor`. (AgentCore's retrieve API has no server-side relevance threshold, so the floor is
+  applied client-side.)
 
 ## The namespace contract (read this if recall comes back empty)
 

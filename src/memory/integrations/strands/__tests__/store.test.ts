@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
 import { AgentCoreMemoryStore } from '../store.js'
 import { logger } from '../logger.js'
-import type { AgentCoreMemoryStoreConfig } from '../types.js'
+import { RESERVED_METADATA_PREFIX, type AgentCoreMemoryStoreConfig } from '../types.js'
 import type { MessageData } from '@strands-agents/sdk'
 
 interface CapturedCommand {
@@ -85,6 +85,8 @@ describe('AgentCoreMemoryStore.search', () => {
         },
       },
     ])
+    // Every store-provided key carries the documented reserved prefix (collision-avoidance contract).
+    expect(Object.keys(results[0]!.metadata!).every((k) => k.startsWith(RESERVED_METADATA_PREFIX))).toBe(true)
   })
 
   it('passes topK = want when no minScore floor', async () => {
@@ -108,6 +110,22 @@ describe('AgentCoreMemoryStore.search', () => {
     const results = await store.search('q')
     expect((lastInput.searchCriteria as { topK: number }).topK).toBeGreaterThan(2) // over-fetched
     expect(results.map((r) => r.content)).toEqual(['a', 'c']) // top-2 above floor, in order
+  })
+
+  it('honors a custom overFetchFactor for topK (default is 4)', async () => {
+    send = sendReturning([])
+    const store = new AgentCoreMemoryStore(
+      baseConfig(send, { maxSearchResults: 3, minScore: 0.5, overFetchFactor: 10 })
+    )
+    await store.search('q')
+    expect((lastInput.searchCriteria as { topK: number }).topK).toBe(30) // want(3) * overFetchFactor(10)
+  })
+
+  it('ignores overFetchFactor when no minScore floor is set (topK == want)', async () => {
+    send = sendReturning([])
+    const store = new AgentCoreMemoryStore(baseConfig(send, { maxSearchResults: 3, overFetchFactor: 10 }))
+    await store.search('q')
+    expect((lastInput.searchCriteria as { topK: number }).topK).toBe(3)
   })
 
   it('drops unscored records under a positive floor (score undefined treated as 0)', async () => {
@@ -256,5 +274,9 @@ describe('AgentCoreMemoryStore validation', () => {
     expect(() => new AgentCoreMemoryStore(cfg({ maxSearchResults }))).toThrow(
       /maxSearchResults must be a positive integer/
     )
+  })
+
+  it.each([0, 0.5, NaN, Infinity])('throws on invalid overFetchFactor %s', (overFetchFactor) => {
+    expect(() => new AgentCoreMemoryStore(cfg({ overFetchFactor }))).toThrow(/overFetchFactor must be a number >= 1/)
   })
 })
