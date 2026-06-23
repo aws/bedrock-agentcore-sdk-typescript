@@ -17,10 +17,8 @@ server-side extraction into long-term records.
   call carrying many turns, not one call per message). No client-side extractor and no LLM pass:
   AgentCore extracts and consolidates server-side, and a multi-turn event extracts the same records as
   the equivalent single-turn events would.
-- **Cost control** — write API-call volume = (how often the trigger flushes) × (turns per flush ÷
-  `maxTurnsPerEvent`). Batch less often with a coarser `AgentCoreBatchTrigger` cadence (by message count,
-  size, or time), and cap event size with `maxTurnsPerEvent` (default 50). `extraction: true` uses the
-  framework's default per-turn trigger.
+- **Cost control** — three independent levers (batching, cadence, flush) govern `createEvent` volume;
+  see [Reducing write API calls](#reducing-write-api-calls).
 - **Topology** — `createAgentCoreMemoryStores(...)` returns the stores ready to spread into
   `MemoryManagerConfig.stores`.
 
@@ -107,6 +105,48 @@ const stores = createAgentCoreMemoryStores({
   (default `4×`, capped at 100) so the client-side filter doesn't under-deliver; override per store via
   `overFetchFactor`. (AgentCore's retrieve API has no server-side relevance threshold, so the floor is
   applied client-side.)
+
+## Reducing write API calls
+
+`createEvent` is the write API call, and three independent levers control how many you make. They
+compose — understand them separately:
+
+1. **Batching (always on).** A flush packs all of its role-tagged turns into a *single* `createEvent`
+   (chunked only at `maxTurnsPerEvent`, default 50), instead of one call per message. So a 6-message
+   turn is 1 call, not 6. This needs no configuration and applies under every trigger; it is the
+   primary write-cost reduction.
+
+2. **Cadence (the trigger) — tunes calls *across* turns.** The trigger decides *when* a flush happens.
+   `extraction: true` defers to Strands' default (`IntervalTrigger`, ~every 5 turns). For AgentCore,
+   prefer `extraction: { cadence: new AgentCoreBatchTrigger({ messageCount, maxBytes, maxDelayMs }) }`,
+   which flushes by message count / bytes / wall-clock. Flushing less often batches more turns into each
+   `createEvent` → fewer calls. **Cadence only reduces calls if writes actually buffer across turns**,
+   which requires reusing the `MemoryManager` across the session's invocations (see below) and *not*
+   flushing every turn.
+
+3. **`flush()` — durability, not cost.** `MemoryManager.flush()` force-drains the buffer immediately,
+   ignoring the trigger. A trigger only *dispatches* a write (fire-and-forget; never awaited), and the
+   AgentCore runtime can reclaim the session microVM on idle before a dispatched write lands — and any
+   turn may be the last (there is no session-end signal). `flush()` awaits the writes while the runtime
+   is alive, so it is the durability mechanism. The safe default is to `flush()` at the end of each
+   invocation handler; it's cheap because batching makes a turn's flush a single call.
+
+**The tension, and how to resolve it:** flushing every turn (durable) means ~1 `createEvent` per turn —
+the trigger's cross-turn batching never kicks in. To cut calls further you flush *less* often and let
+the cadence batch across turns, accepting that an unflushed tail is lost if the microVM is reclaimed
+mid-session. Two working setups:
+
+- **Durable default (recommended):** reuse the `MemoryManager` per session, `AgentCoreBatchTrigger`
+  cadence, and `await memory.flush()` at the end of every handler. One batched call per turn; no loss.
+- **Cost-tuned (advanced):** reuse the `MemoryManager` per session, a coarse `AgentCoreBatchTrigger`,
+  and flush only when you detect session end. Fewer calls; small tail-loss risk on idle reclamation.
+
+**Reuse the manager across invocations.** The runtime keeps one microVM alive per session (idle timeout
+~15 min, max 8 h), so build the `MemoryManager` once per `(actorId, sessionId)` and reuse it across that
+session's invocations — that's what keeps the coordinator buffer and the trigger's timer alive so
+cadence can batch across turns. The **application** owns this reuse (e.g. a `Map` keyed by
+`actorId:sessionId`); the SDK deliberately holds no session cache, so eviction and lifecycle stay in
+your control. See the runtime example for the full pattern.
 
 ## The namespace contract (read this if recall comes back empty)
 

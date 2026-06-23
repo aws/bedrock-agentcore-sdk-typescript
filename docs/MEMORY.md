@@ -18,9 +18,8 @@ A single store, `AgentCoreMemoryStore`, that plugs into Strands' `MemoryManager`
 - **Write** — a turn's conversation messages are packed into a single role-tagged `createEvent` (one
   API call per flush carrying many turns, not one call per message). AgentCore extracts and
   consolidates them into long-term records **server-side** — no client-side LLM pass.
-- **Cost control** — write API-call volume is governed by how often the extraction trigger flushes and
-  by `maxTurnsPerEvent` (the per-event turn cap, default 50). A coarser trigger cadence (fewer flushes)
-  and the default batching mean far fewer `createEvent` calls than one-per-message.
+- **Cost control** — three independent levers (batching, cadence, flush) govern `createEvent` volume.
+  See [Reducing write API calls](#reducing-write-api-calls).
 
 ## The two-tier model (why writes aren't instantly searchable)
 
@@ -141,6 +140,43 @@ identity** — the platform does not send one. `actorId` is therefore applicatio
 
 `InvokeAgentRuntime` requires `runtimeSessionId` to be **at least 33 characters**. Generate session
 IDs accordingly (a UUID-based value is comfortably long enough).
+
+## Reducing write API calls
+
+Each `createEvent` is a write API call. Three independent levers control how many you make — they
+compose, so it helps to understand them separately:
+
+**1. Batching (automatic).** Every flush packs its turns into a *single* `createEvent` (chunked only at
+`maxTurnsPerEvent`, default 50) rather than one call per message. A 6-message turn is 1 call, not 6.
+No configuration needed; it applies under any trigger. This is the main cost reduction.
+
+**2. Cadence (the extraction trigger).** Controls *when* a flush happens. `extraction: true` uses
+Strands' default (`IntervalTrigger`, ~every 5 turns); for AgentCore prefer
+`extraction: { cadence: new AgentCoreBatchTrigger({ messageCount, maxBytes, maxDelayMs }) }`. Flushing
+less often batches more turns per `createEvent`. **But cadence only cuts calls if writes buffer across
+turns** — which requires reusing the `MemoryManager` across the session and not flushing every turn.
+
+**3. `flush()` (durability, not cost).** `MemoryManager.flush()` force-drains the buffer now, ignoring
+the trigger. It matters because a trigger only *dispatches* a write (fire-and-forget; the framework
+never awaits it), and the runtime can reclaim the session microVM on idle before a dispatched write
+lands — and any turn may be the last (there's no session-end signal). `flush()` awaits the writes while
+the microVM is alive (e.g. the end of an invocation handler), so it's the durability guarantee.
+
+**Reuse the `MemoryManager` across the session.** The runtime keeps one microVM alive per session
+(idle ~15 min, max 8 h, [lifecycle docs](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-lifecycle-settings.html)),
+so build the manager once per `(actorId, sessionId)` and reuse it across that session's invocations —
+that keeps the buffer and trigger timer alive so cadence can batch across turns. The **application**
+owns this reuse (e.g. a `Map` keyed by `actorId:sessionId`); the SDK holds no session cache, keeping
+eviction and lifecycle in your control.
+
+**Two working setups:**
+
+- **Durable default (recommended):** reuse the manager per session, `AgentCoreBatchTrigger` cadence,
+  and `await memory.flush()` at the end of every handler. One batched call per turn; no data loss.
+- **Cost-tuned (advanced):** reuse the manager per session, a coarse `AgentCoreBatchTrigger`, and flush
+  only on a session-end signal you define. Fewer calls; small risk of losing the tail on idle reclaim.
+
+See the deploy example for the full per-session-reuse + flush pattern.
 
 ## Design notes
 

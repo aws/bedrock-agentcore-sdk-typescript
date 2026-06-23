@@ -29,9 +29,18 @@ export interface AgentCoreNamespaceConfig {
  */
 export interface AgentCoreExtractionConfig {
   /**
-   * Write cadence. Omit to defer to the MemoryManager's default trigger (its `IntervalTrigger`, every
-   * few turns) — the same default the rest of Strands uses. Pass an {@link AgentCoreBatchTrigger} (or
-   * any `ExtractionTrigger`) for message-count / byte / time batching tuned to AgentCore.
+   * Write cadence — when buffered turns are flushed to `createEvent`. Omit to defer to the
+   * MemoryManager's default (Strands' `IntervalTrigger`, every few turns), which is consistent with
+   * other Strands stores. Pass an {@link AgentCoreBatchTrigger} for message-count / byte / time
+   * batching tuned to AgentCore.
+   *
+   * Note on cadence vs durability: a trigger only controls *when* a flush is dispatched (fire-and-forget;
+   * the coordinator never awaits it). `IntervalTrigger` fires only per-invocation, so the tail of a
+   * conversation that ends mid-cadence is not written until the next turn — and at a true end-of-session
+   * there is no next turn, so that tail is lost. `AgentCoreBatchTrigger`'s wall-clock `maxDelayMs`
+   * narrows that window but does not close it. The durability mechanism is {@link MemoryManager.flush},
+   * called at a point where the runtime is alive (e.g. the end of an invocation handler) — it awaits the
+   * writes to completion. Cadence reduces API-call volume; `flush()` guarantees the data lands.
    */
   cadence?: ExtractionTrigger | ExtractionTrigger[]
   /**
