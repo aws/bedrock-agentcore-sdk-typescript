@@ -151,10 +151,15 @@ compose, so it helps to understand them separately:
 No configuration needed; it applies under any trigger. This is the main cost reduction.
 
 **2. Cadence (the extraction trigger).** Controls *when* a flush happens. `extraction: true` uses
-Strands' default (`IntervalTrigger`, ~every 5 turns); for AgentCore prefer
-`extraction: { cadence: new AgentCoreBatchTrigger({ messageCount, maxBytes, maxDelayMs }) }`. Flushing
-less often batches more turns per `createEvent`. **But cadence only cuts calls if writes buffer across
-turns** — which requires reusing the `MemoryManager` across the session and not flushing every turn.
+Strands' default (`IntervalTrigger`, every **5 turns** — not every invocation; a fire with nothing new
+is a no-op). Strands triggers are turn-gated (they only evaluate after an invocation).
+`AgentCoreBatchTrigger`'s one added capability is non-turn-gated cadence — flush on a wall-clock timer
+(`maxDelayMs`) or byte threshold (`maxBytes`):
+`extraction: { cadence: new AgentCoreBatchTrigger({ messageCount, maxBytes, maxDelayMs }) }`. **Cadence
+only changes call volume if writes buffer across turns** — which requires reusing the `MemoryManager`
+across the session and not flushing every turn. In the common per-turn-`flush()` pattern the trigger is
+largely moot (flush overrides it); `AgentCoreBatchTrigger` mainly helps a long-lived server that flushes
+less often. It is **not** the cost lever — batching (lever 1) is.
 
 **3. `flush()` (durability, not cost).** `MemoryManager.flush()` force-drains the buffer now, ignoring
 the trigger. It matters because a trigger only *dispatches* a write (fire-and-forget; the framework

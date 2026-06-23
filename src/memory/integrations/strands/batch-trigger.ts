@@ -14,9 +14,18 @@ export interface AgentCoreBatchTriggerOptions {
 }
 
 /**
- * Custom write-cadence trigger: fires extraction by message count, accumulated content size, or
- * wall-clock time — the granularity AgentCore needs to control `createEvent` volume, which the
- * built-in turn-based triggers (`InvocationTrigger` / `IntervalTrigger`) don't offer.
+ * Optional write-cadence trigger that fires by message count, accumulated content size, or wall-clock
+ * time. Its one unique capability over the built-in Strands triggers (`InvocationTrigger` /
+ * `IntervalTrigger`) is non-turn-gated cadence: those only evaluate on `AfterInvocationEvent` (so the
+ * finest they express is "every N turns"), whereas this can flush on a timer (`maxDelayMs`) or a size
+ * threshold (`maxBytes`) between/within turns.
+ *
+ * When it actually matters: a **long-lived server that does NOT flush every turn** — there the timer
+ * writes the tail of a conversation that has gone quiet without waiting for a next turn that may never
+ * come. It is NOT needed for the common per-invocation-`flush()` pattern (flush force-drains regardless
+ * of trigger), and it is NOT the write-cost lever — payload batching in the sender (one `createEvent`
+ * per flush) reduces API calls under *any* trigger. `extraction: true` deliberately uses the Strands
+ * default; reach for this only when you need time/size-based cadence.
  *
  * All cadence state lives in a closure created in {@link attach}, never in instance fields, so one
  * trigger instance attached to multiple stores keeps independent counters (mirrors the SDK's

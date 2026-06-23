@@ -117,12 +117,18 @@ compose — understand them separately:
    primary write-cost reduction.
 
 2. **Cadence (the trigger) — tunes calls *across* turns.** The trigger decides *when* a flush happens.
-   `extraction: true` defers to Strands' default (`IntervalTrigger`, ~every 5 turns). For AgentCore,
-   prefer `extraction: { cadence: new AgentCoreBatchTrigger({ messageCount, maxBytes, maxDelayMs }) }`,
-   which flushes by message count / bytes / wall-clock. Flushing less often batches more turns into each
-   `createEvent` → fewer calls. **Cadence only reduces calls if writes actually buffer across turns**,
-   which requires reusing the `MemoryManager` across the session's invocations (see below) and *not*
-   flushing every turn.
+   `extraction: true` defers to Strands' default (`IntervalTrigger`, every **5 turns** — not every
+   invocation; and a fire with no new messages is a no-op, so it never writes "empty"). Strands triggers
+   are **turn-gated** — they only evaluate after an invocation, so the finest cadence they express is
+   "every N turns." `AgentCoreBatchTrigger`'s one added capability is **non-turn-gated** cadence: flush
+   on a wall-clock timer (`maxDelayMs`) or a byte threshold (`maxBytes`), e.g.
+   `extraction: { cadence: new AgentCoreBatchTrigger({ messageCount, maxBytes, maxDelayMs }) }`.
+   **Cadence only changes call volume if writes actually buffer across turns** — which requires reusing
+   the `MemoryManager` across the session's invocations (see below) and *not* flushing every turn. So in
+   the common per-turn-`flush()` pattern the trigger choice is largely moot; `AgentCoreBatchTrigger`
+   earns its keep mainly on a long-lived server that flushes less often, where its timer writes a
+   gone-quiet conversation's tail without waiting for a next turn. It is **not** the cost lever —
+   batching (lever 1) is.
 
 3. **`flush()` — durability, not cost.** `MemoryManager.flush()` force-drains the buffer immediately,
    ignoring the trigger. A trigger only *dispatches* a write (fire-and-forget; never awaited), and the
