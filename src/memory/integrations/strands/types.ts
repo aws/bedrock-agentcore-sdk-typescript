@@ -15,6 +15,13 @@ export const DEFAULT_OVERFETCH_FACTOR = 4
 export const MAX_TOPK = 100
 
 /**
+ * Default maximum conversational turns packed into a single `createEvent`. One flush of N turns is sent
+ * as `ceil(n / this)` events instead of N calls — the lever that lets trigger cadence control API-call
+ * volume. Kept well under the service's accepted payload size.
+ */
+export const DEFAULT_MAX_TURNS_PER_EVENT = 50
+
+/**
  * Prefix for the store-provided metadata keys on a returned {@link MemoryStore} entry (`_id`, `_score`,
  * `_namespaces`, `_createdAt`). Underscored so they never collide with user-defined metadata; callers
  * should avoid this prefix for their own keys.
@@ -50,6 +57,13 @@ export interface AgentCoreMemoryConfig {
 
   /** Optional per-message metadata attached to each `createEvent`. */
   readonly metadataProvider?: MetadataProvider | undefined
+
+  /**
+   * Max conversational turns packed into a single `createEvent` write (see
+   * {@link DEFAULT_MAX_TURNS_PER_EVENT}). Lower it to cap payload size; the extraction trigger cadence
+   * controls how many turns accumulate before a flush.
+   */
+  readonly maxTurnsPerEvent?: number | undefined
 
   /** Region for the default client. Ignored if `client` is supplied. */
   readonly region?: string | undefined

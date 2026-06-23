@@ -71,6 +71,13 @@ export interface CreateAgentCoreMemoryStoresInput {
 
   metadataProvider?: MetadataProvider
 
+  /**
+   * Max conversational turns packed into one `createEvent` write (default
+   * {@link DEFAULT_MAX_TURNS_PER_EVENT}). Combined with the extraction trigger cadence, this controls
+   * write API-call volume: a flush of N turns is sent as `ceil(n / maxTurnsPerEvent)` events.
+   */
+  maxTurnsPerEvent?: number
+
   region?: string
   credentialsProvider?: AwsCredentialIdentityProvider
   /** Shared client; one is constructed (and reused across the returned stores) if omitted. */
@@ -183,6 +190,7 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
     actorId: input.actorId,
     sessionId: input.sessionId,
     ...(input.metadataProvider !== undefined && { metadataProvider: input.metadataProvider }),
+    ...(input.maxTurnsPerEvent !== undefined && { maxTurnsPerEvent: input.maxTurnsPerEvent }),
     client,
   }
 

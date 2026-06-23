@@ -1,7 +1,7 @@
 import { type BedrockAgentCoreClient, CreateEventCommand } from '@aws-sdk/client-bedrock-agentcore'
 import type { MessageData } from '@strands-agents/sdk'
 import { extractText, isUserOrAssistantWithText, mapRole } from './format.js'
-import type { MetadataProvider } from './types.js'
+import { DEFAULT_MAX_TURNS_PER_EVENT, type MetadataProvider } from './types.js'
 
 export interface AgentCoreEventSenderConfig {
   client: BedrockAgentCoreClient
@@ -15,6 +15,12 @@ export interface AgentCoreEventSenderConfig {
    * framework's per-message sequence numbers reset to 0 (e.g. on session restore).
    */
   runId?: string
+  /**
+   * Maximum conversational turns packed into a single `createEvent`. A batch larger than this splits
+   * into `ceil(n / maxTurnsPerEvent)` events. Defaults to {@link DEFAULT_MAX_TURNS_PER_EVENT}; bounds
+   * the payload well under the service limit.
+   */
+  maxTurnsPerEvent?: number
 }
 
 /** A message paired with the sequence number the coordinator assigned it (when available). */
@@ -23,8 +29,18 @@ interface SeqMessage {
   seq: number | undefined
 }
 
+/** A group of turns that become one `createEvent` (same metadata, capped at maxTurnsPerEvent). */
+interface EventGroup {
+  items: SeqMessage[]
+  metadata: Record<string, unknown> | undefined
+}
+
 /**
- * Turns a batch of role-tagged messages into one `createEvent` per message.
+ * Writes a batch of role-tagged messages to AgentCore, packing the turns into as few `createEvent`
+ * calls as possible. `createEvent` accepts an array of conversational turns, so one flush of N turns
+ * becomes a single call (chunked at `maxTurnsPerEvent`) rather than N calls — this is what lets the
+ * extraction trigger cadence actually control API-call volume. AgentCore extracts a multi-turn event
+ * into the same long-term records it would from N single-turn events.
  *
  * Error handling is delegated to the Strands `ExtractionCoordinator`: a failed `createEvent` throws
  * out of {@link sendBatch}, which makes the coordinator roll back its high-water mark and re-fire the
@@ -34,12 +50,13 @@ interface SeqMessage {
  * the read path).
  *
  * Idempotency: when the framework provides per-message sequence numbers (via
- * `AddMessagesContext.sequenceNumbers`), {@link sendBatch} derives a deterministic `clientToken` so a
- * coordinator re-fire dedups exactly — distinct messages keep distinct tokens, so genuinely-identical
- * turns are never collapsed. Because sequence numbers reset to 0 across runs, the token combines the
- * number with a run-unique id (see {@link AgentCoreEventSenderConfig.runId}). Without sequence numbers
- * the sender sends no token; a re-fire may then create duplicate events, which AgentCore's server-side
- * consolidation collapses at the record level (wasteful but not incorrect).
+ * `AddMessagesContext.sequenceNumbers`), each event gets a deterministic `clientToken` derived from the
+ * sequence range it covers, so a coordinator re-fire of the same batch dedups exactly. Because sequence
+ * numbers reset to 0 across runs, the token also folds in a run-unique id (see
+ * {@link AgentCoreEventSenderConfig.runId}). Without sequence numbers no token is sent; a re-fire then
+ * writes one duplicate event, which AgentCore's server-side consolidation collapses at the record level
+ * (wasteful but not incorrect). The token derivation is isolated in {@link tokenForSeqs} so it can move
+ * to a stable per-message id when the framework exposes one.
  */
 export class AgentCoreEventSender {
   private readonly client: BedrockAgentCoreClient
@@ -48,6 +65,7 @@ export class AgentCoreEventSender {
   private readonly sessionId: string
   private readonly metadataProvider: MetadataProvider | undefined
   private readonly runId: string
+  private readonly maxTurnsPerEvent: number
 
   constructor(config: AgentCoreEventSenderConfig) {
     this.client = config.client
@@ -56,56 +74,90 @@ export class AgentCoreEventSender {
     this.sessionId = config.sessionId
     this.metadataProvider = config.metadataProvider
     this.runId = config.runId ?? globalThis.crypto.randomUUID()
+    const cap = config.maxTurnsPerEvent ?? DEFAULT_MAX_TURNS_PER_EVENT
+    if (!Number.isInteger(cap) || cap < 1) {
+      throw new Error(`AgentCoreEventSender: maxTurnsPerEvent must be a positive integer, got ${cap}`)
+    }
+    this.maxTurnsPerEvent = cap
   }
 
   /**
-   * Send a batch. `sequenceNumbers` (when the framework provides them) are index-aligned with
-   * `messages` and key a deterministic, re-fire-stable `clientToken`. Throws if any `createEvent`
-   * fails, so the coordinator retries the batch.
+   * Send a batch. The writable turns are packed into one `createEvent` per {@link EventGroup} (chunked
+   * by `maxTurnsPerEvent` and split where per-message metadata changes). `sequenceNumbers` (when the
+   * framework provides them) are index-aligned with `messages` and key each event's `clientToken`.
+   * Throws an `AggregateError` if any event fails, so the coordinator retries the batch.
    */
   async sendBatch(messages: MessageData[], sequenceNumbers?: readonly number[]): Promise<void> {
     const sendable: SeqMessage[] = messages
       .map((message, i) => ({ message, seq: sequenceNumbers?.[i] }))
       .filter((m) => isUserOrAssistantWithText(m.message))
+    if (sendable.length === 0) return
 
-    // Surface the first failure (others are reported by AggregateError) so the coordinator re-fires.
-    const results = await Promise.allSettled(sendable.map((m) => this.sendOne(m)))
+    const groups = this.groupIntoEvents(sendable)
+    const results = await Promise.allSettled(groups.map((g) => this.sendEvent(g)))
     const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
     if (failures.length > 0) {
       throw new AggregateError(
         failures.map((f) => f.reason),
-        `AgentCore createEvent failed for ${failures.length} of ${sendable.length} message(s)`
+        `AgentCore createEvent failed for ${failures.length} of ${groups.length} event(s)`
       )
     }
   }
 
-  private async sendOne(item: SeqMessage): Promise<void> {
-    const { message } = item
-    const text = extractText(message)
-    const metadata = this.metadataProvider?.(message)
-    const clientToken = this.clientTokenFor(item)
+  /**
+   * Partition the sendable turns into events. A new event starts when the per-message metadata changes
+   * (the event's `metadata` is per-event in AgentCore, so turns in one event must share it) or when the
+   * current event reaches `maxTurnsPerEvent`. With no `metadataProvider`, all turns share the empty
+   * signature and collapse into size-capped events.
+   */
+  private groupIntoEvents(sendable: SeqMessage[]): EventGroup[] {
+    const groups: EventGroup[] = []
+    let current: EventGroup | undefined
+    let currentSig: string | undefined
+    for (const item of sendable) {
+      const metadata = this.metadataProvider?.(item.message)
+      const sig = metadata ? JSON.stringify(metadata) : ''
+      const atCap = current !== undefined && current.items.length >= this.maxTurnsPerEvent
+      if (current === undefined || sig !== currentSig || atCap) {
+        current = { items: [], metadata }
+        groups.push(current)
+        currentSig = sig
+      }
+      current.items.push(item)
+    }
+    return groups
+  }
+
+  private async sendEvent(group: EventGroup): Promise<void> {
+    const payload = group.items.map((item) => ({
+      conversational: { role: mapRole(item.message), content: { text: extractText(item.message) } },
+    }))
+    const clientToken = this.tokenForSeqs(group.items.map((item) => item.seq))
 
     const command = new CreateEventCommand({
       memoryId: this.memoryId,
       actorId: this.actorId,
       sessionId: this.sessionId,
       eventTimestamp: new Date(),
-      payload: [{ conversational: { role: mapRole(message), content: { text } } }],
+      payload,
       ...(clientToken !== undefined && { clientToken }),
-      ...(metadata && { metadata: toAgentCoreMetadata(metadata) }),
+      ...(group.metadata && { metadata: toAgentCoreMetadata(group.metadata) }),
     })
 
     await this.client.send(command)
   }
 
   /**
-   * Deterministic when a stable `seq` is present (re-fire-safe idempotency); otherwise undefined
-   * (tolerate error-path duplicates, consolidation is the backstop). Never time/random-based per call,
-   * which would defeat dedup across a re-fire; the run-unique part is fixed for the sender's lifetime.
+   * Deterministic re-fire-stable token for an event covering the given sequence numbers, or `undefined`
+   * when any is missing (then we tolerate error-path duplicates; consolidation is the backstop). The
+   * token spans the event's `[firstSeq, lastSeq]`; a coordinator re-fire of the same batch reproduces
+   * the same range. Never time/random-based per call — the run-unique part is fixed for the sender's
+   * lifetime. Isolated here so it can switch to a stable per-message id when the framework exposes one.
    */
-  private clientTokenFor(item: SeqMessage): string | undefined {
-    if (item.seq === undefined) return undefined
-    return `${this.memoryId}-${this.actorId}-${this.runId}-${item.seq}`
+  private tokenForSeqs(seqs: (number | undefined)[]): string | undefined {
+    if (seqs.length === 0 || seqs.some((s) => s === undefined)) return undefined
+    const nums = seqs as number[]
+    return `${this.memoryId}-${this.actorId}-${this.runId}-${nums[0]}-${nums[nums.length - 1]}`
   }
 }
 

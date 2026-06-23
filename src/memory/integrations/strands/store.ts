@@ -115,6 +115,7 @@ export class AgentCoreMemoryStore implements MemoryStore {
         actorId: config.actorId,
         sessionId: config.sessionId,
         metadataProvider: config.metadataProvider,
+        ...(config.maxTurnsPerEvent !== undefined && { maxTurnsPerEvent: config.maxTurnsPerEvent }),
       })
     } else if (storeConfig.extraction !== undefined) {
       // extraction config on a non-writable store would be silently ignored (no write sink), so warn.

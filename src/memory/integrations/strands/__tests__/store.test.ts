@@ -191,8 +191,22 @@ describe('AgentCoreMemoryStore.addMessages', () => {
     })
     const store = new AgentCoreMemoryStore(baseConfig(send, { writable: true }))
     await store.addMessages([userMsg('x')], { sequenceNumbers: [42] })
-    // Token anchors on a per-sender run id (a UUID), not sessionId, and carries the sequence number.
-    expect(sent[0]!.input.clientToken).toMatch(/^mem-1-actor-1-[0-9a-f-]{36}-42$/)
+    // One event; token anchors on a per-sender run id (a UUID), not sessionId, spanning [firstSeq,lastSeq].
+    expect(sent[0]!.input.clientToken).toMatch(/^mem-1-actor-1-[0-9a-f-]{36}-42-42$/)
+  })
+
+  it('batches a multi-message turn into a single createEvent', async () => {
+    const sent: CapturedCommand[] = []
+    const send = vi.fn(async (command: CapturedCommand) => {
+      sent.push(command)
+      return {}
+    })
+    const store = new AgentCoreMemoryStore(baseConfig(send, { writable: true }))
+    await store.addMessages([userMsg('first'), { role: 'assistant', content: [{ text: 'second' }] }], {
+      sequenceNumbers: [0, 1],
+    })
+    expect(send).toHaveBeenCalledTimes(1)
+    expect((sent[0]!.input.payload as unknown[]).length).toBe(2)
   })
 
   it('throws if addMessages is called on a non-writable store', async () => {

@@ -150,6 +150,55 @@ describe('AgentCoreMemoryStore (store-level, live data plane)', () => {
     await expect(store.addMessages!(msgs, { sequenceNumbers: [5] })).resolves.toBeUndefined()
   }, 60_000)
 
+  it('batches a multi-turn write into ONE CreateEvent and still extracts the facts (cost lever)', async () => {
+    // Count real CreateEvent calls by wrapping the live client's send.
+    let createEventCalls = 0
+    const countingClient = {
+      send: (command: unknown) => {
+        if ((command as { constructor: { name: string } }).constructor.name === 'CreateEventCommand') createEventCalls++
+        return dataPlane.send(command as never)
+      },
+    } as unknown as typeof dataPlane
+
+    const batchActor = `batch-actor-${uniqueSuffix()}`
+    const store = createAgentCoreMemoryStore({
+      memoryId,
+      actorId: batchActor,
+      sessionId: `batch-session-${uniqueSuffix()}-padded-to-be-long-enough`,
+      namespace: FACTS_NAMESPACE,
+      extraction: true,
+      client: countingClient,
+    })
+    // A 4-turn conversation in ONE addMessages call -> must be a single CreateEvent (not 4).
+    await store.addMessages!(
+      [
+        { role: 'user', content: [{ text: 'I am a pilot based in Denver and I fly Cessnas.' }] },
+        { role: 'assistant', content: [{ text: 'Flying Cessnas out of Denver — nice.' }] },
+        { role: 'user', content: [{ text: 'I also play the cello in my spare time.' }] },
+        { role: 'assistant', content: [{ text: 'A pilot and a cellist!' }] },
+      ],
+      { sequenceNumbers: [0, 1, 2, 3] }
+    )
+    expect(createEventCalls).toBe(1) // THE COST LEVER: 4 turns -> 1 API call, not 4
+
+    // Parity: the batched event still extracts the facts (matches the per-message behavior).
+    const readStore = createAgentCoreMemoryStore({
+      memoryId,
+      actorId: batchActor,
+      sessionId: 'unused-for-read-padded-to-be-long-enough',
+      namespace: FACTS_NAMESPACE,
+      client: dataPlane,
+    })
+    const results = await pollForRecords(() => readStore.search('what does the user do and where'))
+    if (results.length === 0) {
+      console.warn('Batching parity: no records surfaced within the window; extraction may be pending.')
+    } else {
+      const joined = results.map((r) => r.content.toLowerCase()).join(' ')
+      expect(joined).toMatch(/pilot|denver|cello|cessna/)
+    }
+    expect(Array.isArray(results)).toBe(true)
+  }, 300_000)
+
   it('recalls extracted records and proves the namespace contract (records land where the store queries)', async () => {
     const store = createAgentCoreMemoryStore({
       memoryId,

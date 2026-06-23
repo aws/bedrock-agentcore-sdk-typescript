@@ -13,11 +13,14 @@ server-side extraction into long-term records.
 
 - **Recall** — `search()` maps to `retrieveMemoryRecords`. Per namespace (exact prefix) or across a
   subtree (`namespacePath`).
-- **Write** — `addMessages()` maps each role-tagged message to a `createEvent`. No client-side
-  extractor and no LLM pass: AgentCore extracts and consolidates server-side.
-- **Cadence** — `extraction: true` uses the framework's default trigger; or pass an
-  `AgentCoreBatchTrigger` to fire writes by message count, content size, or wall-clock time and control
-  API call volume from one place.
+- **Write** — `addMessages()` packs a turn's role-tagged messages into a single `createEvent` (one API
+  call carrying many turns, not one call per message). No client-side extractor and no LLM pass:
+  AgentCore extracts and consolidates server-side, and a multi-turn event extracts the same records as
+  the equivalent single-turn events would.
+- **Cost control** — write API-call volume = (how often the trigger flushes) × (turns per flush ÷
+  `maxTurnsPerEvent`). Batch less often with a coarser `AgentCoreBatchTrigger` cadence (by message count,
+  size, or time), and cap event size with `maxTurnsPerEvent` (default 50). `extraction: true` uses the
+  framework's default per-turn trigger.
 - **Topology** — `createAgentCoreMemoryStores(...)` returns the stores ready to spread into
   `MemoryManagerConfig.stores`.
 

@@ -47,53 +47,65 @@ describe('AgentCoreEventSender.sendBatch', () => {
     })
   })
 
-  it('produces one createEvent per user/assistant message with role-tagged payload', async () => {
-    const sender = makeSender(send)
-    await sender.sendBatch([userMsg('hello'), asstMsg('hi there')])
+  /** The conversational turns from a captured CreateEvent payload. */
+  const turnsOf = (c: CapturedCommand) =>
+    (c.input.payload as { conversational: { role: string; content: { text: string } } }[]).map((p) => ({
+      role: p.conversational.role,
+      text: p.conversational.content.text,
+    }))
 
-    expect(send).toHaveBeenCalledTimes(2)
-    expect(sent[0]!.input).toMatchObject({
-      memoryId: 'mem-1',
-      actorId: 'actor-1',
-      sessionId: 'sess-1',
-      payload: [{ conversational: { role: 'USER', content: { text: 'hello' } } }],
-    })
-    expect(sent[1]!.input).toMatchObject({
-      payload: [{ conversational: { role: 'ASSISTANT', content: { text: 'hi there' } } }],
-    })
+  it('packs a whole batch into ONE createEvent with role-tagged turns in order', async () => {
+    const sender = makeSender(send)
+    await sender.sendBatch([userMsg('hello'), asstMsg('hi there'), userMsg('again')])
+
+    expect(send).toHaveBeenCalledTimes(1) // one call for the whole batch, not three
+    expect(sent[0]!.input).toMatchObject({ memoryId: 'mem-1', actorId: 'actor-1', sessionId: 'sess-1' })
+    expect(turnsOf(sent[0]!)).toEqual([
+      { role: 'USER', text: 'hello' },
+      { role: 'ASSISTANT', text: 'hi there' },
+      { role: 'USER', text: 'again' },
+    ])
   })
 
-  it('skips messages with no extractable text (tool-only / empty)', async () => {
+  it('splits into ceil(n / maxTurnsPerEvent) events when the batch exceeds the cap', async () => {
+    const sender = makeSender(send, { maxTurnsPerEvent: 2 })
+    await sender.sendBatch([userMsg('a'), userMsg('b'), userMsg('c'), userMsg('d'), userMsg('e')])
+    expect(send).toHaveBeenCalledTimes(3) // 2 + 2 + 1
+    expect(turnsOf(sent[0]!).map((t) => t.text)).toEqual(['a', 'b'])
+    expect(turnsOf(sent[1]!).map((t) => t.text)).toEqual(['c', 'd'])
+    expect(turnsOf(sent[2]!).map((t) => t.text)).toEqual(['e'])
+  })
+
+  it('skips messages with no extractable text (tool-only / empty) before batching', async () => {
     const sender = makeSender(send)
     await sender.sendBatch([toolOnlyMsg, userMsg('real'), { role: 'assistant', content: [{ text: '  ' }] }])
     expect(send).toHaveBeenCalledTimes(1)
-    expect(sent[0]!.input).toMatchObject({
-      payload: [{ conversational: { role: 'USER', content: { text: 'real' } } }],
-    })
+    expect(turnsOf(sent[0]!)).toEqual([{ role: 'USER', text: 'real' }])
   })
 
   it('sets no clientToken without sequence numbers', async () => {
     const sender = makeSender(send)
-    await sender.sendBatch([userMsg('x')])
+    await sender.sendBatch([userMsg('x'), userMsg('y')])
     expect(sent[0]!.input.clientToken).toBeUndefined()
   })
 
-  it('derives a deterministic clientToken from sequenceNumbers, identical across calls', async () => {
+  it('derives one deterministic seq-range clientToken per event, identical across a re-fire', async () => {
     const sender = makeSender(send)
-    await sender.sendBatch([userMsg('x'), asstMsg('y')], [7, 8])
-    const firstTokens = sent.map((c) => c.input.clientToken)
-    expect(firstTokens).toEqual(['mem-1-actor-1-run-1-7', 'mem-1-actor-1-run-1-8'])
+    await sender.sendBatch([userMsg('x'), asstMsg('y'), userMsg('z')], [7, 8, 9])
+    expect(send).toHaveBeenCalledTimes(1)
+    // token spans [firstSeq, lastSeq] of the event
+    expect(sent[0]!.input.clientToken).toBe('mem-1-actor-1-run-1-7-9')
 
-    // Re-fire the same messages/sequence numbers -> identical tokens (re-fire dedups server-side).
+    // Re-fire the same batch -> identical token (coordinator re-fire dedups server-side).
     sent = []
-    await sender.sendBatch([userMsg('x'), asstMsg('y')], [7, 8])
-    expect(sent.map((c) => c.input.clientToken)).toEqual(firstTokens)
+    await sender.sendBatch([userMsg('x'), asstMsg('y'), userMsg('z')], [7, 8, 9])
+    expect(sent[0]!.input.clientToken).toBe('mem-1-actor-1-run-1-7-9')
   })
 
-  it('gives distinct sequence numbers distinct tokens (no false collapse of identical text)', async () => {
-    const sender = makeSender(send)
-    await sender.sendBatch([userMsg('ok'), userMsg('ok')], [1, 2])
-    expect(sent[0]!.input.clientToken).not.toBe(sent[1]!.input.clientToken)
+  it('gives each chunk its own seq-range token', async () => {
+    const sender = makeSender(send, { maxTurnsPerEvent: 2 })
+    await sender.sendBatch([userMsg('a'), userMsg('b'), userMsg('c')], [1, 2, 3])
+    expect(sent.map((c) => c.input.clientToken)).toEqual(['mem-1-actor-1-run-1-1-2', 'mem-1-actor-1-run-1-3-3'])
   })
 
   it('anchors the clientToken on the run id, not sessionId (survives seq reset on session restore)', async () => {
@@ -103,8 +115,8 @@ describe('AgentCoreEventSender.sendBatch', () => {
     const b = makeSender(send, { runId: 'run-B' })
     await a.sendBatch([userMsg('x')], [0])
     await b.sendBatch([userMsg('x')], [0])
-    expect(sent[0]!.input.clientToken).toBe('mem-1-actor-1-run-A-0')
-    expect(sent[1]!.input.clientToken).toBe('mem-1-actor-1-run-B-0')
+    expect(sent[0]!.input.clientToken).toBe('mem-1-actor-1-run-A-0-0')
+    expect(sent[1]!.input.clientToken).toBe('mem-1-actor-1-run-B-0-0')
   })
 
   it('defaults runId to a fresh UUID when none is supplied', async () => {
@@ -115,17 +127,35 @@ describe('AgentCoreEventSender.sendBatch', () => {
       sessionId: 'sess-1',
     })
     await sender.sendBatch([userMsg('x')], [0])
-    // mem-1-actor-1-<uuid>-0 : the run segment is a UUID, not the sessionId.
+    // mem-1-actor-1-<uuid>-0-0 : the run segment is a UUID, not the sessionId.
     const token = sent[0]!.input.clientToken as string
-    expect(token).toMatch(/^mem-1-actor-1-[0-9a-f-]{36}-0$/)
+    expect(token).toMatch(/^mem-1-actor-1-[0-9a-f-]{36}-0-0$/)
     expect(token).not.toContain('sess-1')
   })
 
-  it('maps metadataProvider output to AgentCore {stringValue}, stringifying non-strings', async () => {
+  it('omits the token when any covered sequence number is missing', async () => {
+    const sender = makeSender(send)
+    await sender.sendBatch([userMsg('x'), userMsg('y')], [7]) // second seq undefined
+    expect(sent[0]!.input.clientToken).toBeUndefined()
+  })
+
+  it('starts a new event when per-message metadata changes (event metadata is per-event)', async () => {
+    const sender = makeSender(send, {
+      metadataProvider: (m) => ({ topic: m.content[0] && 'text' in m.content[0] ? m.content[0].text : '' }),
+    })
+    // Two distinct metadata signatures -> two events, even under the size cap.
+    await sender.sendBatch([userMsg('alpha'), userMsg('beta')])
+    expect(send).toHaveBeenCalledTimes(2)
+    expect(sent[0]!.input.metadata).toEqual({ topic: { stringValue: 'alpha' } })
+    expect(sent[1]!.input.metadata).toEqual({ topic: { stringValue: 'beta' } })
+  })
+
+  it('maps constant metadata to {stringValue} and shares it across the batched event', async () => {
     const sender = makeSender(send, {
       metadataProvider: () => ({ source: 'support', priority: 3, tags: ['a', 'b'] }),
     })
-    await sender.sendBatch([userMsg('x')])
+    await sender.sendBatch([userMsg('x'), userMsg('y')])
+    expect(send).toHaveBeenCalledTimes(1) // constant metadata -> single event
     expect(sent[0]!.input.metadata).toEqual({
       source: { stringValue: 'support' },
       priority: { stringValue: '3' },
@@ -133,7 +163,7 @@ describe('AgentCoreEventSender.sendBatch', () => {
     })
   })
 
-  it('throws an AggregateError when a send fails (so the coordinator re-fires the batch)', async () => {
+  it('throws an AggregateError when an event fails (so the coordinator re-fires the batch)', async () => {
     const alwaysFail = vi.fn(async () => {
       throw new Error('boom')
     })
@@ -142,29 +172,29 @@ describe('AgentCoreEventSender.sendBatch', () => {
     expect(alwaysFail).toHaveBeenCalledTimes(1) // no internal retry; the coordinator owns retries
   })
 
-  it('sends the whole batch before throwing, and reports every failure', async () => {
+  it('attempts every event before throwing, and reports every failed event', async () => {
     const partial = vi.fn(async (command: CapturedCommand) => {
-      const text = (command.input.payload as [{ conversational: { content: { text: string } } }])[0].conversational
-        .content.text
-      if (text.startsWith('bad')) throw new Error(`nope: ${text}`)
+      const first = turnsOf(command)[0]!.text
+      if (first.startsWith('bad')) throw new Error(`nope: ${first}`)
       sent.push(command)
       return {}
     })
-    const sender = makeSender(partial)
+    // cap 1 -> one event per message, so we can fail specific ones
+    const sender = makeSender(partial, { maxTurnsPerEvent: 1 })
     const err = await sender.sendBatch([userMsg('good-1'), userMsg('bad-1'), userMsg('bad-2')]).catch((e) => e)
     expect(err).toBeInstanceOf(AggregateError)
     expect((err as AggregateError).errors).toHaveLength(2) // both bad-* surfaced
-    expect(partial).toHaveBeenCalledTimes(3) // every message attempted (allSettled, not fail-fast)
-    // the good one still went through
-    const goodTexts = sent.map(
-      (c) => (c.input.payload as [{ conversational: { content: { text: string } } }])[0].conversational.content.text
-    )
-    expect(goodTexts).toEqual(['good-1'])
+    expect(partial).toHaveBeenCalledTimes(3) // every event attempted (allSettled, not fail-fast)
+    expect(turnsOf(sent[0]!)[0]!.text).toBe('good-1') // the good one still went through
   })
 
   it('resolves without sending anything when no message has extractable text', async () => {
     const sender = makeSender(send)
     await expect(sender.sendBatch([toolOnlyMsg])).resolves.toBeUndefined()
     expect(send).not.toHaveBeenCalled()
+  })
+
+  it('rejects a non-positive maxTurnsPerEvent at construction', () => {
+    expect(() => makeSender(send, { maxTurnsPerEvent: 0 })).toThrow(/maxTurnsPerEvent must be a positive integer/)
   })
 })

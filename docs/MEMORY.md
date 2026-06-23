@@ -15,11 +15,12 @@ A single store, `AgentCoreMemoryStore`, that plugs into Strands' `MemoryManager`
 
 - **Recall** — the agent's `search_memory` tool (and optional passive injection) reads long-term
   memory via `retrieveMemoryRecords`.
-- **Write** — conversation turns are written to AgentCore as role-tagged events via `createEvent`.
-  AgentCore extracts and consolidates them into long-term records **server-side** — no client-side
-  LLM pass.
-- **Cadence control** — a custom trigger flushes writes by message count, content size, or time, so
-  you control API call volume from one place.
+- **Write** — a turn's conversation messages are packed into a single role-tagged `createEvent` (one
+  API call per flush carrying many turns, not one call per message). AgentCore extracts and
+  consolidates them into long-term records **server-side** — no client-side LLM pass.
+- **Cost control** — write API-call volume is governed by how often the extraction trigger flushes and
+  by `maxTurnsPerEvent` (the per-event turn cap, default 50). A coarser trigger cadence (fewer flushes)
+  and the default batching mean far fewer `createEvent` calls than one-per-message.
 
 ## The two-tier model (why writes aren't instantly searchable)
 
