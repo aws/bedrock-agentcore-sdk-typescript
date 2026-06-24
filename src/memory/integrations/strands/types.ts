@@ -54,10 +54,10 @@ export type AgentCoreReadTarget =
 export type MetadataProvider = (message: MessageData) => Record<string, JSONValue>
 
 /**
- * Reusable connection + write-identity config, shared across the stores of one
- * `(actorId, sessionId)`. Build it once and spin up one store per namespace (mirrors the shared-config
- * pattern used by `BedrockKnowledgeBaseStore`). Fixed for the store's lifetime; a multi-actor server
- * builds a fresh config per `(actorId, sessionId)`.
+ * Connection + write identity for a store: the AgentCore memoryId/actorId/sessionId plus optional
+ * client/credentials/tuning. Passed **flat** on every store config. The factory builds one of these once
+ * (constructing the AWS client a single time) and spreads it across the stores of one actor/session set,
+ * so they share the same client; a standalone store supplies the same fields directly to its constructor.
  */
 export interface AgentCoreMemoryConfig {
   /** AgentCore Memory resource id. */
@@ -81,7 +81,7 @@ export interface AgentCoreMemoryConfig {
   readonly region?: string | undefined
   /** Credentials for the default client. Ignored if `client` is supplied. */
   readonly credentialsProvider?: AwsCredentialIdentityProvider | undefined
-  /** Pre-constructed AWS client (e.g. shared across a set of stores). */
+  /** Pre-constructed AWS client (created if omitted; the factory shares one across a store set). */
   readonly client?: BedrockAgentCoreClient | undefined
 }
 
@@ -90,14 +90,6 @@ export interface AgentCoreMemoryConfig {
  * `name` / `description` / `maxSearchResults` / `writable` / `extraction`) and the read target.
  */
 export interface AgentCoreMemoryStoreFields {
-  /**
-   * Optional shared connection + write identity. Supply this **or** the flat `memoryId`/`actorId`/
-   * `sessionId` identity fields directly — the store accepts either. The factory builds one bundle and
-   * reuses it across a set of stores (build the client once); a standalone `new AgentCoreMemoryStore`
-   * caller just passes identity flat. If both are present, the bundle wins.
-   */
-  readonly config?: AgentCoreMemoryConfig
-
   /** Optional client-side relevance floor; records scoring below it are dropped from results. */
   readonly minScore?: number
 
@@ -110,20 +102,16 @@ export interface AgentCoreMemoryStoreFields {
 }
 
 /**
- * Config for a single {@link AgentCoreMemoryStore}.
- *
- * Identity (`memoryId`/`actorId`/`sessionId` and the optional client/metadata/tuning) may be passed
- * **flat** — for the standalone `new AgentCoreMemoryStore({ memoryId, actorId, sessionId, namespace })`
- * path — or via the shared {@link AgentCoreMemoryConfig} `config` bundle, which the factory builds once
- * and reuses across a set of stores. The read target is the {@link AgentCoreReadTarget} discriminated
- * union (`{ namespace }` exact, or `{ namespacePath }` subtree). `writable` defaults to `false`
- * (recall-only); set it `true` to make this the write sink. The store validates at construction that a
- * complete identity is present, with a clear error per missing field.
+ * Config for a single {@link AgentCoreMemoryStore}. One flat object: the {@link AgentCoreMemoryConfig}
+ * identity (`memoryId`/`actorId`/`sessionId` required; client/credentials/tuning optional), the
+ * {@link AgentCoreReadTarget} read-target union (`{ namespace }` exact, or `{ namespacePath }` subtree),
+ * and the framework's store fields. `writable` defaults to `false` (recall-only); set it `true` to make
+ * this the write sink. `name` defaults to a slug of the namespace template when omitted.
  */
 export type AgentCoreMemoryStoreConfig = Omit<MemoryStoreConfig, 'name'> &
+  AgentCoreMemoryConfig &
   AgentCoreReadTarget &
-  AgentCoreMemoryStoreFields &
-  Partial<AgentCoreMemoryConfig> & {
+  AgentCoreMemoryStoreFields & {
     /** Store name; defaults to a slug of the namespace template (see {@link slugifyNamespace}) if omitted. */
     readonly name?: string
   }

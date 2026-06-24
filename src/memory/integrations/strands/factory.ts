@@ -128,7 +128,8 @@ function buildStoreConfig(args: {
 }): AgentCoreMemoryStoreConfig {
   const { config, ns, template, readMode, writable, extraction } = args
   return {
-    config,
+    // Spread the shared identity flat — same client/identity object reused across the set.
+    ...config,
     ...(readMode === 'subtree' ? { namespacePath: template } : { namespace: template }),
     writable,
     ...(ns.name !== undefined && { name: ns.name }),

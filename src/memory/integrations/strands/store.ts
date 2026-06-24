@@ -39,25 +39,6 @@ function memoryContentText(content: MemoryRecordSummary['content']): string {
   return ''
 }
 
-/**
- * Normalize the two accepted identity shapes into one {@link AgentCoreMemoryConfig}. Identity may be
- * passed flat (`{ memoryId, actorId, sessionId, client?, ... }`) for a standalone `new` store, or via
- * the shared `config` bundle the factory builds once and reuses. The bundle wins if both are present.
- */
-function resolveIdentity(storeConfig: AgentCoreMemoryStoreConfig): AgentCoreMemoryConfig {
-  if (storeConfig.config !== undefined) return storeConfig.config
-  return {
-    memoryId: storeConfig.memoryId as string,
-    actorId: storeConfig.actorId as string,
-    sessionId: storeConfig.sessionId as string,
-    ...(storeConfig.metadataProvider !== undefined && { metadataProvider: storeConfig.metadataProvider }),
-    ...(storeConfig.maxTurnsPerEvent !== undefined && { maxTurnsPerEvent: storeConfig.maxTurnsPerEvent }),
-    ...(storeConfig.region !== undefined && { region: storeConfig.region }),
-    ...(storeConfig.credentialsProvider !== undefined && { credentialsProvider: storeConfig.credentialsProvider }),
-    ...(storeConfig.client !== undefined && { client: storeConfig.client }),
-  }
-}
-
 /** Read the {@link AgentCoreReadTarget} arm: subtree (`namespacePath`) vs exact (`namespace`). */
 function resolveReadTarget(storeConfig: AgentCoreMemoryStoreConfig): { readMode: ReadMode; template: string } {
   if ('namespacePath' in storeConfig && storeConfig.namespacePath !== undefined) {
@@ -96,7 +77,8 @@ export class AgentCoreMemoryStore implements MemoryStore {
   private readonly sender?: AgentCoreEventSender
 
   constructor(storeConfig: AgentCoreMemoryStoreConfig) {
-    const config = resolveIdentity(storeConfig)
+    // The store config carries identity flat, so it *is* the AgentCoreMemoryConfig.
+    const config: AgentCoreMemoryConfig = storeConfig
     const { readMode, template } = resolveReadTarget(storeConfig)
 
     this.memoryId = assertNonEmpty(config.memoryId, 'memoryId')

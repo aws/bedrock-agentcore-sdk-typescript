@@ -39,12 +39,10 @@ const baseConfig = (send: SendFn, overrides: ConfigOverrides = {}): AgentCoreMem
       ? { namespacePath }
       : { namespace: namespace ?? '/strategy/s/actor/{actorId}/preferences' }
   return {
-    config: {
-      memoryId: 'mem-1',
-      actorId: 'actor-1',
-      sessionId: 'sess-1',
-      client: fakeClient(send),
-    },
+    memoryId: 'mem-1',
+    actorId: 'actor-1',
+    sessionId: 'sess-1',
+    client: fakeClient(send),
     name: 'prefs',
     writable: false,
     ...readTarget,
@@ -281,7 +279,7 @@ describe('AgentCoreMemoryStore construction', () => {
     expect(store.writable).toBe(false)
   })
 
-  it('stands alone with flat identity (no nested config bundle)', async () => {
+  it('stands alone with flat identity (no factory needed)', async () => {
     const sent: CapturedCommand[] = []
     const send = vi.fn(async (command: CapturedCommand) => {
       sent.push(command)
@@ -323,10 +321,7 @@ describe('AgentCoreMemoryStore construction', () => {
 describe('AgentCoreMemoryStore validation', () => {
   const send = vi.fn(async () => ({}))
   const cfg = (overrides: ConfigOverrides = {}, identity: Partial<AgentCoreMemoryConfig> = {}) =>
-    baseConfig(send, {
-      config: { memoryId: 'mem-1', actorId: 'actor-1', sessionId: 'sess-1', client: fakeClient(send), ...identity },
-      ...overrides,
-    })
+    baseConfig(send, { ...identity, ...overrides })
 
   it.each([
     ['memoryId', { memoryId: '' }],
