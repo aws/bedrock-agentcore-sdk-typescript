@@ -36,8 +36,13 @@ export const RESERVED_METADATA_PREFIX = '_'
 export type ReadMode = 'per-namespace' | 'subtree'
 
 /**
- * Per-message metadata attached to each `createEvent`. Returns a lenient JSON bag; the sender maps
- * each value to AgentCore's `{ stringValue }` event-metadata shape (stringifying non-strings).
+ * Per-message metadata attached to each `createEvent`. Returns a JSON bag; the sender maps each value
+ * to AgentCore's `{ stringValue }` event-metadata shape (stringifying non-strings).
+ *
+ * AgentCore restricts metadata values to `[a-zA-Z0-9\s._:/=+@-]` (letters, digits, whitespace, and
+ * `._:/=+@-`). Prefer scalar string/number/boolean values; **avoid arrays/objects** — they stringify to
+ * JSON containing `[]{}",` which the service rejects. A value outside the allowed set throws a clear
+ * client-side error (naming the key) rather than failing opaquely server-side at `createEvent`.
  */
 export type MetadataProvider = (message: MessageData) => Record<string, JSONValue>
 

@@ -128,6 +128,17 @@ describe('AgentCoreMemoryStore.search', () => {
     expect((lastInput.searchCriteria as { topK: number }).topK).toBe(3)
   })
 
+  it('ceils a fractional overFetchFactor so topK stays an integer (the service requires int)', async () => {
+    send = sendReturning([])
+    const store = new AgentCoreMemoryStore(
+      baseConfig(send, { maxSearchResults: 5, minScore: 0.5, overFetchFactor: 1.5 })
+    )
+    await store.search('q')
+    const topK = (lastInput.searchCriteria as { topK: number }).topK
+    expect(topK).toBe(8) // ceil(5 * 1.5) = ceil(7.5)
+    expect(Number.isInteger(topK)).toBe(true)
+  })
+
   it('drops unscored records under a positive floor (score undefined treated as 0)', async () => {
     send = sendReturning([record('1', 'scored', 0.9), record('2', 'unscored', undefined)])
     const store = new AgentCoreMemoryStore(baseConfig(send, { minScore: 0.5 }))

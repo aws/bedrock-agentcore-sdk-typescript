@@ -36,6 +36,12 @@ interface EventGroup {
   metadata: Record<string, unknown> | undefined
 }
 
+/** An {@link EventGroup} whose metadata has been validated + mapped to AgentCore's event-metadata shape. */
+interface PreparedEvent {
+  items: SeqMessage[]
+  metadata: Record<string, { stringValue: string }> | undefined
+}
+
 /**
  * Writes a batch of role-tagged messages to AgentCore, packing the turns into as few `createEvent`
  * calls as possible. `createEvent` accepts an array of conversational turns, so one flush of N turns
@@ -94,13 +100,20 @@ export class AgentCoreEventSender {
       .filter((m) => isUserOrAssistantWithText(m.message))
     if (sendable.length === 0) return
 
-    const groups = this.groupIntoEvents(sendable)
-    const results = await Promise.allSettled(groups.map((g) => this.sendEvent(g)))
+    // Validate + map metadata for every event BEFORE any network call. A charset violation is a
+    // deterministic input error, so it must fail loud-and-early (unwrapped) rather than being caught
+    // by the allSettled boundary below and re-wrapped as an opaque AggregateError. No createEvent is
+    // attempted if any group's metadata is invalid.
+    const events = this.groupIntoEvents(sendable).map(
+      (g): PreparedEvent => ({ items: g.items, metadata: g.metadata && toAgentCoreMetadata(g.metadata) })
+    )
+
+    const results = await Promise.allSettled(events.map((e) => this.sendEvent(e)))
     const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
     if (failures.length > 0) {
       throw new AggregateError(
         failures.map((f) => f.reason),
-        `AgentCore createEvent failed for ${failures.length} of ${groups.length} event(s)`
+        `AgentCore createEvent failed for ${failures.length} of ${events.length} event(s)`
       )
     }
   }
@@ -129,11 +142,11 @@ export class AgentCoreEventSender {
     return groups
   }
 
-  private async sendEvent(group: EventGroup): Promise<void> {
-    const payload = group.items.map((item) => ({
+  private async sendEvent(event: PreparedEvent): Promise<void> {
+    const payload = event.items.map((item) => ({
       conversational: { role: mapRole(item.message), content: { text: extractText(item.message) } },
     }))
-    const clientToken = this.tokenForSeqs(group.items.map((item) => item.seq))
+    const clientToken = this.tokenForSeqs(event.items.map((item) => item.seq))
 
     const command = new CreateEventCommand({
       memoryId: this.memoryId,
@@ -142,7 +155,7 @@ export class AgentCoreEventSender {
       eventTimestamp: new Date(),
       payload,
       ...(clientToken !== undefined && { clientToken }),
-      ...(group.metadata && { metadata: toAgentCoreMetadata(group.metadata) }),
+      ...(event.metadata && { metadata: event.metadata }),
     })
 
     await this.client.send(command)
@@ -162,11 +175,33 @@ export class AgentCoreEventSender {
   }
 }
 
-/** Map a lenient metadata bag to AgentCore's `{ stringValue }` event-metadata shape. */
+/**
+ * AgentCore restricts `createEvent` metadata values to this character set. The constraint is enforced
+ * server-side (not in the AWS SDK types), so a value outside it fails at `createEvent` with an opaque
+ * `ValidationException`. We validate client-side and throw a clear, actionable error instead — mirroring
+ * the namespace placeholder check.
+ */
+const METADATA_VALUE_PATTERN = /^[a-zA-Z0-9\s._:/=+@-]*$/
+
+/**
+ * Map a metadata bag to AgentCore's `{ stringValue }` event-metadata shape. Non-string values are
+ * JSON-stringified. Each resulting value must match {@link METADATA_VALUE_PATTERN}; a value that doesn't
+ * (e.g. a string with commas/punctuation, or a stringified array/object whose `[]{}",` are rejected)
+ * throws here with the offending key, rather than failing opaquely server-side at `createEvent`.
+ */
 function toAgentCoreMetadata(metadata: Record<string, unknown>): Record<string, { stringValue: string }> {
   const out: Record<string, { stringValue: string }> = {}
   for (const [key, value] of Object.entries(metadata)) {
-    out[key] = { stringValue: typeof value === 'string' ? value : JSON.stringify(value) }
+    const stringValue = typeof value === 'string' ? value : JSON.stringify(value)
+    if (!METADATA_VALUE_PATTERN.test(stringValue)) {
+      throw new Error(
+        `AgentCoreEventSender: metadata value for key "${key}" contains characters AgentCore rejects ` +
+          `(allowed: letters, digits, whitespace, and ._:/=+@-). Got ${JSON.stringify(stringValue)}. ` +
+          `Note: arrays/objects stringify to JSON containing []{}", which are not allowed — pass a ` +
+          `pre-encoded scalar string instead.`
+      )
+    }
+    out[key] = { stringValue }
   }
   return out
 }

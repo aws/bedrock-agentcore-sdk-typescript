@@ -152,15 +152,24 @@ describe('AgentCoreEventSender.sendBatch', () => {
 
   it('maps constant metadata to {stringValue} and shares it across the batched event', async () => {
     const sender = makeSender(send, {
-      metadataProvider: () => ({ source: 'support', priority: 3, tags: ['a', 'b'] }),
+      // Values must match AgentCore's metadata charset ([a-zA-Z0-9 ._:/=+@-]); numbers stringify cleanly.
+      metadataProvider: () => ({ source: 'support', priority: 3 }),
     })
     await sender.sendBatch([userMsg('x'), userMsg('y')])
     expect(send).toHaveBeenCalledTimes(1) // constant metadata -> single event
     expect(sent[0]!.input.metadata).toEqual({
       source: { stringValue: 'support' },
       priority: { stringValue: '3' },
-      tags: { stringValue: '["a","b"]' },
     })
+  })
+
+  it('throws a clear error for metadata values outside AgentCore’s allowed charset (before createEvent)', async () => {
+    // A stringified array/object contains []{}"," which the service rejects; so do punctuation chars.
+    for (const bad of [{ tags: ['a', 'b'] }, { note: 'billing,refund' }, { q: 'why?' }]) {
+      const sender = makeSender(send, { metadataProvider: () => bad })
+      await expect(sender.sendBatch([userMsg('x')])).rejects.toThrow(/characters AgentCore rejects/)
+    }
+    expect(send).not.toHaveBeenCalled() // fails before any createEvent
   })
 
   it('throws an AggregateError when an event fails (so the coordinator re-fires the batch)', async () => {

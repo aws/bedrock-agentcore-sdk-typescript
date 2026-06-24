@@ -131,8 +131,10 @@ export class AgentCoreMemoryStore implements MemoryStore {
   async search(query: string, options?: SearchOptions): Promise<MemoryEntry[]> {
     const want = options?.maxSearchResults ?? this.maxSearchResults ?? DEFAULT_MAX_SEARCH_RESULTS
     // With a minScore floor, over-fetch then trim so the client-side filter doesn't under-deliver
-    // when above-floor records exist deeper in the ranking. With no floor, topK == want.
-    const topK = this.minScore == null ? want : Math.min(want * this.overFetchFactor, MAX_TOPK)
+    // when above-floor records exist deeper in the ranking. With no floor, topK == want. Ceil the
+    // product so a fractional overFetchFactor (permitted by validation) never yields a non-integer
+    // topK — the service's RetrieveMemoryRecords requires an integer.
+    const topK = this.minScore == null ? want : Math.min(Math.ceil(want * this.overFetchFactor), MAX_TOPK)
 
     const command = new RetrieveMemoryRecordsCommand({
       memoryId: this.memoryId,
