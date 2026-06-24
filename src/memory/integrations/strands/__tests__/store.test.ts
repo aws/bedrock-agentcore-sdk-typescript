@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
 import { AgentCoreMemoryStore } from '../store.js'
 import { logger } from '../logger.js'
-import { RESERVED_METADATA_PREFIX, type AgentCoreMemoryStoreConfig } from '../types.js'
+import { RESERVED_METADATA_PREFIX, type AgentCoreMemoryConfig, type AgentCoreMemoryStoreConfig } from '../types.js'
 import type { MessageData } from '@strands-agents/sdk'
 
 interface CapturedCommand {
@@ -21,19 +21,36 @@ function record(id: string, text: string, score?: number, namespaces: string[] =
   return { memoryRecordId: id, content: { text }, score, namespaces, memoryStrategyId: 'strat', createdAt: new Date() }
 }
 
-const baseConfig = (send: SendFn, overrides: Partial<AgentCoreMemoryStoreConfig> = {}): AgentCoreMemoryStoreConfig => ({
-  config: {
-    memoryId: 'mem-1',
-    actorId: 'actor-1',
-    sessionId: 'sess-1',
-    client: fakeClient(send),
-  },
-  name: 'prefs',
-  namespace: '/strategy/s/actor/{actorId}/preferences',
-  readMode: 'per-namespace',
-  writable: false,
-  ...overrides,
-})
+const userMsg = (text: string): MessageData => ({ role: 'user', content: [{ text }] })
+
+/**
+ * Override shape for tests: every store-config field optional, plus the read target expressed as either
+ * `namespace` (exact) or `namespacePath` (subtree). `baseConfig` defaults to the exact arm.
+ */
+type ConfigOverrides = Partial<Omit<AgentCoreMemoryStoreConfig, 'namespace' | 'namespacePath'>> & {
+  namespace?: string
+  namespacePath?: string
+}
+
+const baseConfig = (send: SendFn, overrides: ConfigOverrides = {}): AgentCoreMemoryStoreConfig => {
+  const { namespace, namespacePath, ...rest } = overrides
+  const readTarget =
+    namespacePath !== undefined
+      ? { namespacePath }
+      : { namespace: namespace ?? '/strategy/s/actor/{actorId}/preferences' }
+  return {
+    config: {
+      memoryId: 'mem-1',
+      actorId: 'actor-1',
+      sessionId: 'sess-1',
+      client: fakeClient(send),
+    },
+    name: 'prefs',
+    writable: false,
+    ...readTarget,
+    ...rest,
+  } as AgentCoreMemoryStoreConfig
+}
 
 describe('AgentCoreMemoryStore.search', () => {
   let lastInput: Record<string, unknown>
@@ -49,9 +66,9 @@ describe('AgentCoreMemoryStore.search', () => {
     lastInput = {}
   })
 
-  it('resolves {actorId} in the namespace and queries via `namespace` for per-namespace mode', async () => {
+  it('resolves {actorId} in the namespace and queries via `namespace` for exact (per-namespace) mode', async () => {
     send = sendReturning([record('1', 'a')])
-    const store = new AgentCoreMemoryStore(baseConfig(send, { readMode: 'per-namespace' }))
+    const store = new AgentCoreMemoryStore(baseConfig(send))
     await store.search('q')
     expect(lastInput.namespace).toBe('/strategy/s/actor/actor-1/preferences')
     expect(lastInput.namespacePath).toBeUndefined()
@@ -59,9 +76,7 @@ describe('AgentCoreMemoryStore.search', () => {
 
   it('queries via `namespacePath` for subtree mode', async () => {
     send = sendReturning([record('1', 'a')])
-    const store = new AgentCoreMemoryStore(
-      baseConfig(send, { readMode: 'subtree', namespace: '/strategy/s/actor/{actorId}' })
-    )
+    const store = new AgentCoreMemoryStore(baseConfig(send, { namespacePath: '/strategy/s/actor/{actorId}' }))
     await store.search('q')
     expect(lastInput.namespacePath).toBe('/strategy/s/actor/actor-1')
     expect(lastInput.namespace).toBeUndefined()
@@ -178,8 +193,6 @@ describe('AgentCoreMemoryStore.search', () => {
 })
 
 describe('AgentCoreMemoryStore.addMessages', () => {
-  const userMsg = (text: string): MessageData => ({ role: 'user', content: [{ text }] })
-
   it('writable store sends events through the sender', async () => {
     const sent: CapturedCommand[] = []
     const send = vi.fn(async (command: CapturedCommand) => {
@@ -253,14 +266,63 @@ describe('AgentCoreMemoryStore construction', () => {
     expect(warn).not.toHaveBeenCalled()
     warn.mockRestore()
   })
+
+  it('self-names from the namespace template when no name is given', () => {
+    const send = vi.fn(async () => ({}))
+    const { name: _drop, ...noName } = baseConfig(send, { namespace: '/users/{actorId}/facts' })
+    const store = new AgentCoreMemoryStore(noName as AgentCoreMemoryStoreConfig)
+    expect(store.name).toBe('users-facts')
+  })
+
+  it('defaults writable to false (recall-safe) when omitted', () => {
+    const send = vi.fn(async () => ({}))
+    const { writable: _drop, ...noWritable } = baseConfig(send)
+    const store = new AgentCoreMemoryStore(noWritable as AgentCoreMemoryStoreConfig)
+    expect(store.writable).toBe(false)
+  })
+
+  it('stands alone with flat identity (no nested config bundle)', async () => {
+    const sent: CapturedCommand[] = []
+    const send = vi.fn(async (command: CapturedCommand) => {
+      sent.push(command)
+      return {}
+    })
+    // The whole point of the refactor: a usable store from flat identity + namespace, no factory.
+    const store = new AgentCoreMemoryStore({
+      memoryId: 'mem-1',
+      actorId: 'actor-1',
+      sessionId: 'sess-1',
+      client: fakeClient(send),
+      namespace: '/users/{actorId}/facts',
+      writable: true,
+      extraction: true,
+    })
+    expect(store.name).toBe('users-facts')
+    expect(store.writable).toBe(true)
+    expect(store.extraction).toBe(true)
+    await store.addMessages([userMsg('hi')])
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!.input).toMatchObject({ memoryId: 'mem-1', actorId: 'actor-1', sessionId: 'sess-1' })
+  })
+
+  it('flat identity validates missing ids with a clear error', () => {
+    const send = vi.fn(async () => ({}))
+    expect(
+      () =>
+        new AgentCoreMemoryStore({
+          memoryId: '',
+          actorId: 'actor-1',
+          sessionId: 'sess-1',
+          client: fakeClient(send),
+          namespace: '/users/{actorId}/facts',
+        })
+    ).toThrow(/memoryId must be a non-empty/)
+  })
 })
 
 describe('AgentCoreMemoryStore validation', () => {
   const send = vi.fn(async () => ({}))
-  const cfg = (
-    overrides: Partial<AgentCoreMemoryStoreConfig> = {},
-    identity: Partial<AgentCoreMemoryStoreConfig['config']> = {}
-  ) =>
+  const cfg = (overrides: ConfigOverrides = {}, identity: Partial<AgentCoreMemoryConfig> = {}) =>
     baseConfig(send, {
       config: { memoryId: 'mem-1', actorId: 'actor-1', sessionId: 'sess-1', client: fakeClient(send), ...identity },
       ...overrides,

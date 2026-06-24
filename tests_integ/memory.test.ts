@@ -8,7 +8,11 @@ import {
 } from '@aws-sdk/client-bedrock-agentcore-control'
 import { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
 import { Agent, BedrockModel, MemoryManager } from '@strands-agents/sdk'
-import { createAgentCoreMemoryStore, createAgentCoreMemoryStores } from '../src/memory/integrations/strands/index.js'
+import {
+  AgentCoreMemoryStore,
+  createAgentCoreMemoryStore,
+  createAgentCoreMemoryStores,
+} from '../src/memory/integrations/strands/index.js'
 
 /**
  * Integration + end-to-end tests for the AgentCore Memory <-> Strands store.
@@ -251,6 +255,29 @@ describe('AgentCoreMemoryStore (store-level, live data plane)', () => {
     })
     await expect(store!.search('anything')).resolves.toBeDefined()
   }, 60_000)
+
+  it('stands alone: a directly-constructed store (no factory) writes and recalls', async () => {
+    // The store is a self-contained primitive — flat identity + namespace, no factory, no nested config.
+    const standaloneActor = `standalone-actor-${uniqueSuffix()}`
+    const store = new AgentCoreMemoryStore({
+      memoryId,
+      actorId: standaloneActor,
+      sessionId: `standalone-session-${uniqueSuffix()}-padded-to-be-long-enough`,
+      namespace: FACTS_NAMESPACE,
+      writable: true,
+      extraction: true,
+      client: dataPlane,
+    })
+    expect(store.writable).toBe(true)
+    await expect(
+      store.addMessages!(
+        [{ role: 'user', content: [{ text: 'I drive a vintage Vespa and collect vinyl records.' }] }],
+        { sequenceNumbers: [0] }
+      )
+    ).resolves.toBeUndefined()
+    const results = await pollForRecords(() => store.search('what does the user own'))
+    expect(Array.isArray(results)).toBe(true)
+  }, 300_000)
 })
 
 describe('AgentCoreMemoryStore (session-scoped namespace drift)', () => {

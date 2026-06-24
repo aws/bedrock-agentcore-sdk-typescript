@@ -7,8 +7,10 @@ import {
   type AgentCoreMemoryStoreConfig,
   DEFAULT_REGION,
   type MetadataProvider,
-  type ReadMode,
 } from './types.js'
+
+/** How the factory builds a read store: one store per namespace, or one store over a common parent subtree. */
+export type ReadMode = 'per-namespace' | 'subtree'
 
 /** Per-namespace read configuration. */
 export interface AgentCoreNamespaceConfig {
@@ -21,26 +23,31 @@ export interface AgentCoreNamespaceConfig {
   minScore?: number
   /** Over-fetch multiplier when `minScore` is set (see {@link AgentCoreMemoryStoreConfig.overFetchFactor}). */
   overFetchFactor?: number
+  /**
+   * Marks this namespace's store as the single write sink (`addMessages` + extraction). Because
+   * `createEvent` is namespace-free, at most one store may be writable. When `extraction` is enabled and
+   * no namespace sets this, the first namespace is the writer. {@link assertWritableTopology} enforces
+   * the at-most-one rule.
+   */
+  writable?: boolean
 }
 
 /**
- * Object form of the {@link CreateAgentCoreMemoryStoresInput.extraction} switch: writable, with
- * optional control over write cadence, which messages to write, and which namespace owns the stream.
+ * Object form of the {@link CreateAgentCoreMemoryStoresInput.extraction} switch: writable, with optional
+ * control over write cadence and which message content is written.
  */
 export interface AgentCoreExtractionConfig {
   /**
    * Write cadence — when buffered turns are flushed to `createEvent`. Omit to defer to the
-   * MemoryManager's default (Strands' `IntervalTrigger`, every few turns), which is consistent with
-   * other Strands stores. Pass an {@link AgentCoreBatchTrigger} for message-count / byte / time
-   * batching tuned to AgentCore.
+   * MemoryManager's default (Strands' `IntervalTrigger`, every few turns), consistent with other Strands
+   * stores. Pass any Strands {@link ExtractionTrigger} (e.g. `IntervalTrigger`/`InvocationTrigger`), or
+   * an array to compose several.
    *
-   * Note on cadence vs durability: a trigger only controls *when* a flush is dispatched (fire-and-forget;
-   * the coordinator never awaits it). `IntervalTrigger` fires only per-invocation, so the tail of a
-   * conversation that ends mid-cadence is not written until the next turn — and at a true end-of-session
-   * there is no next turn, so that tail is lost. `AgentCoreBatchTrigger`'s wall-clock `maxDelayMs`
-   * narrows that window but does not close it. The durability mechanism is {@link MemoryManager.flush},
-   * called at a point where the runtime is alive (e.g. the end of an invocation handler) — it awaits the
-   * writes to completion. Cadence reduces API-call volume; `flush()` guarantees the data lands.
+   * Cadence vs durability: a trigger only controls *when* a flush is dispatched (fire-and-forget; the
+   * coordinator never awaits it). At a true end-of-session there is no next turn, so a tail that hasn't
+   * fired is lost. The durability mechanism is {@link MemoryManager.flush}, called where the runtime is
+   * alive (e.g. the end of an invocation handler) — it awaits the writes. Cadence reduces API-call
+   * volume; `flush()` guarantees the data lands.
    */
   cadence?: ExtractionTrigger | ExtractionTrigger[]
   /**
@@ -48,11 +55,6 @@ export interface AgentCoreExtractionConfig {
    * framework default (drops tool use/result). Forwarded to the store's `ExtractionConfig.filter`.
    */
   filter?: MemoryMessageFilter
-  /**
-   * Which namespace hosts the single write stream (by `namespace` template). Defaults to the first
-   * namespace. Ignored for `subtree` (its one store is the writer).
-   */
-  namespace?: string
 }
 
 export interface CreateAgentCoreMemoryStoresInput {
@@ -73,8 +75,9 @@ export interface CreateAgentCoreMemoryStoresInput {
    * The single write switch (mirrors the framework's `boolean | config` shorthand). For AgentCore,
    * writable, extraction-enabled, and "writes via createEvent" are one concept, so they collapse here:
    * omitted or `false` means recall-only (every store search-only, no writes); `true` means writable
-   * with the framework's default cadence; `{ cadence?, filter?, namespace? }` means writable with a
-   * custom cadence/filter and/or a chosen write namespace.
+   * with the framework's default cadence; `{ cadence?, filter? }` means writable with a custom
+   * cadence/filter. Which namespace is the writer is chosen by the per-namespace `writable` flag (else
+   * the first namespace).
    */
   extraction?: boolean | AgentCoreExtractionConfig
 
@@ -93,16 +96,6 @@ export interface CreateAgentCoreMemoryStoresInput {
   client?: BedrockAgentCoreClient
 }
 
-function slugifyNamespace(ns: string): string {
-  // Strip `{placeholder}` segments, then collapse remaining non-alphanumerics to `-`.
-  // `[^{}]*` (excludes both braces) is unambiguous and linear — no polynomial-backtracking risk.
-  const slug = ns
-    .replace(/\{[^{}]*\}/g, '')
-    .replace(/[^a-zA-Z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  return slug.length > 0 ? slug : 'agentcore-memory'
-}
-
 /** Longest common path-segment prefix of the given namespace templates. */
 function commonParent(namespaces: string[]): string | undefined {
   if (namespaces.length === 0) return undefined
@@ -119,25 +112,26 @@ function commonParent(namespaces: string[]): string | undefined {
 }
 
 /**
- * Build one store's config. Optional identity fields are spread conditionally so explicit `undefined`
- * never violates `exactOptionalPropertyTypes`.
+ * Build one store's config from the shared identity bundle + per-namespace settings. Emits the
+ * {@link AgentCoreReadTarget} arm matching `readMode` (`namespacePath` for subtree, else `namespace`).
+ * Optional fields are spread conditionally so explicit `undefined` never violates
+ * `exactOptionalPropertyTypes`. The store self-names from the template, so `name` is only set when the
+ * caller gave one explicitly.
  */
 function buildStoreConfig(args: {
   config: AgentCoreMemoryConfig
   ns: AgentCoreNamespaceConfig
-  fallbackName: string
-  namespace: string
+  template: string
   readMode: ReadMode
   writable: boolean
   extraction: boolean | ExtractionConfig | undefined
 }): AgentCoreMemoryStoreConfig {
-  const { config, ns, fallbackName, namespace, readMode, writable, extraction } = args
+  const { config, ns, template, readMode, writable, extraction } = args
   return {
     config,
-    name: ns.name ?? fallbackName,
-    namespace,
-    readMode,
+    ...(readMode === 'subtree' ? { namespacePath: template } : { namespace: template }),
     writable,
+    ...(ns.name !== undefined && { name: ns.name }),
     ...(ns.description !== undefined && { description: ns.description }),
     ...(ns.maxSearchResults !== undefined && { maxSearchResults: ns.maxSearchResults }),
     ...(ns.minScore !== undefined && { minScore: ns.minScore }),
@@ -147,16 +141,49 @@ function buildStoreConfig(args: {
 }
 
 /**
+ * Enforce the AgentCore write topology: **at most one** store may be writable. Because `createEvent` is
+ * namespace-free (it writes the whole conversation to the `(memoryId, actorId, sessionId)` stream),
+ * two writable stores would emit duplicate events — and nothing upstream dedupes them (the
+ * `MemoryManager` schedules each extraction store independently; the per-sender idempotency token is
+ * keyed on a per-store run id, so it cannot collapse cross-store duplicates). The single-writer rule can
+ * therefore only be enforced here, at construction. Exported so hand-built (`new`) multi-store setups
+ * can guard themselves too.
+ *
+ * - `0` writable: OK (recall-only) — unless `expectExtraction` is set (a writer is required to run it).
+ * - `1` writable: OK.
+ * - `>1` writable: always an error.
+ */
+export function assertWritableTopology(stores: readonly AgentCoreMemoryStore[], expectExtraction = false): void {
+  const writers = stores.filter((s) => s.writable)
+  if (writers.length > 1) {
+    throw new Error(
+      `AgentCore memory: at most one store may be writable, but ${writers.length} are ` +
+        `(${writers.map((s) => `"${s.name}"`).join(', ')}). createEvent is namespace-free, so multiple ` +
+        'writable stores would write duplicate events to the same (memoryId, actorId, sessionId) stream. ' +
+        'Mark exactly one namespace writable.'
+    )
+  }
+  if (expectExtraction && writers.length === 0) {
+    throw new Error(
+      'AgentCore memory: extraction is enabled but no store is writable. Mark one namespace ' +
+        '`writable: true` (or omit extraction for recall-only).'
+    )
+  }
+}
+
+/**
  * Build the AgentCore store topology for one `(actorId, sessionId)`, ready to spread into
  * `MemoryManagerConfig.stores`.
  *
  * - `per-namespace` (default): one store per namespace; when `extraction` is enabled, exactly one
- *   (the `extraction.namespace`, else the first) is writable and carries `addMessages` + `extraction`.
- *   The rest are search-only. When `extraction` is omitted/`false`, all stores are search-only.
+ *   (the namespace flagged `writable`, else the first) is writable and carries `addMessages` +
+ *   `extraction`. The rest are search-only. When `extraction` is omitted/`false`, all stores are
+ *   search-only (unless a namespace is explicitly `writable`).
  * - `subtree`: one store reading a parent path via `namespacePath` (writable iff `extraction` is enabled).
  *
- * Because `createEvent` is namespace-free, writes always go through exactly one store regardless of
- * read shape. A multi-actor/session server calls this once per `(actorId, sessionId)`.
+ * Because `createEvent` is namespace-free, writes always go through exactly one store regardless of read
+ * shape; {@link assertWritableTopology} enforces that. A multi-actor/session server calls this once per
+ * `(actorId, sessionId)`.
  */
 export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresInput): AgentCoreMemoryStore[] {
   if (input.namespaces.length === 0) {
@@ -170,10 +197,9 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
 
   const readMode: ReadMode = input.readMode ?? 'per-namespace'
 
-  // Resolve the single `extraction` switch into the store-facing `boolean | ExtractionConfig` value
-  // and the chosen write namespace. We pass `true` straight through (rather than eagerly building a
-  // trigger) so the MemoryManager applies its own default cadence; we only build an `ExtractionConfig`
-  // when the caller supplies a custom cadence and/or filter.
+  // Resolve the single `extraction` switch into the store-facing `boolean | ExtractionConfig` value. We
+  // pass `true` straight through (rather than eagerly building a trigger) so the MemoryManager applies
+  // its own default cadence; we only build an `ExtractionConfig` when a custom cadence/filter is given.
   const writeEnabled = input.extraction !== undefined && input.extraction !== false
   const extractionObj: AgentCoreExtractionConfig = typeof input.extraction === 'object' ? input.extraction : {}
   const hasCustomConfig = extractionObj.cadence !== undefined || extractionObj.filter !== undefined
@@ -215,8 +241,7 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
       buildStoreConfig({
         config,
         ns: input.namespaces[0]!,
-        fallbackName: slugifyNamespace(parent),
-        namespace: parent,
+        template: parent,
         readMode: 'subtree',
         writable: writeEnabled,
         extraction,
@@ -225,34 +250,31 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
     return [store]
   }
 
-  // per-namespace
-  const writeNamespace = extractionObj.namespace ?? input.namespaces[0]!.namespace
-  let writableAssigned = false
+  // per-namespace: a store is the writer if its namespace is flagged `writable`. If extraction is
+  // enabled and none is flagged, default to the first. Each explicit flag is honored as-is (we do NOT
+  // collapse multiple flags to one) so a caller that mis-flags two namespaces is caught loudly by
+  // assertWritableTopology rather than having the extra flag silently dropped. Only the writer carries
+  // `extraction`.
+  const anyFlagged = input.namespaces.some((ns) => ns.writable === true)
+  const defaultWriterIndex = !anyFlagged && writeEnabled ? 0 : -1
 
-  const stores = input.namespaces.map((ns) => {
-    const isWriter = writeEnabled && !writableAssigned && ns.namespace === writeNamespace
-    if (isWriter) writableAssigned = true
+  const stores = input.namespaces.map((ns, i) => {
+    const isWriter = ns.writable === true || i === defaultWriterIndex
     return new AgentCoreMemoryStore(
       buildStoreConfig({
         config,
         ns,
-        fallbackName: slugifyNamespace(ns.namespace),
-        namespace: ns.namespace,
+        template: ns.namespace,
         readMode: 'per-namespace',
         writable: isWriter,
-        extraction,
+        extraction: isWriter ? extraction : undefined,
       })
     )
   })
 
-  if (writeEnabled && !writableAssigned) {
-    throw new Error(
-      `createAgentCoreMemoryStores: extraction.namespace "${writeNamespace}" did not match any of the provided namespaces`
-    )
-  }
-
-  // Store-name uniqueness is validated by the MemoryManager constructor (it throws on duplicates), so
-  // we don't re-check here.
+  // At most one writable always; exactly one required when extraction is enabled. (Store-name
+  // uniqueness is validated by the MemoryManager constructor, so we don't re-check it here.)
+  assertWritableTopology(stores, writeEnabled)
   return stores
 }
 
@@ -265,20 +287,24 @@ export interface CreateAgentCoreMemoryStoreInput
 /**
  * Convenience wrapper for the common single-namespace case: returns one {@link AgentCoreMemoryStore}
  * instead of an array. Equivalent to `createAgentCoreMemoryStores` with a single `per-namespace`
- * namespace. `extraction` works the same (omit for recall-only).
+ * namespace. `extraction` works the same (omit for recall-only); the single store is the writer when
+ * extraction is enabled.
+ *
+ * The store now stands alone (`new AgentCoreMemoryStore({ memoryId, actorId, sessionId, namespace })`),
+ * so this is a thin convenience for the named single-namespace path; the topology assertion still runs.
  *
  * @example
  * ```typescript
  * const store = createAgentCoreMemoryStore({
  *   memoryId, actorId, sessionId,
  *   namespace: '/users/{actorId}/facts',
- *   extraction: { cadence: new AgentCoreBatchTrigger() },
+ *   extraction: true,
  * })
  * new MemoryManager({ stores: [store] })
  * ```
  */
 export function createAgentCoreMemoryStore(input: CreateAgentCoreMemoryStoreInput): AgentCoreMemoryStore {
-  const { namespace, name, description, maxSearchResults, minScore, overFetchFactor, ...rest } = input
+  const { namespace, name, description, maxSearchResults, minScore, overFetchFactor, writable, ...rest } = input
   const ns: AgentCoreNamespaceConfig = {
     namespace,
     ...(name !== undefined && { name }),
@@ -286,6 +312,7 @@ export function createAgentCoreMemoryStore(input: CreateAgentCoreMemoryStoreInpu
     ...(maxSearchResults !== undefined && { maxSearchResults }),
     ...(minScore !== undefined && { minScore }),
     ...(overFetchFactor !== undefined && { overFetchFactor }),
+    ...(writable !== undefined && { writable }),
   }
   return createAgentCoreMemoryStores({ ...rest, namespaces: [ns], readMode: 'per-namespace' })[0]!
 }

@@ -26,7 +26,7 @@ server-side extraction into long-term records.
 
 ```typescript
 import { Agent, MemoryManager } from '@strands-agents/sdk'
-import { createAgentCoreMemoryStores, AgentCoreBatchTrigger } from 'bedrock-agentcore/memory/strands'
+import { createAgentCoreMemoryStores } from 'bedrock-agentcore/experimental/memory/strands'
 
 // One call per (actorId, sessionId). `per-namespace` (default) gives one store per namespace.
 const stores = createAgentCoreMemoryStores({
@@ -34,14 +34,13 @@ const stores = createAgentCoreMemoryStores({
   actorId: 'user-123',
   sessionId: 'session-1',
   namespaces: [
-    { namespace: '/strategy/{id}/actor/{actorId}/facts' },
+    { namespace: '/strategy/{id}/actor/{actorId}/facts', writable: true }, // the write sink
     { namespace: '/strategy/{id}/actor/{actorId}/preferences', minScore: 0.5 },
   ],
-  // `extraction` is the single write switch. Object form: custom cadence (and optionally which
-  // namespace writes). Omit it entirely for recall-only; use `true` for the default cadence.
-  extraction: {
-    cadence: new AgentCoreBatchTrigger({ messageCount: 10, maxDelayMs: 5000 }),
-  },
+  // `extraction` is the single write switch: omit for recall-only, `true` for the default cadence, or
+  // an object for a custom cadence/filter. The writer is the namespace flagged `writable` (else the
+  // first). Cadence accepts any Strands trigger.
+  extraction: true,
 })
 
 const agent = new Agent({
@@ -50,7 +49,24 @@ const agent = new Agent({
 })
 ```
 
-For a single namespace, `createAgentCoreMemoryStore` (singular) returns one store directly.
+For a single namespace, the store stands alone — construct it directly:
+
+```typescript
+import { AgentCoreMemoryStore } from 'bedrock-agentcore/experimental/memory/strands'
+
+const store = new AgentCoreMemoryStore({
+  memoryId: 'mem-abc',
+  actorId: 'user-123',
+  sessionId: 'session-1',
+  namespace: '/users/{actorId}/facts',
+  writable: true,
+  extraction: true,
+})
+const agent = new Agent({ model, memoryManager: new MemoryManager({ stores: [store] }) })
+```
+
+`createAgentCoreMemoryStore` (singular) is a thin convenience wrapper over that for the named
+single-namespace path.
 
 ### Subtree reads
 
@@ -66,16 +82,19 @@ const stores = createAgentCoreMemoryStores({
     { namespace: '/strategy/{id}/actor/{actorId}/preferences' },
   ],
   readMode: 'subtree', // 1 store, reads the common parent via namespacePath
-  extraction: { cadence: new AgentCoreBatchTrigger() },
+  extraction: true,
 })
 ```
 
 ## Design notes
 
-- **One writable store per `(actorId, sessionId)`.** `createEvent` is namespace-free, so writes
-  collapse to a single stream regardless of `readMode`. When `extraction` is enabled, exactly one store
-  in `per-namespace` mode is writable (the `extraction.namespace`, else the first); the rest are
-  search-only. Omit `extraction` for a fully recall-only topology.
+- **At most one writable store per `(actorId, sessionId)`.** `createEvent` is namespace-free, so writes
+  collapse to a single stream regardless of `readMode` — two writable stores would emit duplicate events.
+  In `per-namespace` mode the writer is the namespace flagged `writable: true` (else, when `extraction`
+  is enabled, the first); the rest are search-only. `createAgentCoreMemoryStores` calls
+  `assertWritableTopology` to enforce the at-most-one rule, and that guard is **exported** so hand-built
+  (`new AgentCoreMemoryStore`) multi-store setups can call it themselves. Omit `extraction` (and leave
+  `writable` unset, defaulting to `false`) for a fully recall-only topology.
 - **No `add()`.** AgentCore's conversation path is role-aware; a flat string would discard role, so we
   implement only `addMessages`. The `add_memory` tool is therefore off (the manager handles this when
   no store implements `add`).
@@ -118,17 +137,12 @@ compose — understand them separately:
 
 2. **Cadence (the trigger) — tunes calls *across* turns.** The trigger decides *when* a flush happens.
    `extraction: true` defers to Strands' default (`IntervalTrigger`, every **5 turns** — not every
-   invocation; and a fire with no new messages is a no-op, so it never writes "empty"). Strands triggers
-   are **turn-gated** — they only evaluate after an invocation, so the finest cadence they express is
-   "every N turns." `AgentCoreBatchTrigger`'s one added capability is **non-turn-gated** cadence: flush
-   on a wall-clock timer (`maxDelayMs`) or a byte threshold (`maxBytes`), e.g.
-   `extraction: { cadence: new AgentCoreBatchTrigger({ messageCount, maxBytes, maxDelayMs }) }`.
-   **Cadence only changes call volume if writes actually buffer across turns** — which requires reusing
-   the `MemoryManager` across the session's invocations (see below) and *not* flushing every turn. So in
-   the common per-turn-`flush()` pattern the trigger choice is largely moot; `AgentCoreBatchTrigger`
-   earns its keep mainly on a long-lived server that flushes less often, where its timer writes a
-   gone-quiet conversation's tail without waiting for a next turn. It is **not** the cost lever —
-   batching (lever 1) is.
+   invocation; and a fire with no new messages is a no-op, so it never writes "empty"). Pass any Strands
+   trigger to tune it, e.g. `extraction: { cadence: new IntervalTrigger({ turns: 10 }) }`, or an array to
+   compose several. **Cadence only changes call volume if writes actually buffer across turns** — which
+   requires reusing the `MemoryManager` across the session's invocations (see below) and *not* flushing
+   every turn. So in the common per-turn-`flush()` pattern the trigger choice is largely moot. It is
+   **not** the cost lever — batching (lever 1) is.
 
 3. **`flush()` — durability, not cost.** `MemoryManager.flush()` force-drains the buffer immediately,
    ignoring the trigger. A trigger only *dispatches* a write (fire-and-forget; never awaited), and the
@@ -142,10 +156,11 @@ the trigger's cross-turn batching never kicks in. To cut calls further you flush
 the cadence batch across turns, accepting that an unflushed tail is lost if the microVM is reclaimed
 mid-session. Two working setups:
 
-- **Durable default (recommended):** reuse the `MemoryManager` per session, `AgentCoreBatchTrigger`
-  cadence, and `await memory.flush()` at the end of every handler. One batched call per turn; no loss.
-- **Cost-tuned (advanced):** reuse the `MemoryManager` per session, a coarse `AgentCoreBatchTrigger`,
-  and flush only when you detect session end. Fewer calls; small tail-loss risk on idle reclamation.
+- **Durable default (recommended):** reuse the `MemoryManager` per session, the default cadence
+  (`extraction: true`), and `await memory.flush()` at the end of every handler. One batched call per
+  turn; no loss.
+- **Cost-tuned (advanced):** reuse the `MemoryManager` per session, a coarse `IntervalTrigger`, and
+  flush only when you detect session end. Fewer calls; small tail-loss risk on idle reclamation.
 
 **Reuse the manager across invocations.** The runtime keeps one microVM alive per session (idle timeout
 ~15 min, max 8 h), so build the `MemoryManager` once per `(actorId, sessionId)` and reuse it across that

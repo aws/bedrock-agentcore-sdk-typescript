@@ -1,6 +1,6 @@
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
 import type { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
-import type { ExtractionConfig, JSONValue, MemoryStoreConfig, MessageData } from '@strands-agents/sdk'
+import type { JSONValue, MemoryStoreConfig, MessageData } from '@strands-agents/sdk'
 
 /** Default region used when none is supplied and `AWS_REGION` is unset. */
 export const DEFAULT_REGION = 'us-west-2'
@@ -29,11 +29,18 @@ export const DEFAULT_MAX_TURNS_PER_EVENT = 50
 export const RESERVED_METADATA_PREFIX = '_'
 
 /**
- * How a store's `search()` targets AgentCore long-term records.
- * - `'per-namespace'`: query one exact namespace prefix (`namespace`); one store per namespace.
- * - `'subtree'`: query a parent path hierarchically (`namespacePath`), covering all child namespaces.
+ * How a store's `search()` targets AgentCore long-term records. A discriminated union that mirrors the
+ * `RetrieveMemoryRecords` API directly — the member name *is* the read mode, so there is no separate
+ * flag to keep in sync with the path:
+ * - `{ namespace }`: query one exact namespace prefix (one store per namespace).
+ * - `{ namespacePath }`: query a parent path hierarchically, covering all child namespaces (subtree).
+ *
+ * Exactly one member is present; the `?: never` on the other arm makes passing both a compile error.
+ * Both carry a template whose `{actorId}`/`{sessionId}` are substituted at construction.
  */
-export type ReadMode = 'per-namespace' | 'subtree'
+export type AgentCoreReadTarget =
+  | { readonly namespace: string; readonly namespacePath?: never }
+  | { readonly namespacePath: string; readonly namespace?: never }
 
 /**
  * Per-message metadata attached to each `createEvent`. Returns a JSON bag; the sender maps each value
@@ -79,24 +86,17 @@ export interface AgentCoreMemoryConfig {
 }
 
 /**
- * Config for a single {@link AgentCoreMemoryStore}.
- *
- * Extends the framework's {@link MemoryStoreConfig} (contributing `name` / `description` /
- * `maxSearchResults` / `writable` / `extraction`) with the shared {@link AgentCoreMemoryConfig} and
- * this store's per-namespace identity. The factory builds the shared `config` once and one of these
- * per namespace.
+ * Per-store fields layered on top of the framework's {@link MemoryStoreConfig} (which contributes
+ * `name` / `description` / `maxSearchResults` / `writable` / `extraction`) and the read target.
  */
-export interface AgentCoreMemoryStoreConfig extends MemoryStoreConfig {
-  /** Shared connection + write identity, reused across the stores of one `(actorId, sessionId)`. */
-  readonly config: AgentCoreMemoryConfig
-
+export interface AgentCoreMemoryStoreFields {
   /**
-   * The namespace template this store reads from (e.g. `/strategy/{id}/actor/{actorId}/preferences`).
-   * `{actorId}` / `{sessionId}` are substituted at construction. For `readMode: 'subtree'` this is the
-   * parent path queried via `namespacePath`; for `'per-namespace'` it is the prefix queried via `namespace`.
+   * Optional shared connection + write identity. Supply this **or** the flat `memoryId`/`actorId`/
+   * `sessionId` identity fields directly — the store accepts either. The factory builds one bundle and
+   * reuses it across a set of stores (build the client once); a standalone `new AgentCoreMemoryStore`
+   * caller just passes identity flat. If both are present, the bundle wins.
    */
-  readonly namespace: string
-  readonly readMode: ReadMode
+  readonly config?: AgentCoreMemoryConfig
 
   /** Optional client-side relevance floor; records scoring below it are dropped from results. */
   readonly minScore?: number
@@ -107,17 +107,26 @@ export interface AgentCoreMemoryStoreConfig extends MemoryStoreConfig {
    * Ignored when no `minScore` floor is configured. The over-fetched `topK` is capped at {@link MAX_TOPK}.
    */
   readonly overFetchFactor?: number
-
-  /** Required here (the base leaves it optional): exactly one store in a factory set is writable. */
-  readonly writable: boolean
-
-  /**
-   * Present only on the writable store; AgentCore uses server-side extraction, so no client extractor.
-   * `true` defers to the MemoryManager's default cadence (its `IntervalTrigger`); an object sets a
-   * custom trigger/filter.
-   */
-  readonly extraction?: boolean | ExtractionConfig
 }
+
+/**
+ * Config for a single {@link AgentCoreMemoryStore}.
+ *
+ * Identity (`memoryId`/`actorId`/`sessionId` and the optional client/metadata/tuning) may be passed
+ * **flat** — for the standalone `new AgentCoreMemoryStore({ memoryId, actorId, sessionId, namespace })`
+ * path — or via the shared {@link AgentCoreMemoryConfig} `config` bundle, which the factory builds once
+ * and reuses across a set of stores. The read target is the {@link AgentCoreReadTarget} discriminated
+ * union (`{ namespace }` exact, or `{ namespacePath }` subtree). `writable` defaults to `false`
+ * (recall-only); set it `true` to make this the write sink. The store validates at construction that a
+ * complete identity is present, with a clear error per missing field.
+ */
+export type AgentCoreMemoryStoreConfig = Omit<MemoryStoreConfig, 'name'> &
+  AgentCoreReadTarget &
+  AgentCoreMemoryStoreFields &
+  Partial<AgentCoreMemoryConfig> & {
+    /** Store name; defaults to a slug of the namespace template (see {@link slugifyNamespace}) if omitted. */
+    readonly name?: string
+  }
 
 /**
  * Resolve a namespace template against an actor/session, substituting `{actorId}` and `{sessionId}`.
@@ -159,4 +168,17 @@ export function assertNonEmpty(value: string | undefined, field: string): string
     throw new Error(`AgentCoreMemoryStore: ${field} must be a non-empty string`)
   }
   return value
+}
+
+/**
+ * Derive a store name from a namespace template: strip `{placeholder}` segments, then collapse remaining
+ * non-alphanumerics to `-`. `[^{}]*` (excludes both braces) is unambiguous and linear — no
+ * polynomial-backtracking risk. Falls back to `'agentcore-memory'` if nothing usable remains.
+ */
+export function slugifyNamespace(ns: string): string {
+  const slug = ns
+    .replace(/\{[^{}]*\}/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug.length > 0 ? slug : 'agentcore-memory'
 }

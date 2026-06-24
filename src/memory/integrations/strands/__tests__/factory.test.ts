@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
-import { createAgentCoreMemoryStores, createAgentCoreMemoryStore } from '../factory.js'
+import { createAgentCoreMemoryStores, createAgentCoreMemoryStore, assertWritableTopology } from '../factory.js'
 import type { CreateAgentCoreMemoryStoresInput } from '../factory.js'
+import { AgentCoreMemoryStore } from '../store.js'
 import { ExtractionTrigger, type ExtractionTriggerContext, type MemoryContentBlockType } from '@strands-agents/sdk'
 
 const fakeClient = { send: vi.fn(async () => ({})) } as unknown as BedrockAgentCoreClient
@@ -57,17 +58,32 @@ describe('createAgentCoreMemoryStores - per-namespace (default)', () => {
     expect(writable.extraction).toMatchObject({ filter })
   })
 
-  it('honors an explicit extraction.namespace', () => {
+  it('marks the namespace flagged `writable: true` as the writer (not just the first)', () => {
     const stores = createAgentCoreMemoryStores(
-      baseInput({ extraction: { cadence: new FakeTrigger(), namespace: '/strategy/s/actor/{actorId}/preferences' } })
+      baseInput({
+        namespaces: [
+          { namespace: '/strategy/s/actor/{actorId}/facts' },
+          { namespace: '/strategy/s/actor/{actorId}/preferences', writable: true },
+        ],
+        extraction: { cadence: new FakeTrigger() },
+      })
     )
-    expect(stores.find((s) => s.writable)!.name).toBe('strategy-s-actor-preferences')
+    const writable = stores.filter((s) => s.writable)
+    expect(writable).toHaveLength(1)
+    expect(writable[0]!.name).toBe('strategy-s-actor-preferences')
   })
 
-  it('throws if extraction.namespace matches nothing', () => {
+  it('throws when two namespaces are flagged writable (namespace-free createEvent would duplicate)', () => {
     expect(() =>
-      createAgentCoreMemoryStores(baseInput({ extraction: { cadence: new FakeTrigger(), namespace: '/nope' } }))
-    ).toThrow(/did not match/)
+      createAgentCoreMemoryStores(
+        baseInput({
+          namespaces: [
+            { namespace: '/a/{actorId}', writable: true },
+            { namespace: '/b/{actorId}', writable: true },
+          ],
+        })
+      )
+    ).toThrow(/at most one store may be writable/)
   })
 
   it('recall-only: no store is writable when extraction is omitted', () => {
@@ -87,8 +103,8 @@ describe('createAgentCoreMemoryStores - per-namespace (default)', () => {
     const stores = createAgentCoreMemoryStores(baseInput({ extraction: true }))
     const writable = stores.filter((s) => s.writable)
     expect(writable).toHaveLength(1)
-    // Passed straight through as `true`, not eagerly wrapped in an AgentCoreBatchTrigger — the MM
-    // resolves the default trigger itself.
+    // Passed straight through as `true`, not eagerly wrapped in a trigger — the MemoryManager resolves
+    // its own default (IntervalTrigger) itself.
     expect(writable[0]!.extraction).toBe(true)
   })
 
@@ -228,5 +244,40 @@ describe('createAgentCoreMemoryStores - validation', () => {
     const b = createAgentCoreMemoryStores(baseInput({ actorId: 'user-B' }))
     // Distinct instances; behavior verified via search namespace resolution elsewhere.
     expect(a[0]).not.toBe(b[0])
+  })
+})
+
+describe('assertWritableTopology', () => {
+  const store = (overrides: { writable?: boolean; name?: string } = {}): AgentCoreMemoryStore =>
+    new AgentCoreMemoryStore({
+      memoryId: 'mem-1',
+      actorId: 'actor-1',
+      sessionId: 'sess-1',
+      client: fakeClient,
+      namespace: '/users/{actorId}/facts',
+      name: overrides.name ?? 'facts',
+      ...(overrides.writable !== undefined && { writable: overrides.writable }),
+    })
+
+  it('accepts zero writable stores (recall-only)', () => {
+    expect(() => assertWritableTopology([store(), store({ name: 'prefs' })])).not.toThrow()
+  })
+
+  it('accepts exactly one writable store', () => {
+    expect(() => assertWritableTopology([store({ writable: true }), store({ name: 'prefs' })])).not.toThrow()
+  })
+
+  it('throws on more than one writable store', () => {
+    expect(() =>
+      assertWritableTopology([store({ writable: true, name: 'a' }), store({ writable: true, name: 'b' })])
+    ).toThrow(/at most one store may be writable/)
+  })
+
+  it('throws when extraction is expected but no store is writable', () => {
+    expect(() => assertWritableTopology([store()], true)).toThrow(/no store is writable/)
+  })
+
+  it('does not require a writer when extraction is not expected', () => {
+    expect(() => assertWritableTopology([store()], false)).not.toThrow()
   })
 })

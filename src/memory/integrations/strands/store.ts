@@ -13,6 +13,7 @@ import type {
   SearchOptions,
 } from '@strands-agents/sdk'
 import {
+  type AgentCoreMemoryConfig,
   type AgentCoreMemoryStoreConfig,
   assertNonEmpty,
   assertResolvedNamespace,
@@ -20,12 +21,15 @@ import {
   DEFAULT_OVERFETCH_FACTOR,
   DEFAULT_REGION,
   MAX_TOPK,
-  type ReadMode,
   RESERVED_METADATA_PREFIX,
   resolveNamespace,
+  slugifyNamespace,
 } from './types.js'
 import { AgentCoreEventSender } from './sender.js'
 import { logger } from './logger.js'
+
+/** Whether the store reads one exact namespace prefix or a parent subtree. */
+type ReadMode = 'exact' | 'subtree'
 
 /** Extract the text of a `MemoryContent` union member, if it is a text member. */
 function memoryContentText(content: MemoryRecordSummary['content']): string {
@@ -33,6 +37,33 @@ function memoryContentText(content: MemoryRecordSummary['content']): string {
     return content.text
   }
   return ''
+}
+
+/**
+ * Normalize the two accepted identity shapes into one {@link AgentCoreMemoryConfig}. Identity may be
+ * passed flat (`{ memoryId, actorId, sessionId, client?, ... }`) for a standalone `new` store, or via
+ * the shared `config` bundle the factory builds once and reuses. The bundle wins if both are present.
+ */
+function resolveIdentity(storeConfig: AgentCoreMemoryStoreConfig): AgentCoreMemoryConfig {
+  if (storeConfig.config !== undefined) return storeConfig.config
+  return {
+    memoryId: storeConfig.memoryId as string,
+    actorId: storeConfig.actorId as string,
+    sessionId: storeConfig.sessionId as string,
+    ...(storeConfig.metadataProvider !== undefined && { metadataProvider: storeConfig.metadataProvider }),
+    ...(storeConfig.maxTurnsPerEvent !== undefined && { maxTurnsPerEvent: storeConfig.maxTurnsPerEvent }),
+    ...(storeConfig.region !== undefined && { region: storeConfig.region }),
+    ...(storeConfig.credentialsProvider !== undefined && { credentialsProvider: storeConfig.credentialsProvider }),
+    ...(storeConfig.client !== undefined && { client: storeConfig.client }),
+  }
+}
+
+/** Read the {@link AgentCoreReadTarget} arm: subtree (`namespacePath`) vs exact (`namespace`). */
+function resolveReadTarget(storeConfig: AgentCoreMemoryStoreConfig): { readMode: ReadMode; template: string } {
+  if ('namespacePath' in storeConfig && storeConfig.namespacePath !== undefined) {
+    return { readMode: 'subtree', template: storeConfig.namespacePath }
+  }
+  return { readMode: 'exact', template: (storeConfig as { namespace?: string }).namespace as string }
 }
 
 /**
@@ -65,8 +96,19 @@ export class AgentCoreMemoryStore implements MemoryStore {
   private readonly sender?: AgentCoreEventSender
 
   constructor(storeConfig: AgentCoreMemoryStoreConfig) {
-    const { config } = storeConfig
-    this.name = storeConfig.name
+    const config = resolveIdentity(storeConfig)
+    const { readMode, template } = resolveReadTarget(storeConfig)
+
+    this.memoryId = assertNonEmpty(config.memoryId, 'memoryId')
+    this.actorId = assertNonEmpty(config.actorId, 'actorId')
+    this.sessionId = assertNonEmpty(config.sessionId, 'sessionId')
+    assertNonEmpty(template, readMode === 'subtree' ? 'namespacePath' : 'namespace')
+    this.resolvedNamespace = resolveNamespace(template, this.actorId, this.sessionId)
+    assertResolvedNamespace(this.resolvedNamespace, template)
+    this.readMode = readMode
+
+    // Self-name from the template so a standalone `new AgentCoreMemoryStore(...)` always has a name.
+    this.name = storeConfig.name ?? slugifyNamespace(template)
     if (storeConfig.description !== undefined) this.description = storeConfig.description
     if (storeConfig.maxSearchResults !== undefined) {
       if (!Number.isInteger(storeConfig.maxSearchResults) || storeConfig.maxSearchResults < 1) {
@@ -76,15 +118,9 @@ export class AgentCoreMemoryStore implements MemoryStore {
       }
       this.maxSearchResults = storeConfig.maxSearchResults
     }
-    this.writable = storeConfig.writable
-    if (storeConfig.writable && storeConfig.extraction !== undefined) this.extraction = storeConfig.extraction
-    this.memoryId = assertNonEmpty(config.memoryId, 'memoryId')
-    this.actorId = assertNonEmpty(config.actorId, 'actorId')
-    this.sessionId = assertNonEmpty(config.sessionId, 'sessionId')
-    assertNonEmpty(storeConfig.namespace, 'namespace')
-    this.resolvedNamespace = resolveNamespace(storeConfig.namespace, this.actorId, this.sessionId)
-    assertResolvedNamespace(this.resolvedNamespace, storeConfig.namespace)
-    this.readMode = storeConfig.readMode
+    // Recall-safe default: a bare store never writes unless writable is explicitly true.
+    this.writable = storeConfig.writable ?? false
+    if (this.writable && storeConfig.extraction !== undefined) this.extraction = storeConfig.extraction
     if (storeConfig.minScore !== undefined) {
       if (!Number.isFinite(storeConfig.minScore) || storeConfig.minScore < 0 || storeConfig.minScore > 1) {
         throw new Error(
@@ -108,13 +144,13 @@ export class AgentCoreMemoryStore implements MemoryStore {
         ...(config.credentialsProvider && { credentials: config.credentialsProvider }),
       })
 
-    if (storeConfig.writable) {
+    if (this.writable) {
       this.sender = new AgentCoreEventSender({
         client: this.client,
-        memoryId: config.memoryId,
-        actorId: config.actorId,
-        sessionId: config.sessionId,
-        metadataProvider: config.metadataProvider,
+        memoryId: this.memoryId,
+        actorId: this.actorId,
+        sessionId: this.sessionId,
+        ...(config.metadataProvider !== undefined && { metadataProvider: config.metadataProvider }),
         ...(config.maxTurnsPerEvent !== undefined && { maxTurnsPerEvent: config.maxTurnsPerEvent }),
       })
     } else if (storeConfig.extraction !== undefined) {
