@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { RuntimeClient } from '../client.js'
+import { ShellSession as MockShellSession } from '../shell/session.js'
 import type { WebSocketConnection } from '../types.js'
 
 // Mock AWS credentials
@@ -8,6 +9,20 @@ const mockCredentials = {
   secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
   sessionToken: 'mock-session-token',
 }
+
+// Mock ShellSession so openShell tests don't need a real WebSocket
+vi.mock('../shell/session.js', () => {
+  const MockShellSession = vi.fn().mockImplementation(function (this: any, opts: any) {
+    this.shellId = opts.shellId ?? 'mock-shell-uuid'
+    this.sessionId = opts.sessionId ?? 'mock-session-uuid'
+    this.reconnected = false
+    this.kicked = false
+    this.bytesDropped = 0
+    this.exitCode = null
+    this.connect = vi.fn(async () => this)
+  })
+  return { ShellSession: MockShellSession }
+})
 
 // Mock the credential provider
 vi.mock('@aws-sdk/credential-provider-node', () => ({
@@ -501,6 +516,274 @@ describe('RuntimeClient', () => {
       expect(result.headers.Upgrade).toBe('websocket')
       expect(result.headers['Sec-WebSocket-Key']).toBeDefined()
       expect(result.headers['Sec-WebSocket-Version']).toBe('13')
+    })
+  })
+
+  // ── Shell Layer 1 helpers ────────────────────────────────────────────────────
+
+  describe('connectShellSigV4', () => {
+    const validArn = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/my-runtime-id'
+
+    it('returns url and SigV4 signed headers', async () => {
+      const result = await client.connectShellSigV4({
+        runtimeArn: validArn,
+        shellId: 'my-shell',
+        sessionId: 'my-session',
+      })
+      expect(result.url).toMatch(/^wss:\/\//)
+      expect(result.url).toContain('/ws/shells')
+      expect(result.url).toContain('shellId=my-shell')
+      expect(result.headers.Authorization).toContain('AWS4-HMAC-SHA256')
+      expect(result.headers['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id']).toBe('my-session')
+    })
+
+    it('includes endpointName as qualifier query param', async () => {
+      const result = await client.connectShellSigV4({
+        runtimeArn: validArn,
+        shellId: 'my-shell',
+        sessionId: 'my-session',
+        endpointName: 'DEFAULT',
+      })
+      expect(result.url).toContain('qualifier=DEFAULT')
+    })
+
+    it('throws for invalid ARN format', async () => {
+      await expect(
+        client.connectShellSigV4({ runtimeArn: 'bad-arn', shellId: 'my-shell', sessionId: 's' })
+      ).rejects.toThrow('Invalid runtime ARN format')
+    })
+
+    it('throws when ARN region does not match client region', async () => {
+      await expect(
+        client.connectShellSigV4({
+          runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/r',
+          shellId: 'my-shell',
+          sessionId: 's',
+        })
+      ).rejects.toThrow('us-east-1')
+    })
+
+    it('throws for invalid shellId', async () => {
+      await expect(client.connectShellSigV4({ runtimeArn: validArn, shellId: '', sessionId: 's' })).rejects.toThrow()
+    })
+  })
+
+  describe('connectShellPresigned', () => {
+    const validArn = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/my-runtime-id'
+
+    it('returns a presigned wss:// url', async () => {
+      const result = await client.connectShellPresigned({
+        runtimeArn: validArn,
+        shellId: 'my-shell',
+        sessionId: 'my-session',
+      })
+      expect(result.url).toMatch(/^wss:\/\//)
+      expect(result.url).toContain('X-Amz-Signature')
+      expect(result.url).toContain('X-Amz-Expires=300') // default
+    })
+
+    it('embeds sessionId in the request signed by presign', async () => {
+      const { SignatureV4 } = await import('@aws-sdk/signature-v4')
+      await client.connectShellPresigned({
+        runtimeArn: validArn,
+        shellId: 'my-shell',
+        sessionId: 'embedded-session',
+      })
+      const presignSpy = (SignatureV4 as ReturnType<typeof vi.fn>).mock.results.at(-1)?.value.presign as ReturnType<
+        typeof vi.fn
+      >
+      const signedRequest = presignSpy.mock.calls[0][0]
+      expect(signedRequest.query['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id']).toBe('embedded-session')
+    })
+
+    it('respects custom expires', async () => {
+      const result = await client.connectShellPresigned({
+        runtimeArn: validArn,
+        shellId: 'my-shell',
+        sessionId: 'my-session',
+        expires: 120,
+      })
+      expect(result.url).toContain('X-Amz-Expires=120')
+    })
+
+    it('throws when expires exceeds 300', async () => {
+      await expect(
+        client.connectShellPresigned({ runtimeArn: validArn, shellId: 'my-shell', sessionId: 's', expires: 301 })
+      ).rejects.toThrow('Expiry timeout cannot exceed 300 seconds')
+    })
+
+    it('throws for invalid ARN format', async () => {
+      await expect(
+        client.connectShellPresigned({ runtimeArn: 'bad-arn', shellId: 'my-shell', sessionId: 's' })
+      ).rejects.toThrow('Invalid runtime ARN format')
+    })
+
+    it('throws when ARN region does not match client region', async () => {
+      await expect(
+        client.connectShellPresigned({
+          runtimeArn: 'arn:aws:bedrock-agentcore:eu-west-1:123456789012:runtime/r',
+          shellId: 'my-shell',
+          sessionId: 's',
+        })
+      ).rejects.toThrow('eu-west-1')
+    })
+
+    it('throws for invalid shellId', async () => {
+      await expect(
+        client.connectShellPresigned({ runtimeArn: validArn, shellId: '', sessionId: 's' })
+      ).rejects.toThrow()
+    })
+  })
+
+  describe('connectShellOAuth', () => {
+    const validArn = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/my-runtime-id'
+
+    it('returns url and base64url subprotocols', async () => {
+      const result = await client.connectShellOAuth({
+        runtimeArn: validArn,
+        shellId: 'my-shell',
+        sessionId: 'my-session',
+        bearerToken: 'tok123',
+      })
+      expect(result.url).toMatch(/^wss:\/\//)
+      expect(result.url).toContain('/ws/shells')
+      expect(result.subprotocols).toHaveLength(2)
+      expect(result.subprotocols[1]).toBe('base64UrlBearerAuthorization')
+      expect(result.subprotocols[0]).toMatch(/^base64UrlBearerAuthorization\./)
+    })
+
+    it('base64url-encodes the bearer token in the subprotocol', async () => {
+      const result = await client.connectShellOAuth({
+        runtimeArn: validArn,
+        shellId: 'my-shell',
+        sessionId: 'my-session',
+        bearerToken: 'hello',
+      })
+      const encoded = Buffer.from('hello').toString('base64url')
+      expect(result.subprotocols[0]).toBe(`base64UrlBearerAuthorization.${encoded}`)
+    })
+
+    it('embeds sessionId in the url', async () => {
+      const result = await client.connectShellOAuth({
+        runtimeArn: validArn,
+        shellId: 'my-shell',
+        sessionId: 'sess-abc',
+        bearerToken: 'tok',
+      })
+      expect(result.url).toContain('X-Amzn-Bedrock-AgentCore-Runtime-Session-Id=sess-abc')
+    })
+
+    it('throws for empty bearerToken', async () => {
+      await expect(
+        client.connectShellOAuth({ runtimeArn: validArn, shellId: 'my-shell', sessionId: 's', bearerToken: '' })
+      ).rejects.toThrow('bearerToken cannot be empty')
+    })
+
+    it('throws for invalid ARN format', async () => {
+      await expect(
+        client.connectShellOAuth({ runtimeArn: 'bad-arn', shellId: 'my-shell', sessionId: 's', bearerToken: 'tok' })
+      ).rejects.toThrow('Invalid runtime ARN format')
+    })
+
+    it('throws when ARN region does not match client region', async () => {
+      await expect(
+        client.connectShellOAuth({
+          runtimeArn: 'arn:aws:bedrock-agentcore:ap-southeast-1:123456789012:runtime/r',
+          shellId: 'my-shell',
+          sessionId: 's',
+          bearerToken: 'tok',
+        })
+      ).rejects.toThrow('ap-southeast-1')
+    })
+
+    it('throws for invalid shellId', async () => {
+      await expect(
+        client.connectShellOAuth({ runtimeArn: validArn, shellId: '', sessionId: 's', bearerToken: 'tok' })
+      ).rejects.toThrow()
+    })
+  })
+
+  // ── Shell Layer 2: openShell ─────────────────────────────────────────────────
+
+  describe('openShell', () => {
+    const validArn = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/my-runtime-id'
+
+    it('returns a connected ShellSession', async () => {
+      const session = await client.openShell({ runtimeArn: validArn })
+      expect(session).toBeDefined()
+      expect((session as any).connect).toHaveBeenCalledOnce()
+    })
+
+    it('passes shellId and sessionId through to ShellSession', async () => {
+      await client.openShell({ runtimeArn: validArn, shellId: 'custom-shell', sessionId: 'custom-session' })
+      expect(MockShellSession).toHaveBeenCalledWith(
+        expect.objectContaining({ shellId: 'custom-shell', sessionId: 'custom-session' })
+      )
+    })
+
+    it('auto-generates shellId when omitted', async () => {
+      await client.openShell({ runtimeArn: validArn })
+      const opts = (MockShellSession as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      expect(opts.shellId).toBeTruthy()
+    })
+
+    it('passes reconnectConfig to ShellSession', async () => {
+      const reconnectConfig = { maxRetries: 3 }
+      await client.openShell({ runtimeArn: validArn, reconnectConfig })
+      expect(MockShellSession).toHaveBeenCalledWith(expect.objectContaining({ reconnectConfig }))
+    })
+
+    it('passes keepaliveIntervalMs to ShellSession', async () => {
+      await client.openShell({ runtimeArn: validArn, keepaliveIntervalMs: 10_000 })
+      expect(MockShellSession).toHaveBeenCalledWith(expect.objectContaining({ keepaliveIntervalMs: 10_000 }))
+    })
+
+    it('throws for invalid ARN format', async () => {
+      await expect(client.openShell({ runtimeArn: 'bad-arn' })).rejects.toThrow('Invalid runtime ARN format')
+    })
+
+    it('throws when ARN region does not match client region', async () => {
+      await expect(
+        client.openShell({ runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/r' })
+      ).rejects.toThrow('us-east-1')
+    })
+
+    it('throws for invalid shellId', async () => {
+      await expect(client.openShell({ runtimeArn: validArn, shellId: '' })).rejects.toThrow()
+    })
+
+    it('uses sigv4 auth by default', async () => {
+      await client.openShell({ runtimeArn: validArn })
+      const opts = (MockShellSession as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      // connectFn should call connectShellSigV4 — invoke it to verify shape
+      const connResult = await opts.connectFn('test-shell', 'test-session')
+      expect(connResult.url).toMatch(/^wss:\/\//)
+      expect(connResult.headers.Authorization).toContain('AWS4-HMAC-SHA256')
+      expect(connResult.protocols).toBeUndefined()
+    })
+
+    it('uses presigned auth when specified', async () => {
+      await client.openShell({ runtimeArn: validArn, auth: { type: 'presigned', expires: 60 } })
+      const opts = (MockShellSession as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      const connResult = await opts.connectFn('test-shell', 'test-session')
+      expect(connResult.url).toMatch(/^wss:\/\//)
+      expect(connResult.url).toContain('X-Amz-Signature')
+      expect(connResult.headers).toEqual({})
+    })
+
+    it('uses oauth auth when specified', async () => {
+      await client.openShell({ runtimeArn: validArn, auth: { type: 'oauth', bearerToken: 'my-token' } })
+      const opts = (MockShellSession as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      const connResult = await opts.connectFn('test-shell', 'test-session')
+      expect(connResult.url).toMatch(/^wss:\/\//)
+      expect(connResult.protocols).toHaveLength(2)
+      expect(connResult.protocols[1]).toBe('base64UrlBearerAuthorization')
+    })
+
+    it('throws for unknown auth mode', async () => {
+      await expect(client.openShell({ runtimeArn: validArn, auth: { type: 'unknown' } as any })).rejects.toThrow(
+        'Unknown auth mode'
+      )
     })
   })
 })
