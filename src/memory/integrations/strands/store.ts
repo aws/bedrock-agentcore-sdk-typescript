@@ -48,16 +48,9 @@ function resolveReadTarget(storeConfig: AgentCoreMemoryStoreConfig): { readMode:
 }
 
 /**
- * AgentCore Memory as a Strands `MemoryStore`.
- *
- * - `search()` maps to `retrieveMemoryRecords` (long-term records).
- * - `addMessages()` maps each role-tagged message to a `createEvent` (short-term events; AgentCore
- *   extracts and consolidates into long-term records server-side). No `add()`: the conversation
- *   path is role-preserving, and a flat string would discard role.
- *
- * Identity and the namespace binding are fixed at construction. The factory builds one writable store
- * plus zero or more read-only stores per `(actorId, sessionId)`; only the writable one carries
- * `addMessages` + `extraction`.
+ * AgentCore Memory as a Strands `MemoryStore`. Identity and namespace are fixed at construction; only a
+ * writable store carries `addMessages` + `extraction`. No `add()`: the conversation path is
+ * role-preserving and a flat string would discard role.
  */
 export class AgentCoreMemoryStore implements MemoryStore {
   readonly name: string

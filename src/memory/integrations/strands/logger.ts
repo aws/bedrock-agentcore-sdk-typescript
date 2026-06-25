@@ -24,7 +24,6 @@ const defaultLogger: Logger = {
 
 let current: Logger = defaultLogger
 
-/** The active logger for this module. */
 export const logger: Logger = {
   debug: (...args) => current.debug(...args),
   info: (...args) => current.info(...args),

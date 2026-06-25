@@ -133,9 +133,7 @@ export function resolveNamespace(template: string, actorId: string, sessionId: s
   return template.replace(/\{actorId\}/g, () => actorId).replace(/\{sessionId\}/g, () => sessionId)
 }
 
-/** Matches any `{placeholder}` token left in a string. */
 const UNRESOLVED_PLACEHOLDER = /\{[^{}]*\}/
-/** Matches any lone brace character (a malformed template that the token regex wouldn't catch). */
 const ANY_BRACE = /[{}]/
 
 /**
@@ -157,7 +155,6 @@ export function assertResolvedNamespace(resolved: string, template: string): voi
   }
 }
 
-/** Throw if a required string field is missing, not a string, or whitespace-only. */
 export function assertNonEmpty(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new Error(`AgentCoreMemoryStore: ${field} must be a non-empty string`)

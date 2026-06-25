@@ -96,13 +96,7 @@ export interface CreateAgentCoreMemoryStoresInput {
   client?: BedrockAgentCoreClient
 }
 
-/**
- * Build one store's config from the shared identity bundle + per-namespace settings. Emits the
- * {@link AgentCoreReadTarget} arm matching `readMode` (`namespacePath` for subtree, else `namespace`).
- * Optional fields are spread conditionally so explicit `undefined` never violates
- * `exactOptionalPropertyTypes`. The store self-names from the template, so `name` is only set when the
- * caller gave one explicitly.
- */
+/** Optional fields are spread conditionally so an explicit `undefined` never violates `exactOptionalPropertyTypes`. */
 function buildStoreConfig(args: {
   config: AgentCoreMemoryConfig
   ns: AgentCoreNamespaceConfig
@@ -230,7 +224,6 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
   }
 
   if (readMode === 'subtree') {
-    // Subtree reads one store over a parent path; the caller states that parent explicitly.
     const parent = input.parentNamespace
     if (parent === undefined || parent.trim().length === 0) {
       throw new Error(
@@ -251,12 +244,9 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
     return [store]
   }
 
-  // per-namespace: a store is the writer if its namespace is flagged `writable: true`. If extraction is
-  // enabled and none is flagged, default to the FIRST namespace that hasn't explicitly opted out
-  // (`writable: false`) — an explicit `false` is honored, never silently overridden into the writer.
-  // Each explicit flag is kept as-is (we do NOT collapse multiple `true`s to one) so a caller that
-  // mis-flags two namespaces is caught loudly by assertWritableTopology. Only the writer carries
-  // `extraction`.
+  // The default writer skips namespaces that explicitly opted out (`writable: false`) rather than
+  // overriding them; multiple explicit `writable: true` flags are left intact so assertWritableTopology
+  // catches the conflict loudly instead of silently picking one.
   const anyFlagged = input.namespaces.some((ns) => ns.writable === true)
   const defaultWriterIndex =
     !anyFlagged && writeEnabled ? input.namespaces.findIndex((ns) => ns.writable !== false) : -1
@@ -281,8 +271,7 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
     )
   })
 
-  // At most one writable always; exactly one required when extraction is enabled. (Store-name
-  // uniqueness is validated by the MemoryManager constructor, so we don't re-check it here.)
+  // Store-name uniqueness is validated by the MemoryManager constructor, so we don't re-check it here.
   assertWritableTopology(stores, writeEnabled)
   return stores
 }
