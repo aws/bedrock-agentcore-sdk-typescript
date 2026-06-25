@@ -148,6 +148,12 @@ export class AgentCoreMemoryStore implements MemoryStore {
 
   async search(query: string, options?: SearchOptions): Promise<MemoryEntry[]> {
     const want = options?.maxSearchResults ?? this.maxSearchResults ?? DEFAULT_MAX_SEARCH_RESULTS
+    // Validate the effective value, not just the constructor field: a call-time `maxSearchResults`
+    // (e.g. from the `search_memory` tool) of 0/negative/non-integer would otherwise reach topK and
+    // `.slice(0, want)` — 0 yields a silent empty result, non-integers a service ValidationException.
+    if (!Number.isInteger(want) || want < 1) {
+      throw new Error(`AgentCoreMemoryStore.search: maxSearchResults must be a positive integer, got ${want}`)
+    }
     // With a minScore floor, over-fetch then trim so the client-side filter doesn't under-deliver
     // when above-floor records exist deeper in the ranking. With no floor, topK == want. Ceil the
     // product so a fractional overFetchFactor (permitted by validation) never yields a non-integer

@@ -152,6 +152,23 @@ describe('AgentCoreMemoryStore.search', () => {
     expect(Number.isInteger(topK)).toBe(true)
   })
 
+  it('caps the over-fetched topK at MAX_TOPK (100)', async () => {
+    send = sendReturning([])
+    // want(50) * overFetchFactor(3) = 150 -> clamped to 100.
+    const store = new AgentCoreMemoryStore(
+      baseConfig(send, { maxSearchResults: 50, minScore: 0.5, overFetchFactor: 3 })
+    )
+    await store.search('q')
+    expect((lastInput.searchCriteria as { topK: number }).topK).toBe(100)
+  })
+
+  it.each([0, -1, 2.5, NaN])('throws on an invalid call-time maxSearchResults %s', async (maxSearchResults) => {
+    send = sendReturning([])
+    const store = new AgentCoreMemoryStore(baseConfig(send))
+    await expect(store.search('q', { maxSearchResults })).rejects.toThrow(/maxSearchResults must be a positive integer/)
+    expect(send).not.toHaveBeenCalled() // fails before the retrieve call
+  })
+
   it('drops unscored records under a positive floor (score undefined treated as 0)', async () => {
     send = sendReturning([record('1', 'scored', 0.9), record('2', 'unscored', undefined)])
     const store = new AgentCoreMemoryStore(baseConfig(send, { minScore: 0.5 }))

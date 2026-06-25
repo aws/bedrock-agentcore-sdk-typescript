@@ -150,6 +150,19 @@ describe('AgentCoreEventSender.sendBatch', () => {
     expect(sent[1]!.input.metadata).toEqual({ topic: { stringValue: 'beta' } })
   })
 
+  it('groups only CONSECUTIVE same-metadata runs — a returning signature (A,A,B,C,B) is its own event', async () => {
+    const sender = makeSender(send, {
+      metadataProvider: (m) => ({ topic: m.content[0] && 'text' in m.content[0] ? m.content[0].text : '' }),
+    })
+    // A,A,B,C,B -> events [A,A],[B],[C],[B] = 4. A global Map<sig,group> would wrongly collapse to 3.
+    await sender.sendBatch([userMsg('A'), userMsg('A'), userMsg('B'), userMsg('C'), userMsg('B')])
+    expect(send).toHaveBeenCalledTimes(4)
+    expect(turnsOf(sent[0]!).map((t) => t.text)).toEqual(['A', 'A'])
+    expect(turnsOf(sent[1]!).map((t) => t.text)).toEqual(['B'])
+    expect(turnsOf(sent[2]!).map((t) => t.text)).toEqual(['C'])
+    expect(turnsOf(sent[3]!).map((t) => t.text)).toEqual(['B'])
+  })
+
   it('maps constant metadata to {stringValue} and shares it across the batched event', async () => {
     const sender = makeSender(send, {
       // Values must match AgentCore's metadata charset ([a-zA-Z0-9 ._:/=+@-]); numbers stringify cleanly.
