@@ -46,6 +46,10 @@
       "import": "./dist/src/tools/code-interpreter/integrations/strands/index.js",
       "types": "./dist/src/tools/code-interpreter/integrations/strands/index.d.ts"
     },
+    "./experimental/memory/strands": {
+      "import": "./dist/src/memory/integrations/strands/index.js",
+      "types": "./dist/src/memory/integrations/strands/index.d.ts"
+    },
     "./runtime": {
       "import": "./dist/src/runtime/index.js",
       "types": "./dist/src/runtime/index.d.ts"
@@ -91,10 +95,12 @@
     "@ai-sdk/amazon-bedrock": "^4.0.0-beta.67",
     "@aws-sdk/client-cognito-identity-provider": "^3.957.0",
     "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/sdk-trace-base": "^1.30.1",
     "@opentelemetry/sdk-trace-node": "^1.30.1",
-    "@strands-agents/sdk": "^0.6.0",
+    "@strands-agents/sdk": "^1.6.0",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/express": "^5.0.6",
@@ -132,7 +138,7 @@
   "homepage": "https://github.com/aws/bedrock-agentcore-sdk-typescript#readme",
   "dependencies": {
     "@aws-crypto/sha256-js": "^5.2.0",
-    "@aws-sdk/client-bedrock-agentcore": "^3.996.0",
+    "@aws-sdk/client-bedrock-agentcore": "^3.1065.0",
     "@aws-sdk/client-bedrock-agentcore-control": "^3.996.0",
     "@aws-sdk/credential-providers": "^3.996.0",
     "@aws-sdk/protocol-http": "^3.370.0",
@@ -148,7 +154,7 @@
     "zod": "^4.1.13"
   },
   "peerDependencies": {
-    "@strands-agents/sdk": ">=0.1.0",
+    "@strands-agents/sdk": ">=1.5.0",
     "ai": ">=6.0.0-beta",
     "playwright": ">=1.56.0",
     "react": ">=18.0.0",
