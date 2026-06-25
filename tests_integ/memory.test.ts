@@ -8,11 +8,7 @@ import {
 } from '@aws-sdk/client-bedrock-agentcore-control'
 import { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
 import { Agent, BedrockModel, MemoryManager } from '@strands-agents/sdk'
-import {
-  AgentCoreMemoryStore,
-  createAgentCoreMemoryStore,
-  createAgentCoreMemoryStores,
-} from '../src/memory/integrations/strands/index.js'
+import { AgentCoreMemoryStore, createAgentCoreMemoryStores } from '../src/memory/integrations/strands/index.js'
 
 /**
  * Integration + end-to-end tests for the AgentCore Memory <-> Strands store.
@@ -117,7 +113,7 @@ describe('AgentCoreMemoryStore (store-level, live data plane)', () => {
   const sessionId = `session-${uniqueSuffix()}-padded-to-be-long-enough`
 
   it('writes role-tagged events via createEvent (addMessages succeeds)', async () => {
-    const store = createAgentCoreMemoryStore({
+    const store = new AgentCoreMemoryStore({
       memoryId,
       actorId,
       sessionId,
@@ -138,7 +134,7 @@ describe('AgentCoreMemoryStore (store-level, live data plane)', () => {
   }, 60_000)
 
   it('is idempotent on re-send of the same sequence numbers (clientToken dedup)', async () => {
-    const store = createAgentCoreMemoryStore({
+    const store = new AgentCoreMemoryStore({
       memoryId,
       actorId,
       sessionId,
@@ -165,7 +161,7 @@ describe('AgentCoreMemoryStore (store-level, live data plane)', () => {
     } as unknown as typeof dataPlane
 
     const batchActor = `batch-actor-${uniqueSuffix()}`
-    const store = createAgentCoreMemoryStore({
+    const store = new AgentCoreMemoryStore({
       memoryId,
       actorId: batchActor,
       sessionId: `batch-session-${uniqueSuffix()}-padded-to-be-long-enough`,
@@ -186,7 +182,7 @@ describe('AgentCoreMemoryStore (store-level, live data plane)', () => {
     expect(createEventCalls).toBe(1) // THE COST LEVER: 4 turns -> 1 API call, not 4
 
     // Parity: the batched event still extracts the facts (matches the per-message behavior).
-    const readStore = createAgentCoreMemoryStore({
+    const readStore = new AgentCoreMemoryStore({
       memoryId,
       actorId: batchActor,
       sessionId: 'unused-for-read-padded-to-be-long-enough',
@@ -204,7 +200,7 @@ describe('AgentCoreMemoryStore (store-level, live data plane)', () => {
   }, 300_000)
 
   it('recalls extracted records and proves the namespace contract (records land where the store queries)', async () => {
-    const store = createAgentCoreMemoryStore({
+    const store = new AgentCoreMemoryStore({
       memoryId,
       actorId,
       sessionId,
@@ -231,7 +227,7 @@ describe('AgentCoreMemoryStore (store-level, live data plane)', () => {
   }, 300_000)
 
   it('throws when addMessages is called on a recall-only store', async () => {
-    const store = createAgentCoreMemoryStore({
+    const store = new AgentCoreMemoryStore({
       memoryId,
       actorId,
       sessionId,
@@ -303,7 +299,7 @@ describe('AgentCoreMemoryStore (session-scoped namespace drift)', () => {
     await waitForMemoryActive(driftMemoryId)
 
     // Write a multi-turn conversation under session A so the summary strategy has something to extract.
-    const writer = createAgentCoreMemoryStore({
+    const writer = new AgentCoreMemoryStore({
       memoryId: driftMemoryId,
       actorId,
       sessionId: sessionA,
@@ -331,14 +327,14 @@ describe('AgentCoreMemoryStore (session-scoped namespace drift)', () => {
   })
 
   it('a store on a different sessionId does not see session A records; the same sessionId does', async () => {
-    const storeA = createAgentCoreMemoryStore({
+    const storeA = new AgentCoreMemoryStore({
       memoryId: driftMemoryId,
       actorId,
       sessionId: sessionA,
       namespace: SUMMARY_NS,
       client: dataPlane,
     })
-    const storeB = createAgentCoreMemoryStore({
+    const storeB = new AgentCoreMemoryStore({
       memoryId: driftMemoryId,
       actorId,
       sessionId: sessionB,

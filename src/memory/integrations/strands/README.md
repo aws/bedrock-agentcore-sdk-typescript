@@ -65,8 +65,9 @@ const store = new AgentCoreMemoryStore({
 const agent = new Agent({ model, memoryManager: new MemoryManager({ stores: [store] }) })
 ```
 
-`createAgentCoreMemoryStore` (singular) is a thin convenience wrapper over that for the named
-single-namespace path.
+This mirrors how the framework's own `BedrockKnowledgeBaseStore` exposes a single store — a constructor,
+no factory. Reach for `createAgentCoreMemoryStores` only when you have multiple namespaces (it builds one
+shared client and enforces the single-writer topology).
 
 ### Subtree reads
 

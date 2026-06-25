@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
-import { createAgentCoreMemoryStores, createAgentCoreMemoryStore, assertWritableTopology } from '../factory.js'
+import { createAgentCoreMemoryStores, assertWritableTopology } from '../factory.js'
 import type { CreateAgentCoreMemoryStoresInput } from '../factory.js'
 import { AgentCoreMemoryStore } from '../store.js'
 import { ExtractionTrigger, type ExtractionTriggerContext, type MemoryContentBlockType } from '@strands-agents/sdk'
@@ -153,46 +153,6 @@ describe('createAgentCoreMemoryStores - subtree', () => {
         })
       )
     ).toThrow(/common parent/)
-  })
-})
-
-describe('createAgentCoreMemoryStore (singular)', () => {
-  it('returns a single store for one namespace', () => {
-    const store = createAgentCoreMemoryStore({
-      memoryId: 'mem-1',
-      actorId: 'actor-1',
-      sessionId: 'sess-1',
-      namespace: '/users/{actorId}/facts',
-      extraction: { cadence: new FakeTrigger() },
-      client: fakeClient,
-    })
-    expect(store.name).toBe('users-facts')
-    expect(store.writable).toBe(true)
-    expect(store.extraction).toBeDefined()
-  })
-
-  it('is recall-only when extraction is omitted', () => {
-    const store = createAgentCoreMemoryStore({
-      memoryId: 'mem-1',
-      actorId: 'actor-1',
-      sessionId: 'sess-1',
-      namespace: '/users/{actorId}/facts',
-      client: fakeClient,
-    })
-    expect(store.writable).toBe(false)
-    expect(store.extraction).toBeUndefined()
-  })
-
-  it('honors an explicit name', () => {
-    const store = createAgentCoreMemoryStore({
-      memoryId: 'mem-1',
-      actorId: 'actor-1',
-      sessionId: 'sess-1',
-      namespace: '/users/{actorId}/facts',
-      name: 'facts',
-      client: fakeClient,
-    })
-    expect(store.name).toBe('facts')
   })
 })
 

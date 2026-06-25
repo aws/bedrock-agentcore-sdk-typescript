@@ -1,5 +1,5 @@
 export { AgentCoreMemoryStore } from './store.js'
-export { createAgentCoreMemoryStores, createAgentCoreMemoryStore, assertWritableTopology } from './factory.js'
+export { createAgentCoreMemoryStores, assertWritableTopology } from './factory.js'
 export { AgentCoreEventSender } from './sender.js'
 export { mapRole, extractText, isUserOrAssistantWithText } from './format.js'
 export { resolveNamespace, slugifyNamespace, RESERVED_METADATA_PREFIX } from './types.js'
@@ -14,7 +14,6 @@ export type {
 } from './types.js'
 export type {
   CreateAgentCoreMemoryStoresInput,
-  CreateAgentCoreMemoryStoreInput,
   AgentCoreNamespaceConfig,
   AgentCoreExtractionConfig,
   ReadMode,

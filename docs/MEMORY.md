@@ -60,7 +60,7 @@ const stores = createAgentCoreMemoryStores({
 const agent = new Agent({ model, memoryManager: new MemoryManager({ stores }) })
 ```
 
-For a single namespace, the store stands alone (or use the `createAgentCoreMemoryStore` shim):
+For a single namespace, construct the store directly (no factory needed):
 
 ```typescript
 import { AgentCoreMemoryStore } from 'bedrock-agentcore/experimental/memory/strands'
