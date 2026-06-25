@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.3.0] - 2026-06-25
+
+### Other Changes
+- fix(runtime/shell): apply prettier formatting to session.ts (#201) (4e65fe0)
+- fix(runtime/shell): make reconnect spec-conformant (#199) (a59fdb0)
+- feat(memory): add AgentCore Memory Strands integration (experimental) (#187) (773c6cc)
+- feat(runtime): add interactive shell support (InvokeAgentRuntimeCommandShell) (#197) (67fbfb5)
+- ci: add Claude Code /security-review workflow on PRs (#188) (22a2fac)
+- feat(workflows): add closed-PR comment redirect (#179) (fc0b7ae)
+- test: add integration tests asserting no user content in OTEL spans (#176) (8fe9106)
+- chore: replace all github.token/GITHUB_TOKEN with GitHub App token (#167) (2e4adf4)
+
 ## [0.2.4] - 2026-05-12
 
 ### Fixed
