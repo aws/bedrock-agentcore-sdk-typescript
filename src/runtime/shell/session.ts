@@ -833,10 +833,7 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
     // is promoted to 'open' but _reconnectPromise has not yet been cleared in .finally) must
     // be processed as a NEW event — otherwise a terminal 4000/1003 on the new socket is
     // swallowed (kicked never set) and a fresh drop arms no new reconnect.
-    if (
-      this._reconnectPromise &&
-      (this._state.status === 'reconnecting' || this._state.status === 'connecting')
-    ) {
+    if (this._reconnectPromise && (this._state.status === 'reconnecting' || this._state.status === 'connecting')) {
       return this._reconnectPromise
     }
     if (this._isClosed()) return Promise.resolve(false)
