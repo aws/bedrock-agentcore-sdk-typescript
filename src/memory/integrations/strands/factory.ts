@@ -23,12 +23,7 @@ export interface AgentCoreNamespaceConfig {
   minScore?: number
   /** Over-fetch multiplier when `minScore` is set (see {@link AgentCoreMemoryStoreConfig.overFetchFactor}). */
   overFetchFactor?: number
-  /**
-   * Marks this namespace's store as the single write sink (`addMessages` + extraction). Because
-   * `createEvent` is namespace-free, at most one store may be writable. When `extraction` is enabled and
-   * no namespace sets this, the first namespace is the writer. {@link assertWritableTopology} enforces
-   * the at-most-one rule.
-   */
+  /** Marks this the single write sink. Defaults to the first namespace when extraction is enabled; see {@link assertWritableTopology}. */
   writable?: boolean
 }
 
@@ -38,16 +33,9 @@ export interface AgentCoreNamespaceConfig {
  */
 export interface AgentCoreExtractionConfig {
   /**
-   * Write cadence — when buffered turns are flushed to `createEvent`. Omit to defer to the
-   * MemoryManager's default (Strands' `IntervalTrigger`, every few turns), consistent with other Strands
-   * stores. Pass any Strands {@link ExtractionTrigger} (e.g. `IntervalTrigger`/`InvocationTrigger`), or
-   * an array to compose several.
-   *
-   * Cadence vs durability: a trigger only controls *when* a flush is dispatched (fire-and-forget; the
-   * coordinator never awaits it). At a true end-of-session there is no next turn, so a tail that hasn't
-   * fired is lost. The durability mechanism is {@link MemoryManager.flush}, called where the runtime is
-   * alive (e.g. the end of an invocation handler) — it awaits the writes. Cadence reduces API-call
-   * volume; `flush()` guarantees the data lands.
+   * When buffered turns are flushed to `createEvent`. Omit for the MemoryManager's default
+   * (`IntervalTrigger`); pass any Strands {@link ExtractionTrigger} or an array. A trigger only sets
+   * cadence (fire-and-forget) — `MemoryManager.flush()` is what guarantees durability.
    */
   cadence?: ExtractionTrigger | ExtractionTrigger[]
   /**
@@ -72,12 +60,9 @@ export interface CreateAgentCoreMemoryStoresInput {
   parentNamespace?: string
 
   /**
-   * The single write switch (mirrors the framework's `boolean | config` shorthand). For AgentCore,
-   * writable, extraction-enabled, and "writes via createEvent" are one concept, so they collapse here:
-   * omitted or `false` means recall-only (every store search-only, no writes); `true` means writable
-   * with the framework's default cadence; `{ cadence?, filter? }` means writable with a custom
-   * cadence/filter. Which namespace is the writer is chosen by the per-namespace `writable` flag (else
-   * the first namespace).
+   * The single write switch: omit/`false` = recall-only; `true` = writable with the default cadence;
+   * `{ cadence?, filter? }` = writable with a custom cadence/filter. The writer namespace is chosen by
+   * the per-namespace `writable` flag (else the first).
    */
   extraction?: boolean | AgentCoreExtractionConfig
 
@@ -121,17 +106,11 @@ function buildStoreConfig(args: {
 }
 
 /**
- * Enforce the AgentCore write topology: **at most one** store may be writable. Because `createEvent` is
- * namespace-free (it writes the whole conversation to the `(memoryId, actorId, sessionId)` stream),
- * two writable stores would emit duplicate events — and nothing upstream dedupes them (the
- * `MemoryManager` schedules each extraction store independently; the per-sender idempotency token is
- * keyed on a per-store run id, so it cannot collapse cross-store duplicates). The single-writer rule can
- * therefore only be enforced here, at construction. Exported so hand-built (`new`) multi-store setups
- * can guard themselves too.
- *
- * - `0` writable: OK (recall-only) — unless `expectExtraction` is set (a writer is required to run it).
- * - `1` writable: OK.
- * - `>1` writable: always an error.
+ * At most one store may be writable. `createEvent` is namespace-free (it writes the whole conversation to
+ * the `(memoryId, actorId, sessionId)` stream), so two writers would emit duplicate events that nothing
+ * upstream dedupes — and a store can't see its siblings, so the rule can only be enforced here, at
+ * construction. Exported so hand-built (`new`) multi-store setups can guard themselves. With
+ * `expectExtraction`, a writer is required (0 writers throws).
  */
 export function assertWritableTopology(stores: readonly AgentCoreMemoryStore[], expectExtraction = false): void {
   const writers = stores.filter((s) => s.writable)
@@ -152,18 +131,8 @@ export function assertWritableTopology(stores: readonly AgentCoreMemoryStore[], 
 }
 
 /**
- * Build the AgentCore store topology for one `(actorId, sessionId)`, ready to spread into
- * `MemoryManagerConfig.stores`.
- *
- * - `per-namespace` (default): one store per namespace; when `extraction` is enabled, exactly one
- *   (the namespace flagged `writable`, else the first) is writable and carries `addMessages` +
- *   `extraction`. The rest are search-only. When `extraction` is omitted/`false`, all stores are
- *   search-only (unless a namespace is explicitly `writable`).
- * - `subtree`: one store reading a parent path via `namespacePath` (writable iff `extraction` is enabled).
- *
- * Because `createEvent` is namespace-free, writes always go through exactly one store regardless of read
- * shape; {@link assertWritableTopology} enforces that. A multi-actor/session server calls this once per
- * `(actorId, sessionId)`.
+ * Build the stores for one `(actorId, sessionId)` — one shared client, one writer — ready to spread into
+ * `MemoryManagerConfig.stores`. Called once per `(actorId, sessionId)` by a multi-actor server.
  */
 export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresInput): AgentCoreMemoryStore[] {
   if (!Array.isArray(input.namespaces) || input.namespaces.length === 0) {
@@ -175,9 +144,7 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
     }
   })
 
-  // Validate maxTurnsPerEvent here too (not only in the sender), so identical input validates identically
-  // regardless of topology — a recall-only set never builds a sender, so an invalid value would otherwise
-  // pass silently.
+  // Validated here too, not only in the sender: a recall-only set never builds a sender.
   if (
     input.maxTurnsPerEvent !== undefined &&
     (!Number.isInteger(input.maxTurnsPerEvent) || input.maxTurnsPerEvent < 1)
@@ -189,10 +156,9 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
 
   const readMode: ReadMode = input.readMode ?? 'per-namespace'
 
-  // Resolve the single `extraction` switch into the store-facing `boolean | ExtractionConfig` value. We
-  // pass `true` straight through (rather than eagerly building a trigger) so the MemoryManager applies
-  // its own default cadence; we only build an `ExtractionConfig` when a custom cadence/filter is given.
-  // Guard against an array (typeof [] === 'object') so a stray array can't be duck-typed as a config.
+  // `true` passes through (the MemoryManager applies its own default cadence); only a custom
+  // cadence/filter builds an ExtractionConfig. `!Array.isArray` stops a stray array (typeof === 'object')
+  // being duck-typed as a config.
   const writeEnabled = input.extraction !== undefined && input.extraction !== false
   const extractionObj: AgentCoreExtractionConfig =
     typeof input.extraction === 'object' && !Array.isArray(input.extraction) ? input.extraction : {}
