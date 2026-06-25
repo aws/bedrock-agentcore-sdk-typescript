@@ -222,7 +222,7 @@ upstream, so the integration should not yet be relied on for GA workloads.
 
 **SDK requirements:**
 
-- `@aws-sdk/client-bedrock-agentcore` >= 3.1020 (for the typed `namespacePath` field used by `subtree` reads).
+- `@aws-sdk/client-bedrock-agentcore` >= 3.1065.0 (for the typed `namespacePath` field used by `subtree` reads).
 - `@strands-agents/sdk` >= 1.5.0 (memory / extraction module).
 
 ## Testing

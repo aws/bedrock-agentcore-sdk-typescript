@@ -220,5 +220,5 @@ A deliberate v1 gap with a clear upgrade path; it does not block use.
 
 ## Requirements
 
-- `@aws-sdk/client-bedrock-agentcore` >= 3.1020 (typed `namespacePath`).
+- `@aws-sdk/client-bedrock-agentcore` >= 3.1065.0 (typed `namespacePath`).
 - `@strands-agents/sdk` >= 1.5.0 (the memory `MemoryManager` / `MemoryStore` / extraction surface).
