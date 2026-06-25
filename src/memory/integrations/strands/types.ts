@@ -77,6 +77,12 @@ export interface AgentCoreMemoryConfig {
    */
   readonly maxTurnsPerEvent?: number | undefined
 
+  /**
+   * Controls long-term memory extraction. Set to `"SKIP"` to store events in short-term memory
+   * without triggering long-term extraction.
+   */
+  readonly extractionMode?: string | undefined
+
   /** Region for the default client. Ignored if `client` is supplied. */
   readonly region?: string | undefined
   /** Credentials for the default client. Ignored if `client` is supplied. */
