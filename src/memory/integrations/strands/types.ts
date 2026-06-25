@@ -86,34 +86,26 @@ export interface AgentCoreMemoryConfig {
 }
 
 /**
- * Per-store fields layered on top of the framework's {@link MemoryStoreConfig} (which contributes
- * `name` / `description` / `maxSearchResults` / `writable` / `extraction`) and the read target.
- */
-export interface AgentCoreMemoryStoreFields {
-  /** Optional client-side relevance floor; records scoring below it are dropped from results. */
-  readonly minScore?: number
-
-  /**
-   * Multiplier applied to `topK` when `minScore` is set, so the client-side floor doesn't under-deliver
-   * when above-floor records sit deeper in the ranking. Defaults to {@link DEFAULT_OVERFETCH_FACTOR}.
-   * Ignored when no `minScore` floor is configured. The over-fetched `topK` is capped at {@link MAX_TOPK}.
-   */
-  readonly overFetchFactor?: number
-}
-
-/**
  * Config for a single {@link AgentCoreMemoryStore}. One flat object: the {@link AgentCoreMemoryConfig}
  * identity (`memoryId`/`actorId`/`sessionId` required; client/credentials/tuning optional), the
  * {@link AgentCoreReadTarget} read-target union (`{ namespace }` exact, or `{ namespacePath }` subtree),
- * and the framework's store fields. `writable` defaults to `false` (recall-only); set it `true` to make
- * this the write sink. `name` defaults to a slug of the namespace template when omitted.
+ * and the framework's store fields ({@link MemoryStoreConfig} contributes `description`/
+ * `maxSearchResults`/`writable`/`extraction`). `writable` defaults to `false` (recall-only); set it
+ * `true` to make this the write sink. `name` defaults to a slug of the namespace template when omitted.
  */
 export type AgentCoreMemoryStoreConfig = Omit<MemoryStoreConfig, 'name'> &
   AgentCoreMemoryConfig &
-  AgentCoreReadTarget &
-  AgentCoreMemoryStoreFields & {
+  AgentCoreReadTarget & {
     /** Store name; defaults to a slug of the namespace template (see {@link slugifyNamespace}) if omitted. */
     readonly name?: string
+    /** Optional client-side relevance floor; records scoring below it are dropped from results. */
+    readonly minScore?: number
+    /**
+     * Multiplier applied to `topK` when `minScore` is set, so the client-side floor doesn't under-deliver
+     * when above-floor records sit deeper in the ranking. Defaults to {@link DEFAULT_OVERFETCH_FACTOR}.
+     * Ignored when no `minScore` floor is configured. The over-fetched `topK` is capped at {@link MAX_TOPK}.
+     */
+    readonly overFetchFactor?: number
   }
 
 /**
