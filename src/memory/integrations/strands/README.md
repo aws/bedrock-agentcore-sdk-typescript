@@ -28,7 +28,7 @@ server-side extraction into long-term records.
 import { Agent, MemoryManager } from '@strands-agents/sdk'
 import { createAgentCoreMemoryStores } from 'bedrock-agentcore/experimental/memory/strands'
 
-// One call per (actorId, sessionId). `per-namespace` (default) gives one store per namespace.
+// One call per (actorId, sessionId). Builds one store per namespace, sharing a client.
 const stores = createAgentCoreMemoryStores({
   memoryId: 'mem-abc',
   actorId: 'user-123',
@@ -71,26 +71,30 @@ shared client and enforces the single-writer topology).
 
 ### Subtree reads
 
-For "recall everything relevant about this user" in a single retrieval per turn — one store reads a
-parent path via `namespacePath`, covering all child namespaces. Pass the parent explicitly:
+For "recall everything relevant about this user" in a single retrieval per turn — read a parent path via
+`namespacePath`, covering all child namespaces. A subtree read is a single store, so construct it
+directly (no factory): pass `namespacePath` instead of `namespace`.
 
 ```typescript
-const stores = createAgentCoreMemoryStores({
+const store = new AgentCoreMemoryStore({
   memoryId,
   actorId,
   sessionId,
-  namespaces: [{ namespace: '/strategy/{id}/actor/{actorId}/facts' }],
-  readMode: 'subtree',
-  parentNamespace: '/strategy/{id}/actor/{actorId}', // the subtree root to query
+  namespacePath: '/strategy/{id}/actor/{actorId}', // the subtree root to query
+  writable: true,
   extraction: true,
 })
 ```
 
+`namespace` (exact prefix) and `namespacePath` (subtree) are the two arms of the read-target union —
+exactly the `retrieveMemoryRecords` API shape. There is no `readMode` flag: the field you set _is_ the
+read mode.
+
 ## Design notes
 
 - **At most one writable store per `(actorId, sessionId)`.** `createEvent` is namespace-free, so writes
-  collapse to a single stream regardless of `readMode` — two writable stores would emit duplicate events.
-  In `per-namespace` mode the writer is the namespace flagged `writable: true` (else, when `extraction`
+  collapse to a single stream regardless of read target — two writable stores would emit duplicate events.
+  Across a factory-built set the writer is the namespace flagged `writable: true` (else, when `extraction`
   is enabled, the first); the rest are search-only. `createAgentCoreMemoryStores` calls
   `assertWritableTopology` to enforce the at-most-one rule, and that guard is **exported** so hand-built
   (`new AgentCoreMemoryStore`) multi-store setups can call it themselves. Omit `extraction` (and leave
@@ -130,29 +134,29 @@ const stores = createAgentCoreMemoryStores({
 `createEvent` is the write API call, and three independent levers control how many you make. They
 compose — understand them separately:
 
-1. **Batching (always on).** A flush packs all of its role-tagged turns into a *single* `createEvent`
+1. **Batching (always on).** A flush packs all of its role-tagged turns into a _single_ `createEvent`
    (chunked only at `maxTurnsPerEvent`, default 50), instead of one call per message. So a 6-message
    turn is 1 call, not 6. This needs no configuration and applies under every trigger; it is the
    primary write-cost reduction.
 
-2. **Cadence (the trigger) — tunes calls *across* turns.** The trigger decides *when* a flush happens.
+2. **Cadence (the trigger) — tunes calls _across_ turns.** The trigger decides _when_ a flush happens.
    `extraction: true` defers to Strands' default (`IntervalTrigger`, every **5 turns** — not every
    invocation; and a fire with no new messages is a no-op, so it never writes "empty"). Pass any Strands
    trigger to tune it, e.g. `extraction: { cadence: new IntervalTrigger({ turns: 10 }) }`, or an array to
    compose several. **Cadence only changes call volume if writes actually buffer across turns** — which
-   requires reusing the `MemoryManager` across the session's invocations (see below) and *not* flushing
+   requires reusing the `MemoryManager` across the session's invocations (see below) and _not_ flushing
    every turn. So in the common per-turn-`flush()` pattern the trigger choice is largely moot. It is
    **not** the cost lever — batching (lever 1) is.
 
 3. **`flush()` — durability, not cost.** `MemoryManager.flush()` force-drains the buffer immediately,
-   ignoring the trigger. A trigger only *dispatches* a write (fire-and-forget; never awaited), and the
+   ignoring the trigger. A trigger only _dispatches_ a write (fire-and-forget; never awaited), and the
    AgentCore runtime can reclaim the session microVM on idle before a dispatched write lands — and any
    turn may be the last (there is no session-end signal). `flush()` awaits the writes while the runtime
    is alive, so it is the durability mechanism. The safe default is to `flush()` at the end of each
    invocation handler; it's cheap because batching makes a turn's flush a single call.
 
 **The tension, and how to resolve it:** flushing every turn (durable) means ~1 `createEvent` per turn —
-the trigger's cross-turn batching never kicks in. To cut calls further you flush *less* often and let
+the trigger's cross-turn batching never kicks in. To cut calls further you flush _less_ often and let
 the cadence batch across turns, accepting that an unflushed tail is lost if the microVM is reclaimed
 mid-session. Two working setups:
 

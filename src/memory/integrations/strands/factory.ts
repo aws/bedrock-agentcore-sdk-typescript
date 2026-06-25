@@ -9,9 +9,6 @@ import {
   type MetadataProvider,
 } from './types.js'
 
-/** How the factory builds a read store: one store per namespace, or one store over a common parent subtree. */
-export type ReadMode = 'per-namespace' | 'subtree'
-
 /** Per-namespace read configuration. */
 export interface AgentCoreNamespaceConfig {
   /** Namespace template, e.g. `/strategy/{id}/actor/{actorId}/preferences`. */
@@ -50,14 +47,12 @@ export interface CreateAgentCoreMemoryStoresInput {
   actorId: string
   sessionId: string
 
-  /** Read namespaces. `per-namespace` yields one store each; `subtree` yields one store over a common parent. */
+  /**
+   * Read namespaces — one store is built per entry, each reading its own exact namespace prefix. To read a
+   * whole subtree instead, that is a single store: construct it directly with
+   * `new AgentCoreMemoryStore({ ...identity, namespacePath })`.
+   */
   namespaces: AgentCoreNamespaceConfig[]
-
-  /** Default `'per-namespace'`. */
-  readMode?: ReadMode
-
-  /** Required for `subtree`: the parent path to read via `namespacePath`. Ignored for `per-namespace`. */
-  parentNamespace?: string
 
   /**
    * The single write switch: omit/`false` = recall-only; `true` = writable with the default cadence;
@@ -85,16 +80,14 @@ export interface CreateAgentCoreMemoryStoresInput {
 function buildStoreConfig(args: {
   config: AgentCoreMemoryConfig
   ns: AgentCoreNamespaceConfig
-  template: string
-  readMode: ReadMode
   writable: boolean
   extraction: boolean | ExtractionConfig | undefined
 }): AgentCoreMemoryStoreConfig {
-  const { config, ns, template, readMode, writable, extraction } = args
+  const { config, ns, writable, extraction } = args
   return {
     // Spread the shared identity flat — same client/identity object reused across the set.
     ...config,
-    ...(readMode === 'subtree' ? { namespacePath: template } : { namespace: template }),
+    namespace: ns.namespace,
     writable,
     ...(ns.name !== undefined && { name: ns.name }),
     ...(ns.description !== undefined && { description: ns.description }),
@@ -154,8 +147,6 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
     )
   }
 
-  const readMode: ReadMode = input.readMode ?? 'per-namespace'
-
   // `true` passes through (the MemoryManager applies its own default cadence); only a custom
   // cadence/filter builds an ExtractionConfig. `!Array.isArray` stops a stray array (typeof === 'object')
   // being duck-typed as a config.
@@ -189,27 +180,6 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
     client,
   }
 
-  if (readMode === 'subtree') {
-    const parent = input.parentNamespace
-    if (parent === undefined || parent.trim().length === 0) {
-      throw new Error(
-        'createAgentCoreMemoryStores: subtree readMode requires an explicit parentNamespace ' +
-          '(the parent path to read via namespacePath); pass it, or use readMode: "per-namespace"'
-      )
-    }
-    const store = new AgentCoreMemoryStore(
-      buildStoreConfig({
-        config,
-        ns: input.namespaces[0]!,
-        template: parent,
-        readMode: 'subtree',
-        writable: writeEnabled,
-        extraction,
-      })
-    )
-    return [store]
-  }
-
   // The default writer skips namespaces that explicitly opted out (`writable: false`) rather than
   // overriding them; multiple explicit `writable: true` flags are left intact so assertWritableTopology
   // catches the conflict loudly instead of silently picking one.
@@ -229,8 +199,6 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
       buildStoreConfig({
         config,
         ns,
-        template: ns.namespace,
-        readMode: 'per-namespace',
         writable: isWriter,
         extraction: isWriter ? extraction : undefined,
       })

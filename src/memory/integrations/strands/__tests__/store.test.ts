@@ -377,6 +377,13 @@ describe('AgentCoreMemoryStore validation', () => {
     ).toThrow(/\{memoryStrategyId\}/)
   })
 
+  it('throws on an unresolved placeholder in a subtree namespacePath too', () => {
+    // Same guard applies to the subtree arm — a subtree read is a single store you construct directly.
+    expect(
+      () => new AgentCoreMemoryStore(cfg({ namespacePath: '/strategies/{memoryStrategyId}/actors/{actorId}' }))
+    ).toThrow(/\{memoryStrategyId\}/)
+  })
+
   it.each(['/users/{actorId}/we{ird', '/users/{actorId}/weird}', '/a/{strategy/b'])(
     'throws on a lone/unmatched brace in the namespace (%s)',
     (namespace) => {

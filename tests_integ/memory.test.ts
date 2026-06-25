@@ -243,16 +243,15 @@ describe('AgentCoreMemoryStore (store-level, live data plane)', () => {
   })
 
   it('reads a subtree via namespacePath without error', async () => {
-    const [store] = createAgentCoreMemoryStores({
+    // A subtree read is a single store — construct it directly with `namespacePath` (no factory needed).
+    const store = new AgentCoreMemoryStore({
       memoryId,
       actorId,
       sessionId,
-      namespaces: [{ namespace: FACTS_NAMESPACE }],
-      readMode: 'subtree',
-      parentNamespace: `/integ/${actorId}`,
+      namespacePath: `/integ/${actorId}`,
       client: dataPlane,
     })
-    await expect(store!.search('anything')).resolves.toBeDefined()
+    await expect(store.search('anything')).resolves.toBeDefined()
   }, 60_000)
 
   it('stands alone: a directly-constructed store (no factory) writes and recalls', async () => {

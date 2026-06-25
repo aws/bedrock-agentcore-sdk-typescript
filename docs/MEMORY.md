@@ -76,8 +76,8 @@ const store = new AgentCoreMemoryStore({
 const agent = new Agent({ model, memoryManager: new MemoryManager({ stores: [store] }) })
 ```
 
-See [`src/memory/integrations/strands/README.md`](../src/memory/integrations/strands/index.ts) for `readMode` (`per-namespace`
-vs `subtree`), `minScore`, the `extraction` switch, recall-only setup, and the full factory surface.
+See [`src/memory/integrations/strands/README.md`](../src/memory/integrations/strands/index.ts) for the read-target arms
+(`namespace` exact vs `namespacePath` subtree), `minScore`, the `extraction` switch, recall-only setup, and the full factory surface.
 
 ## Deploying with the AgentCore CLI / CDK
 
