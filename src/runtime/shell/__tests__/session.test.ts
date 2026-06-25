@@ -409,6 +409,265 @@ describe('ShellSession: close()', () => {
   })
 })
 
+describe('ShellSession: disconnect handling', () => {
+  // Build a session whose socket we can drive frame-by-frame, with full control over
+  // when frames/close arrive — so we can drop the connection while NOT iterating.
+  function manualOpts(
+    opts: { reconnect?: boolean; onReconnect?: (reconnected: boolean) => void | Promise<void> } = {}
+  ): ShellSessionOptions & {
+    sockets: MockWs[]
+    confirm: () => void
+  } {
+    const sockets: MockWs[] = []
+    const wsFactory = (): WebSocket => {
+      const ws = makeMockWs()
+      sockets.push(ws)
+      return ws as unknown as WebSocket
+    }
+    const connectFn: ConnectFn = vi.fn(async () => {
+      // Read the socket lazily inside nextTick — wsFactory runs AFTER connectFn returns.
+      process.nextTick(() => {
+        const ws = sockets[sockets.length - 1]!
+        const isReconnect = sockets.length > 1
+        ws.emit('upgrade', { headers: {} })
+        ws.emit('open')
+        process.nextTick(() => ws.emit('message', confirmationFrame('s', isReconnect)))
+      })
+      return { url: 'wss://test.local/runtimes/x/ws/shells', headers: {} }
+    })
+    return {
+      connectFn,
+      _wsFactory: wsFactory,
+      reconnectConfig: opts.reconnect
+        ? { maxRetries: 2, baseDelay: 0, reconnectWindow: null, onReconnect: opts.onReconnect }
+        : undefined,
+      sockets,
+      confirm: () => {},
+    }
+  }
+
+  it('send() after a drop with NO active iterator throws a clean error (not raw ws error)', async () => {
+    // Reproduces the reported bug: terminate the socket, never iterate, then send().
+    // The old code let send() reach ws.send() on a CLOSED socket → "readyState 3".
+    const opts = manualOpts({ reconnect: false })
+    const session = new ShellSession(opts)
+    await session.connect()
+
+    const ws = opts.sockets[0]!
+    ws.readyState = 3 // CLOSED
+    ws.emit('close', 1006, Buffer.from('')) // abnormal drop, no reconnectConfig
+    await new Promise((r) => process.nextTick(r))
+
+    // Throws a descriptive SDK error, specifically NOT the raw ws "readyState 3" error.
+    await expect(session.send('echo hi\n')).rejects.toThrow(/not connected|not open|closed/)
+    await expect(session.send('echo hi\n')).rejects.not.toThrow(/readyState 3/)
+  })
+
+  it('send() awaits an in-flight reconnect, then sends on the recovered socket', async () => {
+    const opts = manualOpts({ reconnect: true })
+    const session = new ShellSession(opts)
+    await session.connect()
+
+    // Drop the first socket abnormally (1006 → reconnectable). No iterator running.
+    const ws0 = opts.sockets[0]!
+    ws0.readyState = 3
+    ws0.emit('close', 1006, Buffer.from(''))
+
+    // send() should wait for the reconnect to produce socket #2, then write to it.
+    await session.send('echo after\n')
+
+    expect(opts.sockets.length).toBe(2)
+    const ws1 = opts.sockets[1]!
+    expect(ws1.send).toHaveBeenCalled() // wrote to the NEW socket
+    await session.close()
+  })
+
+  it('keepalive terminates a silently-dead connection after missed pongs', async () => {
+    vi.useFakeTimers()
+    const opts = manualOpts({ reconnect: false })
+    const session = new ShellSession({ ...opts, keepaliveIntervalMs: 1000 })
+    await session.connect()
+    const ws = opts.sockets[0]!
+
+    // No pong/message ever arrives. First interval pings; by >2× interval it's declared dead.
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(ws.ping).toHaveBeenCalledTimes(1)
+    expect(ws.terminate).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(2000) // now past deadAfterMs (2×1000)
+    expect(ws.terminate).toHaveBeenCalled()
+
+    await session.close()
+    vi.useRealTimers()
+  })
+
+  it('a received pong keeps the connection alive (no terminate)', async () => {
+    vi.useFakeTimers()
+    const opts = manualOpts({ reconnect: false })
+    const session = new ShellSession({ ...opts, keepaliveIntervalMs: 1000 })
+    await session.connect()
+    const ws = opts.sockets[0]!
+
+    // Emit a pong each interval — liveness stays fresh, never declared dead.
+    for (let i = 0; i < 4; i++) {
+      await vi.advanceTimersByTimeAsync(1000)
+      ws.emit('pong')
+    }
+    expect(ws.terminate).not.toHaveBeenCalled()
+    expect(ws.ping.mock.calls.length).toBeGreaterThanOrEqual(3)
+
+    await session.close()
+    vi.useRealTimers()
+  })
+
+  const drainTick = (n = 8) =>
+    (async () => {
+      for (let i = 0; i < n; i++) await new Promise((r) => process.nextTick(r))
+    })()
+
+  // A socket 'error' (no close code) must NOT pre-empt the authoritative
+  // 'close' code. ws emits error-then-close; the terminal 4000 must still set kicked.
+  it('error-then-close(4000): terminal code wins, kicked is set (not reconnected)', async () => {
+    const opts = manualOpts({ reconnect: true })
+    const session = new ShellSession(opts)
+    await session.connect()
+    await drainTick()
+
+    const ws = opts.sockets[0]!
+    ws.readyState = 3
+    ws.emit('error', new Error('socket error')) // no closeCode
+    await new Promise((r) => process.nextTick(r))
+    ws.emit('close', 4000, Buffer.from('replaced by new connection'))
+    await drainTick()
+
+    expect(session.kicked).toBe(true)
+    // No reconnect attempt was made — only the original socket exists.
+    expect(opts.sockets.length).toBe(1)
+    await session.close()
+  })
+
+  // error-then-close(1003) must not reconnect.
+  it('error-then-close(1003): does not reconnect', async () => {
+    const opts = manualOpts({ reconnect: true })
+    const session = new ShellSession(opts)
+    await session.connect()
+    await drainTick()
+
+    const ws = opts.sockets[0]!
+    ws.readyState = 3
+    ws.emit('error', new Error('protocol error'))
+    await new Promise((r) => process.nextTick(r))
+    ws.emit('close', 1003, Buffer.from('text frames not supported'))
+    await drainTick()
+
+    expect(opts.sockets.length).toBe(1) // no reconnect socket created
+    await session.close()
+  })
+
+  // Regression: same error-then-close(4000) but WITH an active `for await` iterator —
+  // the documented primary usage. The 'error' wakes the read loop with a null-code abort
+  // BEFORE the authoritative 'close' lands; the iterator must wait for 'close' rather than
+  // arming a reconnect on the null code (which would swallow the terminal 4000).
+  it('error-then-close(4000) with an active iterator: kicked wins, no reconnect', async () => {
+    const opts = manualOpts({ reconnect: true })
+    const session = new ShellSession(opts)
+    await session.connect()
+    const loop = (async () => {
+      for await (const _ of session) {
+        /* drain */
+      }
+    })()
+    await drainTick()
+
+    const ws = opts.sockets[0]!
+    ws.readyState = 3
+    ws.emit('error', new Error('socket error')) // no closeCode — wakes the read loop early
+    await new Promise((r) => process.nextTick(r))
+    ws.emit('close', 4000, Buffer.from('replaced by new connection'))
+    await drainTick(20)
+
+    expect(session.kicked).toBe(true)
+    expect(opts.sockets.length).toBe(1) // no reconnect socket created
+    await session.close()
+    await loop
+  })
+
+  // Regression: error-then-close(1003) with an active iterator must not reconnect either.
+  it('error-then-close(1003) with an active iterator: does not reconnect', async () => {
+    const opts = manualOpts({ reconnect: true })
+    const session = new ShellSession(opts)
+    await session.connect()
+    const loop = (async () => {
+      for await (const _ of session) {
+        /* drain */
+      }
+    })()
+    await drainTick()
+
+    const ws = opts.sockets[0]!
+    ws.readyState = 3
+    ws.emit('error', new Error('protocol error'))
+    await new Promise((r) => process.nextTick(r))
+    ws.emit('close', 1003, Buffer.from('text frames not supported'))
+    await drainTick(20)
+
+    expect(opts.sockets.length).toBe(1) // no reconnect socket created
+    await session.close()
+    await loop
+  })
+
+  // Regression: error-then-close(1006) with an active iterator SHOULD reconnect exactly
+  // once. The close handler arms the attempt and the iterator (resuming after _waitForClose)
+  // must JOIN it, not start a duplicate — so exactly one new socket is created.
+  it('error-then-close(1006) with an active iterator: reconnects exactly once', async () => {
+    const opts = manualOpts({ reconnect: true })
+    const session = new ShellSession(opts)
+    await session.connect()
+    const loop = (async () => {
+      for await (const _ of session) {
+        /* drain */
+      }
+    })()
+    await drainTick()
+
+    const ws = opts.sockets[0]!
+    ws.readyState = 3
+    ws.emit('error', new Error('ECONNRESET'))
+    await new Promise((r) => process.nextTick(r))
+    ws.emit('close', 1006, Buffer.from('abnormal'))
+    await drainTick(20)
+
+    expect(opts.sockets.length).toBe(2) // reconnected on a single new socket (no duplicate)
+    await session.close()
+    await loop
+  })
+
+  // an onReconnect callback that calls send() must NOT deadlock.
+  it('onReconnect calling send() does not deadlock', async () => {
+    let sessionRef: ShellSession
+    let sentInCallback = false
+    const opts = manualOpts({
+      reconnect: true,
+      onReconnect: async () => {
+        await sessionRef.send('echo replay\n')
+        sentInCallback = true
+      },
+    })
+    sessionRef = new ShellSession(opts)
+    await sessionRef.connect()
+    await drainTick()
+
+    opts.sockets[0]!.readyState = 3
+    opts.sockets[0]!.emit('close', 1006, Buffer.from('')) // reconnectable
+    await drainTick(20)
+
+    expect(sentInCallback).toBe(true) // would stay false if deadlocked
+    expect(opts.sockets.length).toBe(2)
+    expect(opts.sockets[1]!.send).toHaveBeenCalled() // replay landed on the new socket
+    await sessionRef.close()
+  })
+})
+
 describe('ShellSession: keepalive', () => {
   it('calls ws.ping() on the interval and stops after close()', async () => {
     vi.useFakeTimers()

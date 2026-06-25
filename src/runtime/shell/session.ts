@@ -6,7 +6,15 @@
  *
  * When `reconnectConfig` is provided, transparently reconnects on unexpected disconnects
  * using the same `shellId` so the shell's working directory, environment, background jobs,
- * and up to 256 KB of buffered output are preserved.
+ * and up to 256 KB of buffered output are preserved on the server.
+ *
+ * Reconnect restores the *connection* on its own (it is driven by the socket close event,
+ * not by your read loop, and `send()`/`resize()` wait for it). However, on reattach the
+ * server replays the buffered output as inbound frames — to receive that replay (and to see
+ * `bytesDropped` updated and `exitCode` set) you must be consuming the session with
+ * `for await (const frame of shell)`. A write-only caller that never iterates stays
+ * connected across drops but will not observe the replayed output. Keep a `for await` loop
+ * running for the life of the session.
  *
  * @example
  * ```typescript
@@ -185,6 +193,15 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
   private _abortController: AbortController | null = null
   private readonly _sessionController = new AbortController()
   private _closeError: (Error & { closeCode?: number }) | null = null
+  /**
+   * Set while a reconnect is in flight, cleared when it settles. Shared so that the
+   * iterator, the close/dead-detection handler, and send()/resize() all await the same
+   * attempt rather than racing or each starting their own. Resolves to the reconnect
+   * outcome (true = recovered, false = gave up). This is what makes *connection* recovery
+   * iterator-independent — the socket is restored without a `for await` loop. Consuming the
+   * replayed output still requires an active iterator (see the class docstring).
+   */
+  private _reconnectPromise: Promise<boolean> | null = null
 
   constructor(opts: ShellSessionOptions) {
     this.connectFn = opts.connectFn
@@ -215,22 +232,52 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
   /**
    * Send text or raw bytes to the shell's stdin.
    * Pass a string for text commands; pass a Buffer for binary/escape sequences.
+   *
+   * If a reconnect is in flight, this waits for it and sends on the recovered
+   * connection. Throws a descriptive `Error` (never the raw `ws` "readyState 3"
+   * error) when the session is closed or could not be recovered.
    */
   async send(data: string | Buffer): Promise<void> {
-    if (this._state.status !== 'open') throw new Error('ShellSession is not connected')
-    await this._wsSend(this._state.ws, this.framer.encodeStdin(data))
+    await this._wsSend(await this._writableSocket(), this.framer.encodeStdin(data))
   }
 
   /** Send a HEARTBEAT frame (0x05) to the server. */
   async sendHeartbeat(): Promise<void> {
-    if (this._state.status !== 'open') throw new Error('ShellSession is not connected')
-    await this._wsSend(this._state.ws, this.framer.encodeHeartbeat())
+    await this._wsSend(await this._writableSocket(), this.framer.encodeHeartbeat())
   }
 
   /** Resize the terminal PTY. */
   async resize(width: number, height: number): Promise<void> {
-    if (this._state.status !== 'open') throw new Error('ShellSession is not connected')
-    await this._wsSend(this._state.ws, this.framer.encodeResize(width, height))
+    await this._wsSend(await this._writableSocket(), this.framer.encodeResize(width, height))
+  }
+
+  /**
+   * Resolve the live socket for a write, healing first if needed. Awaits an in-flight
+   * reconnect (transparent recovery) and validates the *real* socket
+   * readyState — not just the `_state` flag, which can lag a silently-dropped socket.
+   * Throws a descriptive `Error` instead of leaking the raw `ws`
+   * "readyState 3 (CLOSED)" error.
+   */
+  private async _writableSocket(): Promise<WebSocket> {
+    // Wait out an in-flight reconnect, looping so back-to-back drops (a fresh reconnect
+    // starting while we awaited the previous one) are also awaited rather than throwing a
+    // spurious "not connected" mid-recovery. The reconnect passes through 'reconnecting'
+    // then 'connecting' before reaching 'open', so we wait whenever a reconnect promise is
+    // set AND we are not yet open/closed. Crucially we stop once status is 'open': an
+    // onReconnect callback that calls send()/resize() runs after the new socket is promoted
+    // to 'open' but before _reconnectPromise settles — gating on 'open' lets it through
+    // instead of awaiting its own in-flight promise and deadlocking.
+    while (this._reconnectPromise && this._state.status !== 'open' && this._state.status !== 'closed') {
+      await this._reconnectPromise
+    }
+    if (this._isClosed()) throw new Error('ShellSession is closed')
+    if (this._state.status !== 'open') {
+      throw new Error(`ShellSession is not connected (status: ${this._state.status})`)
+    }
+    if (this._state.ws.readyState !== WebSocket.OPEN) {
+      throw new Error(`ShellSession connection is not open (readyState ${this._state.ws.readyState})`)
+    }
+    return this._state.ws
   }
 
   /** Send a CLOSE frame (0xFF) to permanently kill the shell, then close the WebSocket.
@@ -304,10 +351,40 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
 
   // ── Internal ──────────────────────────────────────────────────────────────
 
-  private _startKeepalive(ws: WebSocket): ReturnType<typeof globalThis.setInterval> | null {
+  private _startKeepalive(ws: WebSocket, signal: AbortSignal): ReturnType<typeof globalThis.setInterval> | null {
     if (this.keepaliveIntervalMs <= 0) return null
+
+    // SDK clients MUST send a Ping every 30s AND treat "no Pong within ~60s" as a dead
+    // connection. ws emits 'pong' for each RFC 6455 Pong received. Without this,
+    // a silently-dropped socket reports readyState OPEN for up to ~60s (KARP idle timeout),
+    // during which the session would sit stale on a dead connection.
+    //
+    // Liveness is pong-only by design: a 'message' listener here would (a) double-dispatch
+    // on every inbound frame — the read path (`on(ws,'message')` iterator) already consumes
+    // them — and (b) mask a write-dead-but-read-alive half-close, since streamed output
+    // would keep refreshing the timer while our pings go unanswered. The 'pong' listener is
+    // removed when this connection's controller aborts (close or drop) so it never leaks.
+    let lastPongAt = Date.now()
+    const markAlive = (): void => {
+      lastPongAt = Date.now()
+    }
+    ws.on('pong', markAlive)
+    signal.addEventListener('abort', () => ws.removeListener('pong', markAlive), { once: true })
+    const deadAfterMs = this.keepaliveIntervalMs * 2 // ~60s with the 30s default
+
     return globalThis.setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) ws.ping()
+      if (ws.readyState !== WebSocket.OPEN) return
+      if (Date.now() - lastPongAt > deadAfterMs) {
+        // Silent death: pings went unanswered. Terminate so 'close' fires and reconnect
+        // engages — instead of leaving the session stale on a dead socket.
+        this.log.warn(
+          `ShellSession: no Pong within ${deadAfterMs}ms — connection presumed dead, ` +
+            `terminating (shellId=${this.shellId})`
+        )
+        ws.terminate()
+        return
+      }
+      ws.ping()
     }, this.keepaliveIntervalMs)
   }
 
@@ -329,11 +406,16 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
     // Abort any previous per-connection iterator before creating a new one.
     this._abortController?.abort()
 
+    // A reconnect attempt enters here with status 'reconnecting'; a fresh connect with 'idle'.
+    const isReconnect = this._state.status === 'reconnecting'
     this._closeError = null
     this._reconnected = false
     this._kicked = false
-    this._bytesDropped = 0
     this._exitCode = null
+    // bytesDropped reports loss for the most recent disconnect (per-disconnect, not
+    // cumulative). Reset it only on a FRESH connect — resetting on every reconnect attempt
+    // would clobber a value the iterator has not yet read when reconnects happen back-to-back.
+    if (!isReconnect) this._bytesDropped = 0
     this._state = { status: 'connecting', ws: null }
 
     let connectResult: { url: string; headers: Record<string, string>; protocols?: string[] }
@@ -375,10 +457,26 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
       const err = Object.assign(new Error(`WebSocket closed: ${code} ${reason?.toString() ?? ''}`), { closeCode: code })
       this._closeError = err
       controller.abort(err)
+      // Trigger reconnect from the close event itself so recovery does not depend on a
+      // `for await` loop being active. Only act on closes for the *current*
+      // connection: ignore if we have already moved on (closed, reconnecting, or this
+      // socket is no longer the live one). The iterator, if running, joins the same
+      // in-flight attempt via _reconnectPromise rather than starting a second one.
+      if (this._state.status === 'open' && this._state.ws === ws) {
+        void this._ensureReconnect(code).catch(() => {})
+      }
     })
 
     ws.on('error', (err: Error) => {
       controller.abort(err)
+      // Do NOT trigger reconnect here. The `ws` library always emits 'close' after 'error'
+      // on a connected socket, and that close carries the authoritative close code (the
+      // close code drives the reconnect decision). An 'error' has no closeCode, so
+      // reconnecting from it (with a null code) would pre-empt a terminal close that must
+      // NOT reconnect — e.g. 4000 (kicked) or 1003 (text frames) — by flipping state to
+      // 'reconnecting' before the real code arrives. The 'close' handler below owns the
+      // decision; this listener exists only so the 'error' event is not unhandled.
+      this.log.debug(`ShellSession: WebSocket error (deferring to close, shellId=${this.shellId}): ${String(err)}`)
     })
 
     // Capture shellId/sessionId from 101 upgrade response headers before open fires.
@@ -432,7 +530,7 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
       return
     }
 
-    const keepaliveTimer = this._startKeepalive(ws)
+    const keepaliveTimer = this._startKeepalive(ws, controller.signal)
     // Atomic promotion: all connection objects become available together.
     this._state = { status: 'open', ws, messageIterator, keepaliveTimer, pendingFrames }
   }
@@ -490,9 +588,12 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
           try {
             const meta = (frame.json()['metadata'] ?? {}) as Record<string, unknown>
             if (meta['shellId']) {
-              // Confirmation frame — update shellId and we're done.
+              // Confirmation frame — update shellId and we're done. On a reconnect this is
+              // the single reconnection confirmation ("sent once, before replay begins"),
+              // so read bytesDropped here — it is delivered on THIS frame and nowhere else.
               this._shellId = String(meta['shellId'])
               this._reconnected = Boolean(meta['reconnected'])
+              this._recordBytesDropped(meta)
               return pendingFrames
             }
           } catch (err) {
@@ -518,6 +619,23 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
   private _isConfirmationStatus(status: Record<string, unknown>): boolean {
     const meta = status['metadata'] as Record<string, unknown> | undefined
     return Boolean(meta?.['shellId'])
+  }
+
+  /**
+   * Record `bytesDropped` from a reconnection confirmation frame's metadata, if present.
+   * `bytesDropped` reports PTY output lost from ring-buffer overflow during THIS disconnect
+   * (per-disconnect, not session-cumulative — assign, don't accumulate). Present
+   * only when greater than 0; absent on a clean reconnect.
+   */
+  private _recordBytesDropped(meta: Record<string, unknown> | undefined): void {
+    const dropped = meta?.['bytesDropped']
+    if (typeof dropped === 'number' && dropped > 0) {
+      this._bytesDropped = dropped
+      this.log.warn(
+        `ShellSession: ${dropped} bytes of PTY output lost during disconnect ` +
+          `(ring buffer overflow, shellId=${this.shellId})`
+      )
+    }
   }
 
   private _isTerminationStatus(status: Record<string, unknown>): boolean {
@@ -589,60 +707,26 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
         } catch (err: unknown) {
           if (this._isClosed()) return
 
-          const closeCode = this._extractCloseCode(err)
-
-          if (closeCode === 4000) {
-            this._state = { status: 'idle' }
-            this._kicked = true
-            this.log.warn(`ShellSession: kicked by new connection (close 4000, shellId=${this.shellId})`)
-            return
+          // A socket 'error' aborts this read before the authoritative 'close' arrives, so
+          // the abort error carries no closeCode. Reconnecting on that null code would
+          // pre-empt the real code (e.g. 4000 kicked / 1003 text-frames): _ensureReconnect
+          // would flip state to 'reconnecting', and the close handler's terminal decision
+          // (which guards on status 'open') would then be silently dropped. Wait for the
+          // 'close' first — `ws` always emits it after 'error' on a connected socket, and
+          // its handler sets _closeError and owns the reconnect decision (spec §7).
+          if (this._extractCloseCode(err) === null && this._closeError === null) {
+            await this._waitForClose(state.ws)
+            if (this._isClosed()) return
           }
 
-          // 1003 Unsupported Data — server terminated for text frames; do NOT reconnect.
-          if (closeCode === 1003) {
-            this._state = { status: 'idle' }
-            this.log.warn(
-              `ShellSession: Server closed with 1003 (text frames not supported). ` +
-                `Open a new ShellSession — do not reconnect.`
-            )
-            return
-          }
-
-          // 1000 Normal Closure — shell exited or graceful shutdown.
-          if (closeCode === 1000) {
-            this._state = { status: 'idle' }
-            return
-          }
-
-          if (!this.reconnectConfig) {
-            if (closeCode === 1001) {
-              this.log.warn(
-                `ShellSession: Server sent 1001 Going Away but no reconnectConfig — ` +
-                  `stopping. Reconnect with shellId=${this.shellId}`
-              )
-            }
-            this._state = { status: 'idle' }
-            return
-          }
-
-          // Unexpected disconnect — enter reconnect loop.
-          if (closeCode === 1001) {
-            this.log.warn(
-              `ShellSession: Server sent 1001 Going Away — entering reconnect loop (shellId=${this.shellId})`
-            )
-          }
-          // Stop this connection's timer before `state` is overwritten by `continue`.
-          // The finally block only sees the last captured `state`, so timers from
-          // intermediate reconnect cycles would leak if not stopped here.
-          this._stopKeepalive(state.keepaliveTimer)
-          this._state = { status: 'reconnecting' }
-
-          const didReconnect = await this._reconnectWithBackoff(Date.now())
-          if (!didReconnect) {
-            this.log.warn(`ShellSession: reconnect exhausted, stopping iteration (shellId=${this.shellId})`)
-            if (!this._isClosed()) this._state = { status: 'idle' }
-            return
-          }
+          // Start-or-join reconnect with the authoritative close code. The close/error
+          // handler for this socket may have already kicked off the attempt
+          // (iterator-independent path); either way we await the single shared attempt here
+          // rather than duplicating close-code logic.
+          const closeCode = this._extractCloseCode(this._closeError ?? err)
+          const didReconnect = await this._ensureReconnect(closeCode)
+          if (this._isClosed()) return
+          if (!didReconnect) return // terminal close, no config, or budget exhausted
           continue
         }
 
@@ -661,16 +745,12 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
           try {
             const s = frame.json()
             if (this._isConfirmationStatus(s)) {
-              // Post-reconnect second confirmation — check for ring-buffer overflow.
-              const meta = s['metadata'] as Record<string, unknown> | undefined
-              const dropped = meta?.['bytesDropped']
-              if (typeof dropped === 'number' && dropped > 0) {
-                this._bytesDropped += dropped
-                this.log.warn(
-                  `ShellSession: ${dropped} bytes of PTY output lost during disconnect ` +
-                    `(ring buffer overflow, shellId=${this.shellId})`
-                )
-              }
+              // A confirmation frame in the data stream. Per spec §6 the reconnection
+              // confirmation (carrying bytesDropped) is sent once *before* replay and is
+              // consumed by _readMetadataFrame, not here — so this path normally does not
+              // fire on reconnect. Record bytesDropped defensively in case a confirmation
+              // reaches the stream, then swallow it (not application output).
+              this._recordBytesDropped(s['metadata'] as Record<string, unknown> | undefined)
               continue
             }
             if (this._isTerminationStatus(s)) {
@@ -706,6 +786,107 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
       return (err as { closeCode: number }).closeCode
     }
     return null
+  }
+
+  /**
+   * Wait for the socket's authoritative 'close' to land after an 'error' woke the read
+   * loop early. The 'close' handler sets `_closeError` (carrying the real close code) and
+   * makes the reconnect decision, so this resolves as soon as `_closeError` is populated.
+   * Bounded by a short timeout in case 'close' never follows (it always does on a
+   * connected `ws`, but we must not hang the iterator on a misbehaving socket).
+   */
+  private async _waitForClose(ws: WebSocket): Promise<void> {
+    if (this._closeError !== null || this._isClosed()) return
+    const ac = new AbortController()
+    const timer = globalThis.setTimeout(() => ac.abort(), DEFAULT_METADATA_TIMEOUT)
+    try {
+      await once(ws, 'close', { signal: ac.signal })
+    } catch {
+      // Timed out or aborted — fall through; caller reconnects with whatever code is set.
+    } finally {
+      globalThis.clearTimeout(timer)
+    }
+  }
+
+  /**
+   * Decide whether a close code is auto-reconnectable, then start-or-join a reconnect.
+   *
+   * This is the single entry point for triggering reconnection. It is called from
+   * wherever a disconnect is observed — the iterator's read error, the `ws.on('close')`
+   * handler (dead-detection / silent drop while no one is iterating), or the keepalive
+   * pong-timeout — so restoring the *connection* no longer depends on an active `for await`
+   * loop. (Receiving the server's replayed output after reattach still requires iterating;
+   * see the class docstring.)
+   *
+   * Returns a promise that resolves to the reconnect outcome (true = recovered).
+   * Returns immediately with `false` for terminal close codes (4000 kicked, 1003 text,
+   * 1000 normal) or when no `reconnectConfig` is set. Concurrent callers share one
+   * in-flight attempt via `_reconnectPromise`.
+   */
+  private _ensureReconnect(closeCode: number | null): Promise<boolean> {
+    // Join the in-flight attempt while it is still running — that spans both 'reconnecting'
+    // (backoff sleep) and 'connecting' (a retry's _connectWithUpgrade in progress). A second
+    // observer of the SAME disconnect (e.g. the iterator resuming after _waitForClose, while
+    // the close handler already armed the attempt and it has advanced to 'connecting') must
+    // join, not start a duplicate attempt. We deliberately do NOT join once status is 'open':
+    // a disconnect that arrives after a successful reattach (the window where the new socket
+    // is promoted to 'open' but _reconnectPromise has not yet been cleared in .finally) must
+    // be processed as a NEW event — otherwise a terminal 4000/1003 on the new socket is
+    // swallowed (kicked never set) and a fresh drop arms no new reconnect.
+    if (
+      this._reconnectPromise &&
+      (this._state.status === 'reconnecting' || this._state.status === 'connecting')
+    ) {
+      return this._reconnectPromise
+    }
+    if (this._isClosed()) return Promise.resolve(false)
+
+    // Terminal close codes (never auto-reconnect) and the no-config case all stop the
+    // session. Classify once, emit any code-specific warning, then do a SINGLE shared
+    // idle transition rather than repeating it per branch.
+    //   4000 kicked · 1003 text-frames-unsupported · 1000 normal close · no reconnectConfig
+    const terminal = closeCode === 4000 || closeCode === 1003 || closeCode === 1000 || !this.reconnectConfig
+    if (terminal) {
+      if (closeCode === 4000) {
+        this._kicked = true
+        this.log.warn(`ShellSession: kicked by new connection (close 4000, shellId=${this.shellId})`)
+      } else if (closeCode === 1003) {
+        this.log.warn(
+          `ShellSession: Server closed with 1003 (text frames not supported). ` +
+            `Open a new ShellSession — do not reconnect.`
+        )
+      } else if (closeCode === 1001 && !this.reconnectConfig) {
+        this.log.warn(
+          `ShellSession: Server sent 1001 Going Away but no reconnectConfig — ` +
+            `stopping. Reconnect with shellId=${this.shellId}`
+        )
+      }
+      if (this._state.status === 'open') this._state = { status: 'idle' }
+      return Promise.resolve(false)
+    }
+
+    // Reconnectable disconnect — stop keepalive on the dead connection and enter the loop.
+    if (closeCode === 1001) {
+      this.log.warn(`ShellSession: Server sent 1001 Going Away — reconnecting (shellId=${this.shellId})`)
+    }
+    if (this._state.status === 'open') this._stopKeepalive(this._state.keepaliveTimer)
+    this._state = { status: 'reconnecting' }
+
+    const attempt: Promise<boolean> = this._reconnectWithBackoff(Date.now())
+      .then((didReconnect) => {
+        if (!didReconnect && !this._isClosed()) {
+          this.log.warn(`ShellSession: reconnect exhausted (shellId=${this.shellId})`)
+          this._state = { status: 'idle' }
+        }
+        return didReconnect
+      })
+      .finally(() => {
+        // Only clear if we are still the current attempt — a newer _ensureReconnect may
+        // have replaced _reconnectPromise (e.g. a drop right after this one recovered).
+        if (this._reconnectPromise === attempt) this._reconnectPromise = null
+      })
+    this._reconnectPromise = attempt
+    return this._reconnectPromise
   }
 
   // ── Two-loop exponential backoff reconnect (mirrors Python SDK) ────────────
