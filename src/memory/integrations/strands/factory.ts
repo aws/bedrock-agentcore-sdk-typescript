@@ -68,7 +68,7 @@ export interface CreateAgentCoreMemoryStoresInput {
   /** Default `'per-namespace'`. */
   readMode?: ReadMode
 
-  /** `subtree` only: explicit parent path. If omitted, the longest common prefix of `namespaces` is used. */
+  /** Required for `subtree`: the parent path to read via `namespacePath`. Ignored for `per-namespace`. */
   parentNamespace?: string
 
   /**
@@ -94,21 +94,6 @@ export interface CreateAgentCoreMemoryStoresInput {
   credentialsProvider?: AwsCredentialIdentityProvider
   /** Shared client; one is constructed (and reused across the returned stores) if omitted. */
   client?: BedrockAgentCoreClient
-}
-
-/** Longest common path-segment prefix of the given namespace templates. */
-function commonParent(namespaces: string[]): string | undefined {
-  if (namespaces.length === 0) return undefined
-  const split = namespaces.map((ns) => ns.split('/'))
-  const first = split[0]!
-  const prefix: string[] = []
-  for (let i = 0; i < first.length; i++) {
-    const seg = first[i]
-    if (split.every((parts) => parts[i] === seg)) prefix.push(seg!)
-    else break
-  }
-  const joined = prefix.join('/')
-  return joined.length > 0 ? joined : undefined
 }
 
 /**
@@ -245,11 +230,12 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
   }
 
   if (readMode === 'subtree') {
-    const parent = input.parentNamespace ?? commonParent(input.namespaces.map((n) => n.namespace))
-    if (parent === undefined) {
+    // Subtree reads one store over a parent path; the caller states that parent explicitly.
+    const parent = input.parentNamespace
+    if (parent === undefined || parent.trim().length === 0) {
       throw new Error(
-        'createAgentCoreMemoryStores: subtree readMode requires a common parent namespace; ' +
-          'pass parentNamespace explicitly or use readMode: "per-namespace"'
+        'createAgentCoreMemoryStores: subtree readMode requires an explicit parentNamespace ' +
+          '(the parent path to read via namespacePath); pass it, or use readMode: "per-namespace"'
       )
     }
     const store = new AgentCoreMemoryStore(

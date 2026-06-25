@@ -159,29 +159,19 @@ describe('createAgentCoreMemoryStores - per-namespace (default)', () => {
 })
 
 describe('createAgentCoreMemoryStores - subtree', () => {
-  it('returns a single writable store reading the common parent', () => {
-    const stores = createAgentCoreMemoryStores(baseInput({ readMode: 'subtree' }))
+  it('returns a single writable store reading the explicit parentNamespace', () => {
+    const stores = createAgentCoreMemoryStores(
+      baseInput({ readMode: 'subtree', parentNamespace: '/strategy/s/actor/{actorId}' })
+    )
     expect(stores).toHaveLength(1)
     expect(stores[0]!.writable).toBe(true)
     expect(stores[0]!.extraction).toBeDefined()
   })
 
-  it('uses an explicit parentNamespace when given', () => {
-    const stores = createAgentCoreMemoryStores(
-      baseInput({ readMode: 'subtree', parentNamespace: '/strategy/s/actor/{actorId}' })
+  it('throws when subtree mode is used without an explicit parentNamespace', () => {
+    expect(() => createAgentCoreMemoryStores(baseInput({ readMode: 'subtree' }))).toThrow(
+      /subtree readMode requires an explicit parentNamespace/
     )
-    expect(stores).toHaveLength(1)
-  })
-
-  it('throws when namespaces share no common parent and none is given', () => {
-    expect(() =>
-      createAgentCoreMemoryStores(
-        baseInput({
-          readMode: 'subtree',
-          namespaces: [{ namespace: 'alpha/x' }, { namespace: 'beta/y' }],
-        })
-      )
-    ).toThrow(/common parent/)
   })
 })
 
@@ -212,17 +202,14 @@ describe('createAgentCoreMemoryStores - validation', () => {
     ).toThrow(/\{memoryStrategyId\}/)
   })
 
-  it('subtree commonParent over placeholder-bearing templates surfaces the unresolved placeholder loudly', () => {
-    // commonParent yields `/strategies/{memoryStrategyId}/actors/{actorId}`; after {actorId} resolves,
-    // {memoryStrategyId} remains -> the store constructor throws rather than querying a brace string.
+  it('subtree parentNamespace with an unresolved placeholder surfaces it loudly at construction', () => {
+    // After {actorId} resolves, {memoryStrategyId} remains in the parent path -> the store constructor
+    // throws rather than querying a brace string the service would reject.
     expect(() =>
       createAgentCoreMemoryStores(
         baseInput({
           readMode: 'subtree',
-          namespaces: [
-            { namespace: '/strategies/{memoryStrategyId}/actors/{actorId}/facts' },
-            { namespace: '/strategies/{memoryStrategyId}/actors/{actorId}/preferences' },
-          ],
+          parentNamespace: '/strategies/{memoryStrategyId}/actors/{actorId}',
         })
       )
     ).toThrow(/\{memoryStrategyId\}/)

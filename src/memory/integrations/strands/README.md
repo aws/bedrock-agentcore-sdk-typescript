@@ -71,18 +71,17 @@ shared client and enforces the single-writer topology).
 
 ### Subtree reads
 
-For "recall everything relevant about this user" in a single retrieval per turn:
+For "recall everything relevant about this user" in a single retrieval per turn — one store reads a
+parent path via `namespacePath`, covering all child namespaces. Pass the parent explicitly:
 
 ```typescript
 const stores = createAgentCoreMemoryStores({
   memoryId,
   actorId,
   sessionId,
-  namespaces: [
-    { namespace: '/strategy/{id}/actor/{actorId}/facts' },
-    { namespace: '/strategy/{id}/actor/{actorId}/preferences' },
-  ],
-  readMode: 'subtree', // 1 store, reads the common parent via namespacePath
+  namespaces: [{ namespace: '/strategy/{id}/actor/{actorId}/facts' }],
+  readMode: 'subtree',
+  parentNamespace: '/strategy/{id}/actor/{actorId}', // the subtree root to query
   extraction: true,
 })
 ```
