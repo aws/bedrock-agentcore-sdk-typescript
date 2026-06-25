@@ -126,33 +126,40 @@ export type AgentCoreMemoryStoreConfig = Omit<MemoryStoreConfig, 'name'> &
  * make recall fail. {@link assertResolvedNamespace} catches that at construction with a clear message.
  */
 export function resolveNamespace(template: string, actorId: string, sessionId: string): string {
-  return template.replace(/\{actorId\}/g, actorId).replace(/\{sessionId\}/g, sessionId)
+  // Replacer FUNCTIONS (not replacement strings): a value containing `$&`/`$\``/`$'`/`$$` would otherwise
+  // be interpreted as a replacement pattern and silently corrupt the path. The function's return value
+  // is inserted verbatim and is NOT re-scanned, which also prevents one substituted value (e.g. an
+  // actorId literally containing "{sessionId}") from being re-substituted by the next replace.
+  return template.replace(/\{actorId\}/g, () => actorId).replace(/\{sessionId\}/g, () => sessionId)
 }
 
 /** Matches any `{placeholder}` token left in a string. */
 const UNRESOLVED_PLACEHOLDER = /\{[^{}]*\}/
+/** Matches any lone brace character (a malformed template that the token regex wouldn't catch). */
+const ANY_BRACE = /[{}]/
 
 /**
- * Throw if `resolved` still contains a `{placeholder}`. AgentCore's retrieve path rejects brace
- * characters, so an unresolved token guarantees a failed recall; failing here turns that into a clear,
- * construction-time error instead of an opaque service `ValidationException` at first search.
+ * Throw if `resolved` still contains a `{placeholder}` token or any lone brace. AgentCore's retrieve
+ * path rejects brace characters, so either guarantees a failed recall; failing here turns that into a
+ * clear, construction-time error instead of an opaque service `ValidationException` at first search.
  */
 export function assertResolvedNamespace(resolved: string, template: string): void {
-  const match = resolved.match(UNRESOLVED_PLACEHOLDER)
-  if (match) {
+  const token = resolved.match(UNRESOLVED_PLACEHOLDER)
+  const offending = token?.[0] ?? resolved.match(ANY_BRACE)?.[0]
+  if (offending !== undefined) {
     throw new Error(
-      `AgentCoreMemoryStore: namespace "${template}" still contains the unresolved placeholder ` +
-        `"${match[0]}" after substitution. Only {actorId} and {sessionId} are resolved client-side; ` +
-        `the AgentCore retrieve path does not resolve placeholders and rejects "{"/"}". Provide a ` +
-        `namespace whose only placeholders are {actorId}/{sessionId}, or pre-substitute the others ` +
-        `(e.g. a concrete strategy id) before constructing the store.`
+      `AgentCoreMemoryStore: namespace "${template}" still contains "${offending}" after substitution. ` +
+        `Only {actorId} and {sessionId} are resolved client-side; the AgentCore retrieve path does not ` +
+        `resolve placeholders and rejects "{"/"}". Provide a namespace whose only placeholders are ` +
+        `{actorId}/{sessionId} (and no stray braces), or pre-substitute the others (e.g. a concrete ` +
+        `strategy id) before constructing the store.`
     )
   }
 }
 
-/** Throw if a required string field is missing or whitespace-only. */
-export function assertNonEmpty(value: string | undefined, field: string): string {
-  if (value === undefined || value.trim().length === 0) {
+/** Throw if a required string field is missing, not a string, or whitespace-only. */
+export function assertNonEmpty(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
     throw new Error(`AgentCoreMemoryStore: ${field} must be a non-empty string`)
   }
   return value

@@ -90,7 +90,10 @@ export class AgentCoreMemoryStore implements MemoryStore {
     this.readMode = readMode
 
     // Self-name from the template so a standalone `new AgentCoreMemoryStore(...)` always has a name.
-    this.name = storeConfig.name ?? slugifyNamespace(template)
+    // Treat an empty/whitespace-only name as absent so the slug fallback engages (matches the trim
+    // convention in assertNonEmpty) rather than producing a degenerate "" store name.
+    const explicitName = storeConfig.name?.trim()
+    this.name = explicitName !== undefined && explicitName.length > 0 ? explicitName : slugifyNamespace(template)
     if (storeConfig.description !== undefined) this.description = storeConfig.description
     if (storeConfig.maxSearchResults !== undefined) {
       if (!Number.isInteger(storeConfig.maxSearchResults) || storeConfig.maxSearchResults < 1) {
@@ -135,8 +138,9 @@ export class AgentCoreMemoryStore implements MemoryStore {
         ...(config.metadataProvider !== undefined && { metadataProvider: config.metadataProvider }),
         ...(config.maxTurnsPerEvent !== undefined && { maxTurnsPerEvent: config.maxTurnsPerEvent }),
       })
-    } else if (storeConfig.extraction !== undefined) {
-      // extraction config on a non-writable store would be silently ignored (no write sink), so warn.
+    } else if (storeConfig.extraction !== undefined && storeConfig.extraction !== false) {
+      // A real extraction config on a non-writable store would be silently ignored (no write sink), so
+      // warn. `extraction: false` is the explicit opt-out — not a misconfiguration — so it stays quiet.
       logger.warn(
         `[agentcore-memory] store "${this.name}" has an extraction config but writable is false; ` +
           'extraction will not run for this store.'

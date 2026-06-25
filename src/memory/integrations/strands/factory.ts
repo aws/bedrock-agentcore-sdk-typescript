@@ -187,22 +187,36 @@ export function assertWritableTopology(stores: readonly AgentCoreMemoryStore[], 
  * `(actorId, sessionId)`.
  */
 export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresInput): AgentCoreMemoryStore[] {
-  if (input.namespaces.length === 0) {
+  if (!Array.isArray(input.namespaces) || input.namespaces.length === 0) {
     throw new Error('createAgentCoreMemoryStores: at least one namespace is required')
   }
   input.namespaces.forEach((ns, i) => {
-    if (ns.namespace === undefined || ns.namespace.trim().length === 0) {
+    if (ns === null || typeof ns !== 'object' || typeof ns.namespace !== 'string' || ns.namespace.trim().length === 0) {
       throw new Error(`createAgentCoreMemoryStores: namespaces[${i}].namespace must be a non-empty string`)
     }
   })
+
+  // Validate maxTurnsPerEvent here too (not only in the sender), so identical input validates identically
+  // regardless of topology — a recall-only set never builds a sender, so an invalid value would otherwise
+  // pass silently.
+  if (
+    input.maxTurnsPerEvent !== undefined &&
+    (!Number.isInteger(input.maxTurnsPerEvent) || input.maxTurnsPerEvent < 1)
+  ) {
+    throw new Error(
+      `createAgentCoreMemoryStores: maxTurnsPerEvent must be a positive integer, got ${input.maxTurnsPerEvent}`
+    )
+  }
 
   const readMode: ReadMode = input.readMode ?? 'per-namespace'
 
   // Resolve the single `extraction` switch into the store-facing `boolean | ExtractionConfig` value. We
   // pass `true` straight through (rather than eagerly building a trigger) so the MemoryManager applies
   // its own default cadence; we only build an `ExtractionConfig` when a custom cadence/filter is given.
+  // Guard against an array (typeof [] === 'object') so a stray array can't be duck-typed as a config.
   const writeEnabled = input.extraction !== undefined && input.extraction !== false
-  const extractionObj: AgentCoreExtractionConfig = typeof input.extraction === 'object' ? input.extraction : {}
+  const extractionObj: AgentCoreExtractionConfig =
+    typeof input.extraction === 'object' && !Array.isArray(input.extraction) ? input.extraction : {}
   const hasCustomConfig = extractionObj.cadence !== undefined || extractionObj.filter !== undefined
   const extraction: boolean | ExtractionConfig | undefined = !writeEnabled
     ? undefined
@@ -251,13 +265,21 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
     return [store]
   }
 
-  // per-namespace: a store is the writer if its namespace is flagged `writable`. If extraction is
-  // enabled and none is flagged, default to the first. Each explicit flag is honored as-is (we do NOT
-  // collapse multiple flags to one) so a caller that mis-flags two namespaces is caught loudly by
-  // assertWritableTopology rather than having the extra flag silently dropped. Only the writer carries
+  // per-namespace: a store is the writer if its namespace is flagged `writable: true`. If extraction is
+  // enabled and none is flagged, default to the FIRST namespace that hasn't explicitly opted out
+  // (`writable: false`) — an explicit `false` is honored, never silently overridden into the writer.
+  // Each explicit flag is kept as-is (we do NOT collapse multiple `true`s to one) so a caller that
+  // mis-flags two namespaces is caught loudly by assertWritableTopology. Only the writer carries
   // `extraction`.
   const anyFlagged = input.namespaces.some((ns) => ns.writable === true)
-  const defaultWriterIndex = !anyFlagged && writeEnabled ? 0 : -1
+  const defaultWriterIndex =
+    !anyFlagged && writeEnabled ? input.namespaces.findIndex((ns) => ns.writable !== false) : -1
+  if (writeEnabled && !anyFlagged && defaultWriterIndex === -1) {
+    throw new Error(
+      'createAgentCoreMemoryStores: extraction is enabled but every namespace is marked writable: false; ' +
+        'leave one namespace un-opted-out (or set writable: true on the intended writer).'
+    )
+  }
 
   const stores = input.namespaces.map((ns, i) => {
     const isWriter = ns.writable === true || i === defaultWriterIndex

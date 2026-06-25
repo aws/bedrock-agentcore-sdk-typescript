@@ -118,6 +118,7 @@ describe('AgentCoreMemoryStore (store-level, live data plane)', () => {
       actorId,
       sessionId,
       namespace: FACTS_NAMESPACE,
+      writable: true,
       extraction: true,
       client: dataPlane,
     })
@@ -139,6 +140,7 @@ describe('AgentCoreMemoryStore (store-level, live data plane)', () => {
       actorId,
       sessionId,
       namespace: FACTS_NAMESPACE,
+      writable: true,
       extraction: true,
       client: dataPlane,
     })
@@ -166,6 +168,7 @@ describe('AgentCoreMemoryStore (store-level, live data plane)', () => {
       actorId: batchActor,
       sessionId: `batch-session-${uniqueSuffix()}-padded-to-be-long-enough`,
       namespace: FACTS_NAMESPACE,
+      writable: true,
       extraction: true,
       client: countingClient,
     })
@@ -200,12 +203,12 @@ describe('AgentCoreMemoryStore (store-level, live data plane)', () => {
   }, 300_000)
 
   it('recalls extracted records and proves the namespace contract (records land where the store queries)', async () => {
+    // Recall-only: the writes happen in the earlier writer tests (shared actorId); this store just reads.
     const store = new AgentCoreMemoryStore({
       memoryId,
       actorId,
       sessionId,
       namespace: FACTS_NAMESPACE, // CLI-shape template: only {actorId}/{sessionId}
-      extraction: true,
       client: dataPlane,
     })
     const results = await pollForRecords(() => store.search('Where does the user live?'))
@@ -304,6 +307,7 @@ describe('AgentCoreMemoryStore (session-scoped namespace drift)', () => {
       actorId,
       sessionId: sessionA,
       namespace: SUMMARY_NS,
+      writable: true,
       extraction: true,
       client: dataPlane,
     })

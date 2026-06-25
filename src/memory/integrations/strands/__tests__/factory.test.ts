@@ -73,6 +73,35 @@ describe('createAgentCoreMemoryStores - per-namespace (default)', () => {
     expect(writable[0]!.name).toBe('strategy-s-actor-preferences')
   })
 
+  it('honors an explicit writable:false — picks the next un-opted-out namespace as the default writer', () => {
+    const stores = createAgentCoreMemoryStores(
+      baseInput({
+        namespaces: [
+          { namespace: '/strategy/s/actor/{actorId}/facts', writable: false },
+          { namespace: '/strategy/s/actor/{actorId}/preferences' },
+        ],
+        extraction: true,
+      })
+    )
+    const writable = stores.filter((s) => s.writable)
+    expect(writable).toHaveLength(1)
+    expect(writable[0]!.name).toBe('strategy-s-actor-preferences') // NOT the opted-out first one
+  })
+
+  it('throws when extraction is on but every namespace opts out with writable:false', () => {
+    expect(() =>
+      createAgentCoreMemoryStores(
+        baseInput({
+          namespaces: [
+            { namespace: '/a/{actorId}', writable: false },
+            { namespace: '/b/{actorId}', writable: false },
+          ],
+          extraction: true,
+        })
+      )
+    ).toThrow(/every namespace is marked writable: false/)
+  })
+
   it('throws when two namespaces are flagged writable (namespace-free createEvent would duplicate)', () => {
     expect(() =>
       createAgentCoreMemoryStores(
@@ -180,7 +209,7 @@ describe('createAgentCoreMemoryStores - validation', () => {
       createAgentCoreMemoryStores(
         baseInput({ namespaces: [{ namespace: '/strategies/{memoryStrategyId}/actors/{actorId}' }] })
       )
-    ).toThrow(/unresolved placeholder "\{memoryStrategyId\}"/)
+    ).toThrow(/\{memoryStrategyId\}/)
   })
 
   it('subtree commonParent over placeholder-bearing templates surfaces the unresolved placeholder loudly', () => {
@@ -196,7 +225,7 @@ describe('createAgentCoreMemoryStores - validation', () => {
           ],
         })
       )
-    ).toThrow(/unresolved placeholder "\{memoryStrategyId\}"/)
+    ).toThrow(/\{memoryStrategyId\}/)
   })
 
   it('binds actorId/sessionId so a multi-actor server gets distinct stores per call', () => {

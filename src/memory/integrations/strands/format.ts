@@ -25,11 +25,13 @@ function isTextBlock(block: unknown): block is TextBlockData {
  * a message reaches us; this is a defensive flatten of whatever text remains.
  */
 export function extractText(message: Pick<MessageData, 'content'>): string {
+  // Drop empty/blank text blocks before joining so an empty middle block doesn't leave a stray blank
+  // line in the concatenation (mirrors the upstream renderer).
   return message.content
     .filter(isTextBlock)
-    .map((block) => block.text)
+    .map((block) => block.text.trim())
+    .filter((text) => text.length > 0)
     .join('\n')
-    .trim()
 }
 
 /**

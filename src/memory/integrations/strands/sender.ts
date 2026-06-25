@@ -104,16 +104,22 @@ export class AgentCoreEventSender {
     // deterministic input error, so it must fail loud-and-early (unwrapped) rather than being caught
     // by the allSettled boundary below and re-wrapped as an opaque AggregateError. No createEvent is
     // attempted if any group's metadata is invalid.
-    const events = this.groupIntoEvents(sendable).map(
-      (g): PreparedEvent => ({ items: g.items, metadata: g.metadata && toAgentCoreMetadata(g.metadata) })
-    )
+    const events = this.groupIntoEvents(sendable).map((g): PreparedEvent => {
+      // Omit an empty bag entirely so the event carries no `metadata` field (matches the no-provider case).
+      const metadata = g.metadata && Object.keys(g.metadata).length > 0 ? toAgentCoreMetadata(g.metadata) : undefined
+      return { items: g.items, metadata }
+    })
 
     const results = await Promise.allSettled(events.map((e) => this.sendEvent(e)))
     const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
     if (failures.length > 0) {
+      // Fold the first underlying reason into the message: the coordinator logs `.message` only, so a
+      // bare count would hide what actually failed.
+      const firstReason = failures[0]!.reason
+      const firstMessage = firstReason instanceof Error ? firstReason.message : String(firstReason)
       throw new AggregateError(
         failures.map((f) => f.reason),
-        `AgentCore createEvent failed for ${failures.length} of ${events.length} event(s)`
+        `AgentCore createEvent failed for ${failures.length} of ${events.length} event(s); first error: ${firstMessage}`
       )
     }
   }
@@ -188,12 +194,24 @@ const METADATA_VALUE_PATTERN = /^[a-zA-Z0-9\s._:/=+@-]*$/
  * JSON-stringified. Each resulting value must match {@link METADATA_VALUE_PATTERN}; a value that doesn't
  * (e.g. a string with commas/punctuation, or a stringified array/object whose `[]{}",` are rejected)
  * throws here with the offending key, rather than failing opaquely server-side at `createEvent`.
+ *
+ * Values that don't produce a usable scalar string are rejected up front: `undefined`/functions/symbols
+ * (`JSON.stringify` returns the JS value `undefined`, not a string) and non-finite numbers / `null`
+ * (which stringify to the literal `"null"`). Without this guard those slip past the charset test —
+ * `undefined` as `{ stringValue: undefined }`, `NaN` as the string `"null"` — and corrupt the event.
  */
 function toAgentCoreMetadata(metadata: Record<string, unknown>): Record<string, { stringValue: string }> {
   const out: Record<string, { stringValue: string }> = {}
   for (const [key, value] of Object.entries(metadata)) {
+    if (value === undefined || value === null || (typeof value === 'number' && !Number.isFinite(value))) {
+      throw new Error(
+        `AgentCoreEventSender: metadata value for key "${key}" is ${String(value)}, which has no valid ` +
+          `string representation. Provide a finite number, boolean, or a string (omit the key instead of ` +
+          `passing null/undefined).`
+      )
+    }
     const stringValue = typeof value === 'string' ? value : JSON.stringify(value)
-    if (!METADATA_VALUE_PATTERN.test(stringValue)) {
+    if (typeof stringValue !== 'string' || !METADATA_VALUE_PATTERN.test(stringValue)) {
       throw new Error(
         `AgentCoreEventSender: metadata value for key "${key}" contains characters AgentCore rejects ` +
           `(allowed: letters, digits, whitespace, and ._:/=+@-). Got ${JSON.stringify(stringValue)}. ` +

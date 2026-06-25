@@ -185,6 +185,31 @@ describe('AgentCoreEventSender.sendBatch', () => {
     expect(send).not.toHaveBeenCalled() // fails before any createEvent
   })
 
+  it('throws for nullish/non-finite metadata values instead of silently sending them', async () => {
+    // undefined -> JSON.stringify returns the JS value undefined (not a string); NaN/Infinity/null -> "null".
+    // All would slip past the charset test and corrupt the event, so they must throw before any createEvent.
+    for (const bad of [{ u: undefined }, { n: null }, { x: NaN }, { y: Infinity }]) {
+      const sender = makeSender(send, { metadataProvider: () => bad as Record<string, never> })
+      await expect(sender.sendBatch([userMsg('x')])).rejects.toThrow(/no valid string representation/)
+    }
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('omits the metadata field entirely when the provider returns an empty bag', async () => {
+    const sender = makeSender(send, { metadataProvider: () => ({}) })
+    await sender.sendBatch([userMsg('x')])
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(sent[0]!.input.metadata).toBeUndefined() // {} -> no metadata field, like the no-provider case
+  })
+
+  it('folds the first underlying error into the AggregateError message (coordinator logs .message only)', async () => {
+    const alwaysFail = vi.fn(async () => {
+      throw new Error('throttled by AgentCore')
+    })
+    const sender = makeSender(alwaysFail)
+    await expect(sender.sendBatch([userMsg('x')])).rejects.toThrow(/first error: throttled by AgentCore/)
+  })
+
   it('throws an AggregateError when an event fails (so the coordinator re-fires the batch)', async () => {
     const alwaysFail = vi.fn(async () => {
       throw new Error('boom')

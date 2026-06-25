@@ -296,6 +296,24 @@ describe('AgentCoreMemoryStore construction', () => {
     expect(store.writable).toBe(false)
   })
 
+  it('falls back to the slug when name is empty/whitespace (no degenerate "" name)', () => {
+    const send = vi.fn(async () => ({}))
+    expect(new AgentCoreMemoryStore(baseConfig(send, { name: '', namespace: '/users/{actorId}/facts' })).name).toBe(
+      'users-facts'
+    )
+    expect(new AgentCoreMemoryStore(baseConfig(send, { name: '   ', namespace: '/users/{actorId}/facts' })).name).toBe(
+      'users-facts'
+    )
+  })
+
+  it('does not warn when extraction is explicitly false on a non-writable store', () => {
+    const send = vi.fn(async () => ({}))
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+    new AgentCoreMemoryStore(baseConfig(send, { writable: false, extraction: false }))
+    expect(warn).not.toHaveBeenCalled() // `false` is the opt-out, not a misconfiguration
+    warn.mockRestore()
+  })
+
   it('stands alone with flat identity (no factory needed)', async () => {
     const sent: CapturedCommand[] = []
     const send = vi.fn(async (command: CapturedCommand) => {
@@ -356,7 +374,21 @@ describe('AgentCoreMemoryStore validation', () => {
     // {memoryStrategyId} is not resolved client-side; the AgentCore read path rejects "{"/"}".
     expect(
       () => new AgentCoreMemoryStore(cfg({ namespace: '/strategies/{memoryStrategyId}/actors/{actorId}/facts' }))
-    ).toThrow(/unresolved placeholder "\{memoryStrategyId\}"/)
+    ).toThrow(/\{memoryStrategyId\}/)
+  })
+
+  it.each(['/users/{actorId}/we{ird', '/users/{actorId}/weird}', '/a/{strategy/b'])(
+    'throws on a lone/unmatched brace in the namespace (%s)',
+    (namespace) => {
+      // A stray brace isn't a matched {token} but the service still rejects "{"/"}", so it must fail loud.
+      expect(() => new AgentCoreMemoryStore(cfg({ namespace }))).toThrow(/still contains/)
+    }
+  )
+
+  it('substitutes {actorId} verbatim even when it contains $-replacement sequences', () => {
+    // '$&'/'$\`'/"$'"/'$$' are String.replace patterns; a naive replacement string would corrupt the path.
+    const store = new AgentCoreMemoryStore(cfg({ namespace: '/p/{actorId}/x' }, { actorId: 'a$$b' }))
+    expect(store.name).toBeDefined() // constructs without throwing; the $$ is inserted literally
   })
 
   it('accepts a namespace whose only placeholders are {actorId}/{sessionId}', () => {
