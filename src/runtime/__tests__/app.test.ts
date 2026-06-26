@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Readable } from 'stream'
 import { z } from 'zod'
-import type { InvocationHandler, WebSocketHandler } from '../types.js'
+import type { HealthStatus, InvocationHandler, WebSocketHandler } from '../types.js'
 import { BedrockAgentCoreApp } from '../app.js'
 
 // Mock fastify module
@@ -262,6 +262,57 @@ describe('BedrockAgentCoreApp', () => {
         status: expect.stringMatching(/^(Healthy|HealthyBusy)$/),
         time_of_last_update: expect.any(Number),
       })
+    })
+
+    it('updates custom ping timestamps only when status changes', async () => {
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000)
+      try {
+        let customStatus: HealthStatus = 'Healthy'
+        const handler: InvocationHandler = async (_request, _context) => 'test response'
+        const app = new BedrockAgentCoreApp({
+          invocationHandler: { process: handler },
+          pingHandler: () => customStatus,
+        })
+        const mockApp = app['_app'] as any
+
+        app['_setupRoutes']()
+
+        const getCall = mockApp.get.mock.calls.find((call: any[]) => call[0] === '/ping')
+        const pingHandler = getCall[1]
+        const mockReq = {}
+        const mockReply = { send: vi.fn() }
+
+        await pingHandler(mockReq, mockReply)
+        expect(mockReply.send).toHaveBeenLastCalledWith({
+          status: 'Healthy',
+          time_of_last_update: 1,
+        })
+
+        nowSpy.mockReturnValue(2000)
+        await pingHandler(mockReq, mockReply)
+        expect(mockReply.send).toHaveBeenLastCalledWith({
+          status: 'Healthy',
+          time_of_last_update: 1,
+        })
+
+        customStatus = 'HealthyBusy'
+        nowSpy.mockReturnValue(3000)
+        await pingHandler(mockReq, mockReply)
+        expect(mockReply.send).toHaveBeenLastCalledWith({
+          status: 'HealthyBusy',
+          time_of_last_update: 3,
+        })
+
+        customStatus = 'Healthy'
+        nowSpy.mockReturnValue(4000)
+        await pingHandler(mockReq, mockReply)
+        expect(mockReply.send).toHaveBeenLastCalledWith({
+          status: 'Healthy',
+          time_of_last_update: 4,
+        })
+      } finally {
+        nowSpy.mockRestore()
+      }
     })
   })
 

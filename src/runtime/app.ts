@@ -159,26 +159,27 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
    * @returns Current health status
    */
   public getCurrentPingStatus(): HealthStatus {
+    let status: HealthStatus | undefined
+
     // Priority 1: Forced status
     if (this._forcedPingStatus) {
-      return this._forcedPingStatus
-    }
-
-    // Priority 2: Custom handler
-    if (this._pingHandler) {
+      status = this._forcedPingStatus
+    } else if (this._pingHandler) {
+      // Priority 2: Custom handler
       try {
         const result = this._pingHandler()
         // Handle both sync and async handlers
-        return result instanceof Promise ? 'Healthy' : result
+        status = result instanceof Promise ? 'Healthy' : result
       } catch {
         this._app.log.warn('Custom ping handler failed, falling back to automatic')
       }
     }
 
-    // Priority 3: Automatic based on active tasks
-    const status: HealthStatus = this._activeTasksMap.size > 0 ? 'HealthyBusy' : 'Healthy'
+    if (!status) {
+      // Priority 3: Automatic based on active tasks
+      status = this._activeTasksMap.size > 0 ? 'HealthyBusy' : 'Healthy'
+    }
 
-    // Track status changes
     if (!this._lastKnownStatus || this._lastKnownStatus !== status) {
       this._lastKnownStatus = status
       this._lastStatusUpdateTime = Date.now()
