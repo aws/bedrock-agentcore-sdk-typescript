@@ -81,7 +81,7 @@ function makeOpts(
 ): ShellSessionOptions & { getWs: () => MockWs } {
   let capturedWs: MockWs | null = null
 
-  const wsFactory = (_url: string, _protocols?: string[], _options?: Record<string, unknown>): WebSocket => {
+  const wsFactory = (_url: string, _protocols?: string[], _options?: import('ws').ClientOptions): WebSocket => {
     const ws = makeMockWs()
     capturedWs = ws
     return ws as unknown as WebSocket
@@ -439,7 +439,12 @@ describe('ShellSession: disconnect handling', () => {
       connectFn,
       _wsFactory: wsFactory,
       reconnectConfig: opts.reconnect
-        ? { maxRetries: 2, baseDelay: 0, reconnectWindow: null, onReconnect: opts.onReconnect }
+        ? {
+            maxRetries: 2,
+            baseDelay: 0,
+            reconnectWindow: null,
+            ...(opts.onReconnect && { onReconnect: opts.onReconnect }),
+          }
         : undefined,
       sockets,
       confirm: () => {},

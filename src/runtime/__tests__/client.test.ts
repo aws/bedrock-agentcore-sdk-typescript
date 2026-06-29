@@ -602,7 +602,7 @@ describe('RuntimeClient', () => {
       const presignSpy = (SignatureV4 as ReturnType<typeof vi.fn>).mock.results.at(-1)?.value.presign as ReturnType<
         typeof vi.fn
       >
-      const signedRequest = presignSpy.mock.calls[0][0]
+      const signedRequest = presignSpy.mock.calls[0]![0]
       expect(signedRequest.query['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id']).toBe('embedded-session')
     })
 
@@ -733,7 +733,7 @@ describe('RuntimeClient', () => {
 
     it('auto-generates shellId when omitted', async () => {
       await client.openShell({ runtimeArn: validArn })
-      const opts = (MockShellSession as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      const opts = (MockShellSession as ReturnType<typeof vi.fn>).mock.calls[0]![0]
       expect(opts.shellId).toBeTruthy()
     })
 
@@ -764,7 +764,7 @@ describe('RuntimeClient', () => {
 
     it('uses sigv4 auth by default', async () => {
       await client.openShell({ runtimeArn: validArn })
-      const opts = (MockShellSession as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      const opts = (MockShellSession as ReturnType<typeof vi.fn>).mock.calls[0]![0]
       // connectFn should call connectShellSigV4 — invoke it to verify shape
       const connResult = await opts.connectFn('test-shell', 'test-session')
       expect(connResult.url).toMatch(/^wss:\/\//)
@@ -774,7 +774,7 @@ describe('RuntimeClient', () => {
 
     it('uses presigned auth when specified', async () => {
       await client.openShell({ runtimeArn: validArn, auth: { type: 'presigned', expires: 60 } })
-      const opts = (MockShellSession as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      const opts = (MockShellSession as ReturnType<typeof vi.fn>).mock.calls[0]![0]
       const connResult = await opts.connectFn('test-shell', 'test-session')
       expect(connResult.url).toMatch(/^wss:\/\//)
       expect(connResult.url).toContain('X-Amz-Signature')
@@ -783,7 +783,7 @@ describe('RuntimeClient', () => {
 
     it('uses oauth auth when specified', async () => {
       await client.openShell({ runtimeArn: validArn, auth: { type: 'oauth', bearerToken: 'my-token' } })
-      const opts = (MockShellSession as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      const opts = (MockShellSession as ReturnType<typeof vi.fn>).mock.calls[0]![0]
       const connResult = await opts.connectFn('test-shell', 'test-session')
       expect(connResult.url).toMatch(/^wss:\/\//)
       expect(connResult.protocols).toHaveLength(2)

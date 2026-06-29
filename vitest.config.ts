@@ -45,6 +45,7 @@ export default defineConfig({
         'src/**/__tests__/**',
         'src/**/__fixtures__/**',
         'src/**/index.ts', // Re-export files
+        'src/tools/browser/live-view/nice-dcv-web-client-sdk/**',
       ],
       thresholds: {
         lines: 60,

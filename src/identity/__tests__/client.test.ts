@@ -205,7 +205,7 @@ describe('IdentityClient', () => {
         workloadIdentityToken: 'user-identity-token',
       })
 
-      const command = mockSend.mock.calls[0][0]
+      const command = mockSend.mock.calls[0]![0]
       expect(command.input).toMatchObject({
         oauth2Flow: 'ON_BEHALF_OF_TOKEN_EXCHANGE',
         resourceCredentialProviderName: 'downstream-service',
@@ -264,7 +264,7 @@ describe('IdentityClient', () => {
         workloadIdentityToken: 'workload-token',
       })
 
-      const command = mockSend.mock.calls[0][0]
+      const command = mockSend.mock.calls[0]![0]
       expect(command.input.resources).toEqual(['https://api.example.com', 'https://api2.example.com'])
       expect(command.input.audiences).toBeUndefined()
     })
@@ -283,7 +283,7 @@ describe('IdentityClient', () => {
         workloadIdentityToken: 'workload-token',
       })
 
-      const command = mockSend.mock.calls[0][0]
+      const command = mockSend.mock.calls[0]![0]
       expect(command.input.resources).toBeUndefined()
       expect(command.input.audiences).toEqual(['audience-1', 'audience-2'])
     })
@@ -302,7 +302,7 @@ describe('IdentityClient', () => {
         workloadIdentityToken: 'workload-token',
       })
 
-      const command = mockSend.mock.calls[0][0]
+      const command = mockSend.mock.calls[0]![0]
       expect(command.input).toMatchObject({
         resources: ['https://api.example.com'],
         audiences: ['audience-1'],
@@ -324,7 +324,7 @@ describe('IdentityClient', () => {
         workloadIdentityToken: 'workload-token',
       })
 
-      const command = mockSend.mock.calls[0][0]
+      const command = mockSend.mock.calls[0]![0]
       expect(command.input.resources).toBeUndefined()
       expect(command.input.audiences).toBeUndefined()
     })
@@ -353,8 +353,8 @@ describe('IdentityClient', () => {
 
         // Both calls should have resources/audiences
         expect(mockSend).toHaveBeenCalledTimes(2)
-        const initialCommand = mockSend.mock.calls[0][0]
-        const pollCommand = mockSend.mock.calls[1][0]
+        const initialCommand = mockSend.mock.calls[0]![0]
+        const pollCommand = mockSend.mock.calls[1]![0]
 
         expect(initialCommand.input.resources).toEqual(['https://api.example.com'])
         expect(initialCommand.input.audiences).toEqual(['audience-1'])
