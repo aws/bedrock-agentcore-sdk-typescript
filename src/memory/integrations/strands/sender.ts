@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import { type BedrockAgentCoreClient, CreateEventCommand } from '@aws-sdk/client-bedrock-agentcore'
 import type { MessageData } from '@strands-agents/sdk'
 import { extractText, isUserOrAssistantWithText, mapRole } from './format.js'
-import { DEFAULT_MAX_TURNS_PER_EVENT, type MetadataProvider } from './types.js'
+import { DEFAULT_MAX_TURNS_PER_EVENT, type ExtractionMode, type MetadataProvider } from './types.js'
 
 export interface AgentCoreEventSenderConfig {
   client: BedrockAgentCoreClient
@@ -26,7 +26,7 @@ export interface AgentCoreEventSenderConfig {
    * Controls long-term memory extraction for events sent by this sender. When set to `"SKIP"`, events
    * are stored in short-term memory but excluded from long-term extraction.
    */
-  extractionMode?: string | undefined
+  extractionMode?: ExtractionMode | undefined
 }
 
 /** A message paired with the sequence number the coordinator assigned it (when available). */
@@ -78,7 +78,7 @@ export class AgentCoreEventSender {
   private readonly metadataProvider: MetadataProvider | undefined
   private readonly runId: string
   private readonly maxTurnsPerEvent: number
-  private readonly extractionMode: string | undefined
+  private readonly extractionMode: ExtractionMode | undefined
 
   constructor(config: AgentCoreEventSenderConfig) {
     this.client = config.client

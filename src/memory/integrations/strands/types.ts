@@ -2,6 +2,13 @@ import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
 import type { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
 import type { JSONValue, MemoryStoreConfig, MessageData } from '@strands-agents/sdk'
 
+/**
+ * Long-term extraction control for `createEvent`. Mirrors the SDK's `ExtractionMode` enum, declared
+ * locally so the type holds across SDK versions (older clients don't export it). `"SKIP"` stores the
+ * event in short-term memory only; omitting it processes the event for extraction as usual.
+ */
+export type ExtractionMode = 'SKIP'
+
 /** Default region used when none is supplied and `AWS_REGION` is unset. */
 export const DEFAULT_REGION = 'us-west-2'
 
@@ -81,7 +88,7 @@ export interface AgentCoreMemoryConfig {
    * Controls long-term memory extraction. Set to `"SKIP"` to store events in short-term memory
    * without triggering long-term extraction.
    */
-  readonly extractionMode?: string | undefined
+  readonly extractionMode?: ExtractionMode | undefined
 
   /** Region for the default client. Ignored if `client` is supplied. */
   readonly region?: string | undefined

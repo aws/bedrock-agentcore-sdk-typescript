@@ -202,6 +202,71 @@ describe('AgentCoreMemoryStore (store-level, live data plane)', () => {
     expect(Array.isArray(results)).toBe(true)
   }, 300_000)
 
+  it('sends extractionMode "SKIP" on the live CreateEvent and the service accepts it', async () => {
+    // Capture the real CreateEventCommand input so we prove the value goes over the wire (not just that
+    // it's set on the sender), and that the live data plane accepts "SKIP" without erroring.
+    let skipInput: { extractionMode?: string } | undefined
+    const capturingClient = {
+      send: (command: unknown) => {
+        if ((command as { constructor: { name: string } }).constructor.name === 'CreateEventCommand') {
+          skipInput = (command as { input: { extractionMode?: string } }).input
+        }
+        return dataPlane.send(command as never)
+      },
+    } as unknown as typeof dataPlane
+
+    const skipActor = `skip-actor-${uniqueSuffix()}`
+    const store = new AgentCoreMemoryStore({
+      memoryId,
+      actorId: skipActor,
+      sessionId: `skip-session-${uniqueSuffix()}-padded-to-be-long-enough`,
+      namespace: FACTS_NAMESPACE,
+      writable: true,
+      extraction: true,
+      extractionMode: 'SKIP',
+      client: capturingClient,
+    })
+    // The write must succeed against the live service — this is what would have caught a value the API
+    // rejects.
+    await expect(
+      store.addMessages!([{ role: 'user', content: [{ text: 'Short-term only: my temporary PIN is 4821.' }] }], {
+        sequenceNumbers: [0],
+      })
+    ).resolves.toBeUndefined()
+    // And the wire payload carried the mode.
+    expect(skipInput?.extractionMode).toBe('SKIP')
+  }, 60_000)
+
+  it('omits extractionMode on the live CreateEvent when not configured (default extraction path)', async () => {
+    let defaultInput: { extractionMode?: string } | undefined
+    const capturingClient = {
+      send: (command: unknown) => {
+        if ((command as { constructor: { name: string } }).constructor.name === 'CreateEventCommand') {
+          defaultInput = (command as { input: { extractionMode?: string } }).input
+        }
+        return dataPlane.send(command as never)
+      },
+    } as unknown as typeof dataPlane
+
+    const defaultActor = `default-mode-actor-${uniqueSuffix()}`
+    const store = new AgentCoreMemoryStore({
+      memoryId,
+      actorId: defaultActor,
+      sessionId: `default-mode-session-${uniqueSuffix()}-padded-to-be-long-enough`,
+      namespace: FACTS_NAMESPACE,
+      writable: true,
+      extraction: true,
+      // extractionMode omitted -> field must not be sent
+      client: capturingClient,
+    })
+    await expect(
+      store.addMessages!([{ role: 'user', content: [{ text: 'Extract me normally: I live in Portland.' }] }], {
+        sequenceNumbers: [0],
+      })
+    ).resolves.toBeUndefined()
+    expect(defaultInput?.extractionMode).toBeUndefined()
+  }, 60_000)
+
   it('recalls extracted records and proves the namespace contract (records land where the store queries)', async () => {
     // Recall-only: the writes happen in the earlier writer tests (shared actorId); this store just reads.
     const store = new AgentCoreMemoryStore({
