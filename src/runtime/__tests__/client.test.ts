@@ -127,6 +127,16 @@ describe('RuntimeClient', () => {
       })
     })
 
+    it('parses GovCloud ARN successfully', () => {
+      const govCloudArn = 'arn:aws-us-gov:bedrock-agentcore:us-gov-west-1:123456789012:runtime/my-runtime-id'
+      const parsed = (client as any)._parseRuntimeArn(govCloudArn)
+      expect(parsed).toEqual({
+        region: 'us-gov-west-1',
+        accountId: '123456789012',
+        runtimeId: 'my-runtime-id',
+      })
+    })
+
     it('throws error for invalid ARN format (wrong structure)', () => {
       const invalidArn = 'invalid-arn'
       expect(() => (client as any)._parseRuntimeArn(invalidArn)).toThrow('Invalid runtime ARN format')

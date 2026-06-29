@@ -92,7 +92,7 @@ export class RuntimeClient {
   }
 
   private _parseRuntimeArn(runtimeArn: string): ParsedRuntimeArn {
-    const arnRegex = /^arn:aws:bedrock-agentcore:([^:]+):([^:]+):runtime\/(.+)$/
+    const arnRegex = /^arn:aws[a-z0-9-]*:bedrock-agentcore:([^:]+):([^:]+):runtime\/(.+)$/
     const match = runtimeArn.match(arnRegex)
 
     if (!match) {

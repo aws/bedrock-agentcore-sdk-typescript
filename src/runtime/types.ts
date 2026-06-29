@@ -334,8 +334,8 @@ export const DEFAULT_REGION = 'us-west-2'
 export const RuntimeArnSchema = z
   .string()
   .regex(
-    /^arn:aws:bedrock-agentcore:[^:]+:[^:]+:runtime\/.+$/,
-    'Invalid runtime ARN format. Expected: arn:aws:bedrock-agentcore:{region}:{account}:runtime/{runtime_id}'
+    /^arn:aws[a-z0-9-]*:bedrock-agentcore:[^:]+:[^:]+:runtime\/.+$/,
+    'Invalid runtime ARN format. Expected: arn:{partition}:bedrock-agentcore:{region}:{account}:runtime/{runtime_id}'
   )
 
 /**
