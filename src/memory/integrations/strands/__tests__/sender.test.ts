@@ -244,4 +244,18 @@ describe('AgentCoreEventSender.sendBatch', () => {
   it('rejects a non-positive maxTurnsPerEvent at construction', () => {
     expect(() => makeSender(send, { maxTurnsPerEvent: 0 })).toThrow(/maxTurnsPerEvent must be a positive integer/)
   })
+
+  it('passes extractionMode through to CreateEventCommand when configured', async () => {
+    const sender = makeSender(send, { extractionMode: 'SKIP' })
+    await sender.sendBatch([userMsg('sensitive data')])
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(sent[0]!.input.extractionMode).toBe('SKIP')
+  })
+
+  it('does not include extractionMode when not configured', async () => {
+    const sender = makeSender(send)
+    await sender.sendBatch([userMsg('normal data')])
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(sent[0]!.input.extractionMode).toBeUndefined()
+  })
 })

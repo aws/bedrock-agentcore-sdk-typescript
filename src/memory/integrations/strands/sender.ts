@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import { type BedrockAgentCoreClient, CreateEventCommand } from '@aws-sdk/client-bedrock-agentcore'
 import type { MessageData } from '@strands-agents/sdk'
 import { extractText, isUserOrAssistantWithText, mapRole } from './format.js'
-import { DEFAULT_MAX_TURNS_PER_EVENT, type MetadataProvider } from './types.js'
+import { DEFAULT_MAX_TURNS_PER_EVENT, type ExtractionMode, type MetadataProvider } from './types.js'
 
 export interface AgentCoreEventSenderConfig {
   client: BedrockAgentCoreClient
@@ -22,6 +22,11 @@ export interface AgentCoreEventSenderConfig {
    * the payload well under the service limit.
    */
   maxTurnsPerEvent?: number
+  /**
+   * Controls long-term memory extraction for events sent by this sender. When set to `"SKIP"`, events
+   * are stored in short-term memory but excluded from long-term extraction.
+   */
+  extractionMode?: ExtractionMode | undefined
 }
 
 /** A message paired with the sequence number the coordinator assigned it (when available). */
@@ -73,6 +78,7 @@ export class AgentCoreEventSender {
   private readonly metadataProvider: MetadataProvider | undefined
   private readonly runId: string
   private readonly maxTurnsPerEvent: number
+  private readonly extractionMode: ExtractionMode | undefined
 
   constructor(config: AgentCoreEventSenderConfig) {
     this.client = config.client
@@ -80,6 +86,7 @@ export class AgentCoreEventSender {
     this.actorId = config.actorId
     this.sessionId = config.sessionId
     this.metadataProvider = config.metadataProvider
+    this.extractionMode = config.extractionMode
     this.runId = config.runId ?? randomUUID()
     const cap = config.maxTurnsPerEvent ?? DEFAULT_MAX_TURNS_PER_EVENT
     if (!Number.isInteger(cap) || cap < 1) {
@@ -162,6 +169,7 @@ export class AgentCoreEventSender {
       payload,
       ...(clientToken !== undefined && { clientToken }),
       ...(event.metadata && { metadata: event.metadata }),
+      ...(this.extractionMode && { extractionMode: this.extractionMode }),
     })
 
     await this.client.send(command)
