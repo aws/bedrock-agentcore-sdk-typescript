@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.4.0] - 2026-06-30
+
+### Added
+- feat: add extractionMode support to AgentCoreEventSender (#200) (e46b183)
+
+### Fixed
+- fix: govcloud support (#206) (3558f03)
+
 ## [0.3.0] - 2026-06-25
 
 ### Other Changes
