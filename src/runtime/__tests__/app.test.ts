@@ -67,7 +67,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({
         invocationHandler: { process: handler },
         config: {
-          logging: { enabled: true, level: 'debug' },
+          logging: { enabled: true, options: { level: 'debug' } },
         },
       })
       expect(app).toBeDefined()

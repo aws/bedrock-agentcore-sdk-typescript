@@ -189,7 +189,7 @@ describe('AgentCoreEventSender.sendBatch', () => {
     // undefined -> JSON.stringify returns the JS value undefined (not a string); NaN/Infinity/null -> "null".
     // All would slip past the charset test and corrupt the event, so they must throw before any createEvent.
     for (const bad of [{ u: undefined }, { n: null }, { x: NaN }, { y: Infinity }]) {
-      const sender = makeSender(send, { metadataProvider: () => bad as Record<string, never> })
+      const sender = makeSender(send, { metadataProvider: () => bad as unknown as Record<string, never> })
       await expect(sender.sendBatch([userMsg('x')])).rejects.toThrow(/no valid string representation/)
     }
     expect(send).not.toHaveBeenCalled()

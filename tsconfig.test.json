@@ -4,5 +4,5 @@
     "noEmit": true
   },
   "include": ["src/**/__tests__/**/*", "tests_integ/**/*"],
-  "exclude": []
+  "exclude": ["src/tools/browser/live-view/BrowserLiveView.tsx", "src/tools/browser/live-view/__tests__/BrowserLiveView.test.tsx"]
 }
