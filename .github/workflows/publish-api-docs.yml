@@ -1,0 +1,79 @@
+# =============================================================================
+# publish-api-docs.yml  —  bedrock-agentcore-sdk-typescript
+# =============================================================================
+# Auto-generates the TypeScript SDK API reference as AsciiDoc (.adoc) on every
+# release and uploads it as a build artifact for the docs team to publish.
+#
+# Pipeline: install deps -> TypeDoc JSON -> extract doc-model JSON
+#           -> render .adoc -> upload artifact.
+#
+# NOTE: this generates and publishes the docs as an artifact only; landing them
+# in the docs site is a separate step for now and may be automated later.
+# =============================================================================
+
+name: Publish API docs
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  ADOC_PREFIX: ts-sdk
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Python (for the renderer)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps + TypeDoc
+        run: |
+          npm ci
+          npm install --no-save typedoc@0.27 typescript@5
+
+      - name: Run TypeDoc -> JSON
+        run: |
+          ./node_modules/.bin/typedoc --json typedoc.json \
+            --entryPointStrategy expand \
+            --skipErrorChecking \
+            src
+
+      - name: Read package version
+        id: ver
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Extract doc-model JSON
+        run: |
+          node scripts/extract-api-model.mjs \
+            --typedoc typedoc.json \
+            --out doc-model.json \
+            --version "${{ steps.ver.outputs.version }}"
+
+      - name: Render .adoc
+        run: |
+          python scripts/render_adoc.py \
+            --model doc-model.json \
+            --out-dir out/adoc \
+            --prefix "${ADOC_PREFIX}"
+
+      - name: Upload API-docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-docs-adoc
+          path: out/adoc
+          if-no-files-found: error
