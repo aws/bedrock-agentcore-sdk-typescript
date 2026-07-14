@@ -50,6 +50,10 @@
       "import": "./dist/src/memory/integrations/strands/index.js",
       "types": "./dist/src/memory/integrations/strands/index.d.ts"
     },
+    "./experimental/memory/strands": {
+      "import": "./dist/src/memory/integrations/strands/index.js",
+      "types": "./dist/src/memory/integrations/strands/index.d.ts"
+    },
     "./runtime": {
       "import": "./dist/src/runtime/index.js",
       "types": "./dist/src/runtime/index.d.ts"
