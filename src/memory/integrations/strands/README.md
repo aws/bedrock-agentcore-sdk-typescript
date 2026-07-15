@@ -1,13 +1,12 @@
-# AgentCore Memory for Strands (`bedrock-agentcore/experimental/memory/strands`)
+# AgentCore Memory for Strands (`bedrock-agentcore/memory/strands`)
 
 `AgentCoreMemoryStore` makes [AgentCore Memory](https://docs.aws.amazon.com/bedrock-agentcore/) a
 first-class [Strands](https://strandsagents.com) `MemoryStore`: the agent recalls long-term memories
 through `search_memory`, and conversation turns are written to AgentCore (role-preserved) for
 server-side extraction into long-term records.
 
-> **Status: experimental.** This integration implements the Strands `MemoryManager` / `MemoryStore`
-> extraction interface, consumed directly from `@strands-agents/sdk` (>= 1.5.0). The surface is still
-> evolving upstream, so treat it as experimental rather than GA.
+This integration implements the Strands `MemoryManager` / `MemoryStore` extraction interface,
+consumed directly from `@strands-agents/sdk` (>= 1.5.0).
 
 ## What it does
 
@@ -26,7 +25,7 @@ server-side extraction into long-term records.
 
 ```typescript
 import { Agent, MemoryManager } from '@strands-agents/sdk'
-import { createAgentCoreMemoryStores } from 'bedrock-agentcore/experimental/memory/strands'
+import { createAgentCoreMemoryStores } from 'bedrock-agentcore/memory/strands'
 
 // One call per (actorId, sessionId). Builds one store per namespace, sharing a client.
 const stores = createAgentCoreMemoryStores({
@@ -52,7 +51,7 @@ const agent = new Agent({
 For a single namespace, the store stands alone — construct it directly:
 
 ```typescript
-import { AgentCoreMemoryStore } from 'bedrock-agentcore/experimental/memory/strands'
+import { AgentCoreMemoryStore } from 'bedrock-agentcore/memory/strands'
 
 const store = new AgentCoreMemoryStore({
   memoryId: 'mem-abc',

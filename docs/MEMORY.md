@@ -5,9 +5,8 @@ Memory](https://docs.aws.amazon.com/bedrock-agentcore/). This is the conceptual 
 the per-call API reference lives alongside the code in
 [`src/memory/integrations/strands/README.md`](../src/memory/integrations/strands/index.ts).
 
-> **Status: experimental.** This integration implements the Strands `MemoryManager` / `MemoryStore`
-> extraction interface, consumed directly from `@strands-agents/sdk` (>= 1.5.0). The upstream surface
-> is still evolving, so the module is **experimental**, not yet GA. See [Release status](#release-status).
+This integration implements the Strands `MemoryManager` / `MemoryStore` extraction interface,
+consumed directly from `@strands-agents/sdk` (>= 1.5.0). See [Release status](#release-status).
 
 ## What you get
 
@@ -42,7 +41,7 @@ Two consequences the integration leans on:
 
 ```typescript
 import { Agent, MemoryManager } from '@strands-agents/sdk'
-import { createAgentCoreMemoryStores } from 'bedrock-agentcore/experimental/memory/strands'
+import { createAgentCoreMemoryStores } from 'bedrock-agentcore/memory/strands'
 
 const stores = createAgentCoreMemoryStores({
   memoryId: process.env.MEMORY_MYMEMORY_ID!, // injected by the deploy (see below)
@@ -63,7 +62,7 @@ const agent = new Agent({ model, memoryManager: new MemoryManager({ stores }) })
 For a single namespace, construct the store directly (no factory needed):
 
 ```typescript
-import { AgentCoreMemoryStore } from 'bedrock-agentcore/experimental/memory/strands'
+import { AgentCoreMemoryStore } from 'bedrock-agentcore/memory/strands'
 
 const store = new AgentCoreMemoryStore({
   memoryId: process.env.MEMORY_MYMEMORY_ID!,
@@ -216,9 +215,8 @@ See the deploy example for the full per-session-reuse + flush pattern.
 
 ## Release status
 
-This module is **experimental**. It consumes the Strands memory `MemoryManager` / `MemoryStore` /
-extraction surface directly from `@strands-agents/sdk` (>= 1.5.0). That surface is still evolving
-upstream, so the integration should not yet be relied on for GA workloads.
+This module is **generally available**. It consumes the Strands memory `MemoryManager` /
+`MemoryStore` / extraction surface directly from `@strands-agents/sdk` (>= 1.5.0).
 
 **SDK requirements:**
 
