@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.4.1] - 2026-07-16
+
+### Other Changes
+- feat(memory): promote AgentCore Memory Strands integration to GA (#213) (477bfc3)
+- ci: add API reference docs generation workflow (#209) (88532f0)
+
 ## [0.4.0] - 2026-06-30
 
 ### Added
