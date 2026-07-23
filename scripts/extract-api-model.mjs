@@ -20,6 +20,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { argv } from 'node:process';
+import { pathToFileURL } from 'node:url';
 
 // group id -> title. Decision: include ALL modules.
 // Keyed by the source subpath TypeDoc reports so we can bucket entries.
@@ -141,23 +142,47 @@ function groupFor(refl) {
   return g ? g.id : null;
 }
 
-function main() {
-  const typedocPath = getArg('--typedoc');
-  const outPath = getArg('--out');
-  const version = getArg('--version') || 'unknown';
+function integrationLabel(refl) {
+  const match = sourcePath(refl).match(/\/integrations\/(strands|vercel-ai)\//);
+  if (!match) return '';
+  return match[1] === 'strands' ? 'Strands SDK' : 'Vercel AI SDK';
+}
 
-  const doc = JSON.parse(readFileSync(typedocPath, 'utf8'));
+function slug(value) {
+  return value
+    .toLowerCase()
+    .replace(/\.[^.]+$/, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
 
+export function buildModel(doc, version = 'unknown') {
   // Collect all classes + top-level functions across the project tree.
   const buckets = new Map(GROUP_MAP.map((g) => [g.id, []]));
   const walk = (node) => {
     if (!node) return;
     if (node.kind === KIND.Class) {
       const gid = groupFor(node);
-      if (gid) buckets.get(gid).push(entryFromClass(node));
+      if (gid) {
+        const label = integrationLabel(node);
+        const entry = entryFromClass(node);
+        if (label) {
+          entry.name = `${entry.name} (${label})`;
+          entry.anchor = `${gid}-${slug(sourcePath(node))}-${slug(node.name)}`;
+        }
+        buckets.get(gid).push(entry);
+      }
     } else if (node.kind === KIND.Function) {
       const gid = groupFor(node);
-      if (gid) buckets.get(gid).push(entryFromCallable(node));
+      if (gid) {
+        const label = integrationLabel(node);
+        const entry = entryFromCallable(node);
+        if (label) {
+          entry.name = `${entry.name} (${label})`;
+          entry.anchor = `${gid}-${slug(sourcePath(node))}-${slug(node.name)}`;
+        }
+        buckets.get(gid).push(entry);
+      }
     }
     (node.children || []).forEach(walk);
   };
@@ -170,15 +195,26 @@ function main() {
     entries: buckets.get(g.id),
   })).filter((g) => g.entries.length > 0);
 
-  const model = {
+  return {
     source: 'ts-sdk',
     package: 'bedrock-agentcore',
     version,
     language: 'typescript',
     groups,
   };
-  writeFileSync(outPath, JSON.stringify(model, null, 2));
-  process.stderr.write(`Wrote doc-model: ${groups.length} groups, version ${version}\n`);
 }
 
-main();
+function main() {
+  const typedocPath = getArg('--typedoc');
+  const outPath = getArg('--out');
+  const version = getArg('--version') || 'unknown';
+
+  const doc = JSON.parse(readFileSync(typedocPath, 'utf8'));
+  const model = buildModel(doc, version);
+  writeFileSync(outPath, JSON.stringify(model, null, 2));
+  process.stderr.write(`Wrote doc-model: ${model.groups.length} groups, version ${version}\n`);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}
