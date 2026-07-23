@@ -1,6 +1,9 @@
 name: PR Labeler
 
 on:
+  push:
+    branches:
+      - feat/caller-workflows
   pull_request_target:
     types: [opened, synchronize, reopened]
 
@@ -9,14 +12,6 @@ permissions:
   pull-requests: write
 
 jobs:
-  label:
-    name: Auto-label PR
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Label by changed files
-        uses: actions/labeler@v6
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+  call:
+    uses: aws/agentcore-devx-devtools/.github/workflows/test-pr-labeler.yml@458c0a684af0f9e3a013ec05cd23851def4f9cab
+    secrets: inherit
