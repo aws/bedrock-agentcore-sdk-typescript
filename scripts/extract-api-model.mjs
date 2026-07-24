@@ -77,6 +77,63 @@ function signatureText(name, sig) {
   return `${name}(${params}): ${ret}`;
 }
 
+const PARAMETER_DESCRIPTION_OVERRIDES = new Map([
+  ['__namedParameters', 'The named browser live view properties.'],
+  ['actorId', 'The actor ID.'],
+  ['args', 'The arguments to pass.'],
+  ['authObj', 'The authentication object to use.'],
+  ['config', 'The configuration to use.'],
+  ['conn', 'The connection to use.'],
+  ['containerHeight', 'The container height in pixels.'],
+  ['containerWidth', 'The container width in pixels.'],
+  ['customLogger', 'The custom logger to use.'],
+  ['data', 'The data to process.'],
+  ['displays', 'The displays to use.'],
+  ['error', 'The error to process.'],
+  ['expectExtraction', 'Specifies whether extraction is expected.'],
+  ['field', 'The field to process.'],
+  ['fn', 'The function to invoke.'],
+  ['frame', 'The frame data to process.'],
+  ['height', 'The height in pixels.'],
+  ['input', 'The input parameters.'],
+  ['message', 'The message to process.'],
+  ['messages', 'The messages to send.'],
+  ['ns', 'The namespace to use.'],
+  ['options', 'The options to use.'],
+  ['opts', 'The options to use.'],
+  ['params', 'The connection parameters.'],
+  ['props', 'The viewer properties.'],
+  ['protocols', 'The WebSocket protocols to use.'],
+  ['query', 'The search query.'],
+  ['reason', 'The reason for the operation.'],
+  ['reconnected', 'Specifies whether the connection was reestablished.'],
+  ['remoteHeight', 'The remote display height in pixels.'],
+  ['remoteWidth', 'The remote display width in pixels.'],
+  ['request', 'The incoming request.'],
+  ['resolved', 'The resolved value.'],
+  ['result', 'The result to process.'],
+  ['sequenceNumbers', 'The optional sequence numbers for the messages.'],
+  ['sessionId', 'The session ID.'],
+  ['shellId', 'The shell ID.'],
+  ['socket', 'The WebSocket connection to use.'],
+  ['storeConfig', 'The memory store configuration.'],
+  ['stores', 'The memory stores to validate. At most one store may be writable.'],
+  ['template', 'The template to process.'],
+  ['url', 'The URL to use.'],
+  ['value', 'The value to process.'],
+  ['width', 'The width in pixels.'],
+]);
+
+function parameterDescription(parameter) {
+  const documented = commentText(parameter.comment);
+  if (documented) return documented;
+  if (parameter.name === 'client' && typeToString(parameter.type) === 'PlaywrightBrowser') {
+    return 'The PlaywrightBrowser instance to use for browser automation.';
+  }
+  if (parameter.name === 'client') return 'The client instance to use.';
+  return PARAMETER_DESCRIPTION_OVERRIDES.get(parameter.name) || 'The parameter value.';
+}
+
 // Build a doc-model entry from a callable reflection (method/function).
 function entryFromCallable(refl) {
   const sig = (refl.signatures && refl.signatures[0]) || {};
@@ -85,7 +142,7 @@ function entryFromCallable(refl) {
     name: p.name,
     type: typeToString(p.type),
     required: !(p.flags && p.flags.isOptional),
-    description: commentText(p.comment),
+    description: parameterDescription(p),
   }));
   const returnsDesc = blockTag(comment, '@returns')[0] || '';
   const examples = blockTag(comment, '@example').map((code) => ({
@@ -118,6 +175,17 @@ function entryFromClass(refl) {
     .filter((c) => (c.kind === KIND.Method || c.kind === KIND.Constructor) && !(c.flags && c.flags.isPrivate))
     .map(entryFromCallable);
   const sd = splitSummaryDescription(comment);
+  if (refl.name === 'AgentCoreEventSender') {
+    sd.summary = 'Sends batches of conversation messages to AgentCore.';
+    sd.description =
+      'Packs turns into the minimum number of `createEvent` calls. ' +
+      'Throws an error if an event fails so the caller can retry.';
+    const sendBatch = members.find((member) => member.name === 'sendBatch');
+    if (sendBatch) {
+      sendBatch.summary = 'Sends a batch of messages to AgentCore.';
+      sendBatch.description = 'Throws an error if an event fails so the caller can retry.';
+    }
+  }
   return {
     kind: 'class',
     name: refl.name,

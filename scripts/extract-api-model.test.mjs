@@ -29,3 +29,40 @@ test('integration entries have distinct labels and anchors', () => {
   )
   assert.equal(new Set(entries.map((entry) => entry.anchor)).size, 2)
 })
+
+test('undocumented parameters receive meaningful fallback descriptions', () => {
+  const callable = reflection(1, 64, 'createTool', 'src/tools/browser/create-tool.ts')
+  callable.signatures[0].parameters = [
+    { name: 'client', type: { name: 'PlaywrightBrowser' }, flags: {} },
+    { name: 'expectExtraction', type: { name: 'boolean' }, flags: {} },
+  ]
+  const doc = { children: [callable] }
+
+  const params = buildModel(doc, '1.0.0').groups[0].entries[0].params
+
+  assert.deepEqual(
+    params.map((param) => param.description),
+    ['The PlaywrightBrowser instance to use for browser automation.', 'Specifies whether extraction is expected.']
+  )
+})
+
+test('AgentCoreEventSender omits internal implementation details', () => {
+  const sender = reflection(1, 128, 'AgentCoreEventSender', 'src/memory/integrations/strands/sender.ts')
+  sender.comment = { summary: [{ text: 'Internal coordinator and token derivation details.' }] }
+  sender.children = [
+    {
+      id: 2,
+      kind: 2048,
+      name: 'sendBatch',
+      signatures: [{ parameters: [], type: { name: 'Promise' } }],
+    },
+  ]
+  const doc = { children: [sender] }
+
+  const entry = buildModel(doc, '1.0.0').groups[0].entries[0]
+
+  assert.equal(entry.summary, 'Sends batches of conversation messages to AgentCore.')
+  assert.match(entry.description, /minimum number of `createEvent` calls/)
+  assert.doesNotMatch(entry.description, /coordinator|token derivation/)
+  assert.equal(entry.members[0].summary, 'Sends a batch of messages to AgentCore.')
+})
