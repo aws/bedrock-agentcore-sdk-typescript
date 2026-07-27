@@ -66,3 +66,22 @@ test('AgentCoreEventSender omits internal implementation details', () => {
   assert.doesNotMatch(entry.description, /coordinator|token derivation/)
   assert.equal(entry.members[0].summary, 'Sends a batch of messages to AgentCore.')
 })
+
+test('assertWritableTopology omits internal stream details', () => {
+  const callable = reflection(
+    1,
+    64,
+    'assertWritableTopology',
+    'src/memory/integrations/strands/factory.ts'
+  )
+  callable.signatures[0].comment = {
+    summary: [{ text: 'Internal stream and deduplication details.' }],
+  }
+  const doc = { children: [callable] }
+
+  const entry = buildModel(doc, '1.0.0').groups[0].entries[0]
+
+  assert.match(entry.summary, /Validates that at most one store/)
+  assert.doesNotMatch(entry.summary, /stream|deduplication/)
+  assert.equal(entry.description, '')
+})

@@ -134,6 +134,60 @@ function parameterDescription(parameter) {
   return PARAMETER_DESCRIPTION_OVERRIDES.get(parameter.name) || 'The parameter value.';
 }
 
+const CALLABLE_DESCRIPTION_OVERRIDES = new Map([
+  [
+    'assertWritableTopology',
+    {
+      summary:
+        'Validates that at most one store is configured as writable. ' +
+        'Throws if two writable stores are provided, or if extraction is expected but no writable store is present.',
+      description: '',
+    },
+  ],
+  [
+    'createAgentCoreMemoryStores',
+    {
+      summary: 'Creates AgentCore memory stores for an actor and session.',
+      description: '',
+    },
+  ],
+  [
+    'isUserOrAssistantWithText',
+    {
+      summary: 'Checks whether a message contains extractable user or assistant text.',
+      description: '',
+    },
+  ],
+  [
+    'mapRole',
+    {
+      summary: 'Maps a Strands message role to an AgentCore conversational role.',
+      description: '',
+    },
+  ],
+  [
+    'assertResolvedNamespace',
+    {
+      summary: 'Validates that a resolved namespace contains no unresolved placeholders or braces.',
+      description: '',
+    },
+  ],
+  [
+    'resolveNamespace',
+    {
+      summary: 'Resolves actor and session placeholders in a namespace template.',
+      description: '',
+    },
+  ],
+  [
+    'slugifyNamespace',
+    {
+      summary: 'Creates a store name from a namespace template.',
+      description: '',
+    },
+  ],
+]);
+
 // Build a doc-model entry from a callable reflection (method/function).
 function entryFromCallable(refl) {
   const sig = (refl.signatures && refl.signatures[0]) || {};
@@ -151,6 +205,11 @@ function entryFromCallable(refl) {
     code: code.replace(/^```\w*\n?|\n?```$/g, '').trim(),
   }));
   const sd = splitSummaryDescription(comment);
+  const override = CALLABLE_DESCRIPTION_OVERRIDES.get(refl.name);
+  if (override) {
+    sd.summary = override.summary;
+    sd.description = override.description;
+  }
   return {
     kind: 'function',
     name: refl.name,
@@ -179,11 +238,19 @@ function entryFromClass(refl) {
     sd.summary = 'Sends batches of conversation messages to AgentCore.';
     sd.description =
       'Packs turns into the minimum number of `createEvent` calls. ' +
-      'Throws an error if an event fails so the caller can retry.';
+      'If `createEvent` fails, the batch is not committed and the caller can retry.';
     const sendBatch = members.find((member) => member.name === 'sendBatch');
     if (sendBatch) {
       sendBatch.summary = 'Sends a batch of messages to AgentCore.';
-      sendBatch.description = 'Throws an error if an event fails so the caller can retry.';
+      sendBatch.description = 'If `createEvent` fails, the batch is not committed and the caller can retry.';
+    }
+  } else if (refl.name === 'AgentCoreMemoryStore') {
+    sd.summary = 'Provides AgentCore memory through the Strands MemoryStore interface.';
+    sd.description = 'Supports searching and, when configured as writable, adding conversation messages.';
+    const addMessages = members.find((member) => member.name === 'addMessages');
+    if (addMessages) {
+      addMessages.summary = 'Adds a batch of conversation messages while preserving their roles.';
+      addMessages.description = '';
     }
   }
   return {
