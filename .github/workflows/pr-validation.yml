@@ -56,6 +56,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Test API docs generator
+        run: npm run test:docs
+
       - name: Check for merge conflicts
         env:
           BASE_REF: ${{ github.base_ref }}

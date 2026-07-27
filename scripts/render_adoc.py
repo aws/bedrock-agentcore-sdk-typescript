@@ -87,9 +87,8 @@ def normalize_style(text):
 def normalize_param_description(text):
     """Normalize recurring parameter-description style issues."""
     text = normalize_style(text).strip()
-    optional_replacement = "Optional" if _starts_with_plural_noun(text) else "An optional"
     substitutions = (
-        (r"^Optional\b", optional_replacement),
+        (r"^Optional\b", "The optional"),
         (r"^(?:\{aws\}|AWS)\s+region\b", "The {aws} Region"),
         (r"^id of\b", "The ID of"),
         (r"^Behaviour\b", "The behavior"),
@@ -101,17 +100,6 @@ def normalize_param_description(text):
     for pattern, replacement in substitutions:
         text = re.sub(pattern, replacement, text, count=1, flags=re.IGNORECASE)
     return text
-
-
-def _starts_with_plural_noun(text):
-    """Return whether an Optional description starts with a likely plural noun."""
-    match = re.match(r"^Optional\s+([A-Za-z]+)\b", text, flags=re.IGNORECASE)
-    if not match:
-        return False
-    noun = match.group(1)
-    return noun.islower() and noun.endswith("s") and not noun.endswith(("is", "ss", "us"))
-
-
 def esc(text):
     """Escape AsciiDoc-significant characters in inline text."""
     if not text:
