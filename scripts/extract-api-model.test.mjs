@@ -85,3 +85,17 @@ test('assertWritableTopology omits internal stream details', () => {
   assert.doesNotMatch(entry.summary, /stream|deduplication/)
   assert.equal(entry.description, '')
 })
+
+test('runWithContext exposes only its observable contract', () => {
+  const callable = reflection(1, 64, 'runWithContext', 'src/runtime/context.ts')
+  callable.signatures[0].comment = {
+    summary: [{ text: 'This function is internal and should not be used directly.' }],
+  }
+  const doc = { children: [callable] }
+
+  const entry = buildModel(doc, '1.0.0').groups[0].entries[0]
+
+  assert.equal(entry.summary, 'Runs a function within a request context scope.')
+  assert.match(entry.description, /available through `getContext\(\)`/)
+  assert.doesNotMatch(entry.description, /internal|customers/)
+})

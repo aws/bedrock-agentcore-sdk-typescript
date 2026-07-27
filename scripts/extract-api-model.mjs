@@ -186,6 +186,13 @@ const CALLABLE_DESCRIPTION_OVERRIDES = new Map([
       description: '',
     },
   ],
+  [
+    'runWithContext',
+    {
+      summary: 'Runs a function within a request context scope.',
+      description: 'The context is available through `getContext()` throughout the asynchronous call chain.',
+    },
+  ],
 ]);
 
 // Build a doc-model entry from a callable reflection (method/function).
