@@ -183,7 +183,7 @@ const PARAMETER_DESCRIPTION_OVERRIDES = new Map([
   ['shellId', 'The shell ID.'],
   ['socket', 'The WebSocket connection to use.'],
   ['storeConfig', 'The memory store configuration.'],
-  ['stores', 'The memory stores to validate. At most one store may be writable.'],
+  ['stores', 'The memory stores to validate. At most one store can be writable.'],
   ['template', 'The template to process.'],
   ['url', 'The URL to use.'],
   ['value', 'The value to process.'],
@@ -205,7 +205,7 @@ const CALLABLE_DESCRIPTION_OVERRIDES = new Map([
     'assertWritableTopology',
     {
       summary:
-        'Validates the memory store topology. At most one store may be writable, ' +
+        'Validates the memory store topology. At most one store can be writable, ' +
         'and a writable store must be present when extraction is expected.',
       description: '',
     },
@@ -268,7 +268,7 @@ const CLASS_DESCRIPTION_OVERRIDES = new Map([
       summary: 'Hosts agents on Amazon Bedrock AgentCore runtime.',
       description:
         'Provides health check and invocation endpoints for deploying agent handlers. ' +
-        'Supports JSON and Server-Sent Events (SSE) response modes.',
+        'The server supports JSON and Server-Sent Events (SSE) response modes.',
     },
   ],
   [
@@ -283,6 +283,16 @@ const CLASS_DESCRIPTION_OVERRIDES = new Map([
     {
       summary: 'Generates WebSocket authentication for Amazon Bedrock AgentCore runtime.',
       description: '',
+    },
+  ],
+  [
+    'CodeInterpreter',
+    {
+      summary: 'Provides a client interface for Amazon Bedrock AgentCore Code Interpreter.',
+      description:
+        'Executes Python, JavaScript, and TypeScript code in isolated sandbox environments ' +
+        'with file system access and shell commands. Each instance manages one session, ' +
+        'which starts automatically on first use and can be managed with startSession or stopSession.',
     },
   ],
 ])

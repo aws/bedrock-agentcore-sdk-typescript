@@ -78,7 +78,8 @@ test('assertWritableTopology omits internal stream details', () => {
   const entry = buildModel(doc, '1.0.0').groups[0].entries[0]
 
   assert.match(entry.summary, /Validates the memory store topology/)
-  assert.doesNotMatch(entry.summary, /throws|stream|deduplication/)
+  assert.match(entry.summary, /store can be writable/)
+  assert.doesNotMatch(entry.summary, /may|throws|stream|deduplication/)
   assert.equal(entry.description, '')
 })
 
