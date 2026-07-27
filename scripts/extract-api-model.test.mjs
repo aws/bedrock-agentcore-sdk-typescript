@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildModel } from './extract-api-model.mjs'
+import { buildModel, typeToString } from './extract-api-model.mjs'
 
 function reflection(id, kind, name, fileName) {
   return {
@@ -61,19 +61,15 @@ test('AgentCoreEventSender omits internal implementation details', () => {
 
   const entry = buildModel(doc, '1.0.0').groups[0].entries[0]
 
-  assert.equal(entry.summary, 'Sends batches of conversation messages to AgentCore.')
-  assert.match(entry.description, /minimum number of `createEvent` calls/)
+  assert.equal(entry.summary, 'Sends batches of conversation messages to Amazon Bedrock AgentCore.')
+  assert.match(entry.description, /operation throws/)
+  assert.doesNotMatch(entry.description, /createEvent|committed/)
   assert.doesNotMatch(entry.description, /coordinator|token derivation/)
-  assert.equal(entry.members[0].summary, 'Sends a batch of messages to AgentCore.')
+  assert.equal(entry.members[0].summary, 'Sends a batch of messages to Amazon Bedrock AgentCore.')
 })
 
 test('assertWritableTopology omits internal stream details', () => {
-  const callable = reflection(
-    1,
-    64,
-    'assertWritableTopology',
-    'src/memory/integrations/strands/factory.ts'
-  )
+  const callable = reflection(1, 64, 'assertWritableTopology', 'src/memory/integrations/strands/factory.ts')
   callable.signatures[0].comment = {
     summary: [{ text: 'Internal stream and deduplication details.' }],
   }
@@ -81,8 +77,8 @@ test('assertWritableTopology omits internal stream details', () => {
 
   const entry = buildModel(doc, '1.0.0').groups[0].entries[0]
 
-  assert.match(entry.summary, /Validates that at most one store/)
-  assert.doesNotMatch(entry.summary, /stream|deduplication/)
+  assert.match(entry.summary, /Validates the memory store topology/)
+  assert.doesNotMatch(entry.summary, /throws|stream|deduplication/)
   assert.equal(entry.description, '')
 })
 
@@ -96,6 +92,87 @@ test('runWithContext exposes only its observable contract', () => {
   const entry = buildModel(doc, '1.0.0').groups[0].entries[0]
 
   assert.equal(entry.summary, 'Runs a function within a request context scope.')
-  assert.match(entry.description, /available through `getContext\(\)`/)
+  assert.equal(entry.description, '')
   assert.doesNotMatch(entry.description, /internal|customers/)
+})
+
+test('TypeDoc types render as concrete TypeScript syntax', () => {
+  assert.equal(
+    typeToString({
+      type: 'typeOperator',
+      operator: 'readonly',
+      target: {
+        type: 'array',
+        elementType: { type: 'reference', name: 'AgentCoreMemoryStore' },
+      },
+    }),
+    'readonly AgentCoreMemoryStore[]'
+  )
+
+  assert.equal(
+    typeToString({
+      type: 'reflection',
+      declaration: {
+        children: [
+          {
+            name: 'host',
+            flags: { isOptional: true },
+            type: { type: 'intrinsic', name: 'string' },
+          },
+          {
+            name: 'port',
+            flags: { isOptional: true },
+            type: { type: 'intrinsic', name: 'number' },
+          },
+        ],
+      },
+    }),
+    '{ host?: string; port?: number }'
+  )
+
+  assert.equal(
+    typeToString({
+      type: 'reflection',
+      declaration: {
+        signatures: [
+          {
+            parameters: [
+              {
+                name: 'args',
+                flags: { isRest: true },
+                type: { type: 'reference', name: 'TParams' },
+              },
+            ],
+            type: {
+              type: 'reference',
+              name: 'Promise',
+              typeArguments: [{ type: 'reference', name: 'TReturn' }],
+            },
+          },
+        ],
+      },
+    }),
+    '(...args: TParams) => Promise<TReturn>'
+  )
+
+  assert.equal(
+    typeToString({
+      type: 'union',
+      types: [
+        { type: 'literal', value: null },
+        { type: 'reference', name: 'Element', qualifiedName: 'JSX.Element' },
+      ],
+    }),
+    'null | JSX.Element'
+  )
+
+  assert.equal(
+    typeToString({
+      type: 'reference',
+      name: 'Buffer',
+      qualifiedName: '__global.Buffer',
+      typeArguments: [{ type: 'reference', name: 'ArrayBufferLike' }],
+    }),
+    'Buffer<ArrayBufferLike>'
+  )
 })
