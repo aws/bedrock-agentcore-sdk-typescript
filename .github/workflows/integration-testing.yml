@@ -67,46 +67,32 @@ jobs:
             console.log('✓ Safety check passed - no sensitive files modified');
             return 'true';
 
-      - name: Collaborator Check
-        uses: actions/github-script@v8
+      - name: Check authorization
+        id: authz
+        uses: aws/agentcore-devx-devtools/.github/actions/check-collaborator@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          subject: ${{ github.event.pull_request.user.login || github.actor }}
+          required-permission: write
+
+      - name: Map authorization to approval environment
         id: collab-check
+        uses: actions/github-script@v8
         with:
           result-encoding: string
           script: |
-            try {
-              let username;
-              if (context.payload.pull_request) {
-                username = context.payload.pull_request.user.login;
-              } else {
-                username = context.actor;
-                console.log(`No pull request context found, checking permissions for actor: ${username}`);
-              }
-
-              const permissionResponse = await github.rest.repos.getCollaboratorPermissionLevel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                username: username,
-              });
-              const permission = permissionResponse.data.permission;
-              const hasWriteAccess = ['write', 'admin'].includes(permission);
-
-              if (!hasWriteAccess) {
-                console.log(`User ${username} does not have write access (permission: ${permission})`);
-                return 'manual-approval';
-              } else {
-                console.log(`Verified ${username} has write access. Auto-approving integration tests.`);
-                return 'auto-approve';
-              }
-            } catch (error) {
-              console.log(`Error checking permissions: ${error.message}`);
-              console.log('Requiring manual approval for integration tests.');
-              return 'manual-approval';
+            const isAuthorized = '${{ steps.authz.outputs.is-authorized }}' === 'true';
+            if (isAuthorized) {
+              console.log('Verified write access. Auto-approving integration tests.');
+              return 'auto-approve';
             }
+            console.log('Write access not verified. Requiring manual approval for integration tests.');
+            return 'manual-approval';
 
   run-integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: authorization-check
+    if: needs.authorization-check.outputs.should-run == 'true'
     environment: ${{ needs.authorization-check.outputs.approval-env }}
     permissions:
       id-token: write # Required for AWS OIDC
@@ -114,12 +100,20 @@ jobs:
       contents: read # Required to checkout code
 
     steps:
+      - name: Fetch secrets from Secrets Manager
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          shared: AGENTCORE_INTEG_TEST_ROLE
+          repo:   OAUTH2_PROVIDER_NAME, OAUTH2_SCOPES, APIKEY_PROVIDER_NAME
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ secrets.AGENTCORE_INTEG_TEST_ROLE }}
+          role-to-assume: ${{ env.AGENTCORE_INTEG_TEST_ROLE }}
           aws-region: us-west-2
           mask-aws-account-id: true
+          unset-current-credentials: true
 
       - name: Checkout PR head commit
         uses: actions/checkout@v6
@@ -145,9 +139,9 @@ jobs:
       - name: Run integration tests
         env:
           AWS_REGION: us-west-2
-          OAUTH2_PROVIDER_NAME: ${{ secrets.OAUTH2_PROVIDER_NAME }}
-          OAUTH2_SCOPES: ${{ secrets.OAUTH2_SCOPES }}
-          APIKEY_PROVIDER_NAME: ${{ secrets.APIKEY_PROVIDER_NAME }}
+          OAUTH2_PROVIDER_NAME: ${{ env.OAUTH2_PROVIDER_NAME }}
+          OAUTH2_SCOPES: ${{ env.OAUTH2_SCOPES }}
+          APIKEY_PROVIDER_NAME: ${{ env.APIKEY_PROVIDER_NAME }}
         # Memory integration tests poll live AgentCore for async server-side extraction, which can take
         # several minutes per record; the memory suite alone runs ~10 min. Budget enough headroom for the
         # full integ suite (browser/code-interpreter/etc. + memory) plus extraction-latency variance.
