@@ -341,6 +341,16 @@ npm install bedrock-agentcore @a2a-js/sdk express
 
 Defaults mirror the Python SDK's `serve_a2a`: port comes from the `PORT` env var or 9000 (the AgentCore A2A protocol port), the host binds `0.0.0.0` inside containers (detected via `/.dockerenv` or `DOCKER_CONTAINER`) and loopback otherwise, and the agent card is auto-built when omitted. When `AGENTCORE_RUNTIME_URL` is set (deployed on AgentCore), the card's JSONRPC interface URLs are rewritten to the runtime URL so a deployed agent never advertises a stale local address.
 
+### Deploying to AgentCore Runtime
+
+AgentCore Runtime does not create `/.dockerenv` inside the container, so set the container marker explicitly in your Dockerfile — otherwise the server binds loopback, the platform's health checks never reach it, and the runtime fails with opaque startup timeouts:
+
+```dockerfile
+ENV DOCKER_CONTAINER=1
+```
+
+(The same applies to Podman-built local containers.) Alternatively, pass `host: '0.0.0.0'` to `serveA2A` in code. Deploy the container with `--protocol-configuration '{"serverProtocol": "A2A"}'`; the platform proxies `InvokeAgentRuntime` payloads to `POST /` unmodified and injects the session/request headers described below. Callers reaching the agent card through the runtime endpoint need `bedrock-agentcore:GetAgentCard` in addition to `bedrock-agentcore:InvokeAgentRuntime` in their IAM policy.
+
 ### Request context inside A2A executors
 
 AgentCore Runtime injects per-request headers into every proxied A2A call. `serveA2A` extracts them into the same request context used by the HTTP protocol path, so `getContext()` — and everything built on it, including the identity wrappers `withApiKey` and `withAccessToken` — works unchanged inside executors:

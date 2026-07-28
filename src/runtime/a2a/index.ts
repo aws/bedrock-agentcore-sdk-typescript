@@ -11,7 +11,7 @@ export type { ServeA2AOptions, BuildA2AAppOptions } from './app.js'
 // ambient accessor is part of this module's public surface.
 export { getContext } from '../context.js'
 export type { RequestContext } from '../types.js'
-export { buildAgentCard, withJsonRpcUrl } from './agent-card.js'
+export { agentCoreRuntimeUrl, buildAgentCard, withJsonRpcUrl } from './agent-card.js'
 export type { AgentCardParams } from './agent-card.js'
 export { extractA2AContext, isForwardableHeader } from './headers.js'
 export type { A2ARequestContext, IncomingHeaders } from './headers.js'

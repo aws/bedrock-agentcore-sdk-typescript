@@ -8,6 +8,24 @@ import type { AgentCard, AgentSkill } from '@a2a-js/sdk'
 const AGENTCORE_RUNTIME_URL_ENV = 'AGENTCORE_RUNTIME_URL'
 
 /**
+ * Returns the AGENTCORE_RUNTIME_URL env value with a trailing slash, or
+ * undefined when the variable is unset.
+ *
+ * The platform injects the value without a trailing slash, but A2A clients
+ * resolve the well-known agent-card path relative to the advertised URL —
+ * and WHATWG URL resolution drops the final path segment of a slashless
+ * base, breaking card discovery. Values passed explicitly by callers are
+ * not normalized.
+ */
+export function agentCoreRuntimeUrl(): string | undefined {
+  const url = process.env[AGENTCORE_RUNTIME_URL_ENV]
+  if (!url) {
+    return undefined
+  }
+  return url.endsWith('/') ? url : `${url}/`
+}
+
+/**
  * Parameters for building an A2A agent card.
  */
 export interface AgentCardParams {
@@ -57,7 +75,7 @@ export interface AgentCardParams {
  * @returns A complete AgentCard
  */
 export function buildAgentCard(params: AgentCardParams): AgentCard {
-  const url = params.url ?? process.env[AGENTCORE_RUNTIME_URL_ENV] ?? `http://localhost:${params.port ?? 9000}/`
+  const url = params.url ?? agentCoreRuntimeUrl() ?? `http://localhost:${params.port ?? 9000}/`
 
   return {
     name: params.name,

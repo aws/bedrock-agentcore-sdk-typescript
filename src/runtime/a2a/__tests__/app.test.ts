@@ -106,16 +106,18 @@ describe('serveA2A', () => {
       expect(card.skills).toEqual([expect.objectContaining({ id: 'main', tags: ['main'] })])
     })
 
-    it('rewrites a provided card URL when AGENTCORE_RUNTIME_URL is set', async () => {
-      const runtimeUrl = 'https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/arn/invocations'
-      vi.stubEnv('AGENTCORE_RUNTIME_URL', runtimeUrl)
+    it('rewrites a provided card URL when AGENTCORE_RUNTIME_URL is set, normalizing the trailing slash', async () => {
+      // The platform injects the env value without a trailing slash
+      vi.stubEnv('AGENTCORE_RUNTIME_URL', 'https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/arn/invocations')
 
       const server = await serve({
         agentCard: buildAgentCard({ name: 'provided', description: 'x', url: 'http://stale:9000/' }),
       })
 
       const card = await fetchAgentCard(server)
-      expect(card.supportedInterfaces.map((i) => i.url)).toContain(runtimeUrl)
+      expect(card.supportedInterfaces.map((i) => i.url)).toContain(
+        'https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/arn/invocations/'
+      )
       expect(card.supportedInterfaces.map((i) => i.url)).not.toContain('http://stale:9000/')
     })
   })

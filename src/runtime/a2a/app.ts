@@ -26,12 +26,10 @@ import type { AgentCard } from '@a2a-js/sdk'
 import { agentCardHandler, jsonRpcHandler, UserBuilder } from '@a2a-js/sdk/server/express'
 import type { FastifyBaseLogger } from 'fastify'
 
-import { buildAgentCard, withJsonRpcUrl } from './agent-card.js'
+import { agentCoreRuntimeUrl, buildAgentCard, withJsonRpcUrl } from './agent-card.js'
 import { extractA2AContext } from './headers.js'
 import { getContext, runWithContext } from '../context.js'
 import type { HealthStatus, RequestContext } from '../types.js'
-
-const AGENTCORE_RUNTIME_URL_ENV = 'AGENTCORE_RUNTIME_URL'
 
 /**
  * Options for {@link serveA2A} and {@link buildA2AApp}.
@@ -233,7 +231,7 @@ export const bedrockCallContextBuilder: ServerCallContextBuilder = (options) => 
 }
 
 function resolveAgentCard(provided: AgentCard | undefined, port: number): AgentCard {
-  const runtimeUrl = process.env[AGENTCORE_RUNTIME_URL_ENV]
+  const runtimeUrl = agentCoreRuntimeUrl()
   if (!provided) {
     // The generic fallback card advertises the actual listen port;
     // AGENTCORE_RUNTIME_URL takes precedence inside buildAgentCard. Name,

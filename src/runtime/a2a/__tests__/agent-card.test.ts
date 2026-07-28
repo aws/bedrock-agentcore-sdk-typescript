@@ -20,9 +20,18 @@ describe('buildAgentCard', () => {
   })
 
   it('resolves the URL from AGENTCORE_RUNTIME_URL when no url is given', () => {
+    vi.stubEnv('AGENTCORE_RUNTIME_URL', 'https://runtime.example.com/invocations/')
+    const card = buildAgentCard({ name: 'deployed', description: 'x' })
+    expect(card.supportedInterfaces[0]!.url).toBe('https://runtime.example.com/invocations/')
+  })
+
+  it('appends a trailing slash to a slashless AGENTCORE_RUNTIME_URL', () => {
+    // The platform injects the env value without a trailing slash; clients
+    // resolving the well-known card path relative to a slashless URL lose
+    // the final path segment.
     vi.stubEnv('AGENTCORE_RUNTIME_URL', 'https://runtime.example.com/invocations')
     const card = buildAgentCard({ name: 'deployed', description: 'x' })
-    expect(card.supportedInterfaces[0]!.url).toBe('https://runtime.example.com/invocations')
+    expect(card.supportedInterfaces[0]!.url).toBe('https://runtime.example.com/invocations/')
   })
 
   it('falls back to localhost with the given port', () => {
