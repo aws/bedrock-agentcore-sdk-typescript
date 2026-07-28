@@ -70,6 +70,7 @@
     "clean": "rm -rf node_modules dist package-lock.json",
     "test": "vitest run --project unit-node",
     "test:all": "vitest run --project unit-node && vitest run --project integ",
+    "test:docs": "node --test scripts/*.test.mjs && python3 -m unittest scripts/test_render_adoc.py",
     "ci": "npm run lint && npm run format:check && npm run type-check:all && npm run build && npm run test:all",
     "test:watch": "vitest --project unit-node",
     "test:coverage": "vitest run --coverage --project unit-node",
