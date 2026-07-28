@@ -89,7 +89,7 @@ The JSON payload from AgentCore Runtime (typed as `unknown` for maximum flexibil
 An object containing:
 
 - `sessionId` (string): Unique identifier for the session
-- `headers` (Record<string, string>): Filtered HTTP headers (Authorization and Custom-\* headers only)
+- `headers` (Record<string, string>): Forwardable HTTP headers (Authorization and Custom-\* headers on this path; the A2A path forwards everything the runtime header allowlist permits)
 - `workloadAccessToken` (string | undefined): Workload access token for Identity SDK
 - `requestId` (string | undefined): Request ID for tracing and logging (auto-generated if not provided)
 - `oauth2CallbackUrl` (string | undefined): OAuth2 callback URL for authentication flows

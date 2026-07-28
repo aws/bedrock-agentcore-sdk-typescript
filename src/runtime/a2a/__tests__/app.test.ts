@@ -1,7 +1,7 @@
 import type { Server } from 'http'
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { TaskState } from '@a2a-js/sdk'
-import { AgentEvent, InMemoryTaskStore } from '@a2a-js/sdk/server'
+import { AgentEvent, InMemoryTaskStore, ServerCallContext as A2AServerCallContext } from '@a2a-js/sdk/server'
 import type { ExecutionEventBus, RequestContext, ServerCallContext, TaskStore } from '@a2a-js/sdk/server'
 import type { Task } from '@a2a-js/sdk'
 
@@ -16,9 +16,11 @@ import type { RequestContext as BedrockRequestContext } from '../../types.js'
  */
 class RecordingExecutor {
   observed: BedrockRequestContext | undefined
+  observedState: Map<string, unknown> | undefined
 
   async execute(requestContext: RequestContext, eventBus: ExecutionEventBus): Promise<void> {
     this.observed = getContext()
+    this.observedState = requestContext.context.state
     const { taskId, contextId } = requestContext
     eventBus.publish(
       AgentEvent.task({
@@ -91,9 +93,17 @@ describe('serveA2A', () => {
     it('auto-builds a fallback card advertising the actual listen port', async () => {
       const server = await serve({ port: 3005 })
 
-      const card = (await fetchAgentCard(server)) as { name: string; supportedInterfaces: { url: string }[] }
+      const card = (await fetchAgentCard(server)) as {
+        name: string
+        version: string
+        skills: { id: string; tags: string[] }[]
+        supportedInterfaces: { url: string }[]
+      }
       expect(card.name).toBeTruthy()
       expect(card.supportedInterfaces.map((i) => i.url)).toContain('http://localhost:3005/')
+      // Same defaults as the Python SDK's auto-built card
+      expect(card.version).toBe('0.1.0')
+      expect(card.skills).toEqual([expect.objectContaining({ id: 'main', tags: ['main'] })])
     })
 
     it('rewrites a provided card URL when AGENTCORE_RUNTIME_URL is set', async () => {
@@ -205,6 +215,64 @@ describe('serveA2A', () => {
 
       expect(response.status).toBe(200)
       expect(executor.observed?.oauth2CallbackUrl).toBe('https://callback.example.com')
+    })
+
+    it('mirrors the runtime fields into ServerCallContext.state', async () => {
+      const executor = new RecordingExecutor()
+      const server = await serve({ executor })
+
+      const response = await fetch(`http://127.0.0.1:${listenPort(server)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'sess-state',
+          'x-amzn-bedrock-agentcore-runtime-request-id': 'req-state',
+          WorkloadAccessToken: 'token-state',
+          OAuth2CallbackUrl: 'https://cb.example.com',
+        },
+        body: sendMessageBody('msg-state'),
+      })
+
+      expect(response.status).toBe(200)
+      const state = executor.observedState!
+      expect(state.get('sessionId')).toBe('sess-state')
+      expect(state.get('requestId')).toBe('req-state')
+      expect(state.get('workloadAccessToken')).toBe('token-state')
+      expect(state.get('oauth2CallbackUrl')).toBe('https://cb.example.com')
+      expect((state.get('headers') as Record<string, string>)['workloadaccesstoken']).toBe('token-state')
+    })
+
+    it('uses an injected contextBuilder instead of the default', async () => {
+      const executor = new RecordingExecutor()
+      const server = await serve({
+        executor,
+        contextBuilder: (options) =>
+          new A2AServerCallContext({
+            state: new Map<string, unknown>([
+              ['custom', 'yes'],
+              ['headers', options.headers],
+            ]),
+          }),
+      })
+
+      const response = await fetch(`http://127.0.0.1:${listenPort(server)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: sendMessageBody('msg-custom-builder'),
+      })
+
+      expect(response.status).toBe(200)
+      expect(executor.observedState?.get('custom')).toBe('yes')
+      expect(executor.observedState?.has('requestId')).toBe(false)
+    })
+  })
+
+  describe('listen errors', () => {
+    it('rejects when the port is already in use', async () => {
+      const first = await serve()
+      const takenPort = listenPort(first)
+
+      await expect(serveA2A({ executor: new RecordingExecutor(), port: takenPort })).rejects.toThrow(/EADDRINUSE/)
     })
   })
 

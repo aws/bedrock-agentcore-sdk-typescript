@@ -104,8 +104,14 @@ export async function serveA2A(options: ServeA2AOptions): Promise<Server> {
 
   const app = buildA2AApp({ ...options, agentCard, port })
 
-  return new Promise((resolve) => {
-    const server = app.listen(port, host, () => {
+  return new Promise((resolve, reject) => {
+    // Express 5 invokes the listen callback with the error on bind failure
+    // (e.g. EADDRINUSE) instead of emitting an unhandled 'error' event.
+    const server = app.listen(port, host, (error?: Error) => {
+      if (error) {
+        reject(error)
+        return
+      }
       console.log(`agent=<${agentCard.name}>, host=<${host}>, port=<${port}> | a2a server listening`)
       resolve(server)
     })
@@ -230,11 +236,13 @@ function resolveAgentCard(provided: AgentCard | undefined, port: number): AgentC
   const runtimeUrl = process.env[AGENTCORE_RUNTIME_URL_ENV]
   if (!provided) {
     // The generic fallback card advertises the actual listen port;
-    // AGENTCORE_RUNTIME_URL takes precedence inside buildAgentCard.
+    // AGENTCORE_RUNTIME_URL takes precedence inside buildAgentCard. Name,
+    // description, version, and skill match the Python SDK's auto-built card.
     return buildAgentCard({
       name: 'agent',
       description: 'A Bedrock AgentCore agent',
-      skills: [{ id: 'main', name: 'agent', description: 'A Bedrock AgentCore agent' }],
+      version: '0.1.0',
+      skills: [{ id: 'main', name: 'agent', description: 'A Bedrock AgentCore agent', tags: ['main'] }],
       port,
     })
   }
