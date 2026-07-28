@@ -76,6 +76,8 @@ app.run()
 
 `BedrockAgentCoreApp` creates an AgentCore Runtime-compliant server—handling request parsing, streaming responses, and session management for seamless deployment.
 
+Building multi-agent systems? Host agents on AgentCore's [A2A protocol](https://a2a-protocol.org/) path with `serveA2A` — see the [runtime guide](src/runtime/README.md#a2a-protocol-support).
+
 ---
 
 ## Tools
@@ -101,6 +103,7 @@ const agent = new Agent({
 ## Features
 
 - **Runtime** — Secure, session-isolated compute → [Examples](https://github.com/awslabs/bedrock-agentcore-samples-typescript/tree/main/primitives/runtime)
+- **A2A** — Agent-to-agent communication on the A2A protocol path → [Guide](src/runtime/README.md#a2a-protocol-support)
 - **Code Interpreter** — Execute Python/JS/TS in a sandbox → [Examples](https://github.com/awslabs/bedrock-agentcore-samples-typescript/tree/main/primitives/tools/code-interpreter)
 - **Browser** — Cloud-based web automation → [Examples](https://github.com/awslabs/bedrock-agentcore-samples-typescript/tree/main/primitives/tools/browser)
 - **Identity** — Manage API keys and OAuth tokens → [Examples](https://github.com/awslabs/bedrock-agentcore-samples-typescript/tree/main/primitives/identity)
