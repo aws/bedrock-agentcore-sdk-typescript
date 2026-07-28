@@ -29,5 +29,9 @@ export function buildRuntimeUrl(runtimeArn: string, region?: string): string {
       `Invalid AWS region: ${resolved ?? '<none>'} (from arn: ${runtimeArn}). Region must match a pattern like 'us-east-1'.`
     )
   }
-  return `https://bedrock-agentcore.${resolved}.amazonaws.com/runtimes/${encodeURIComponent(runtimeArn)}/invocations`
+  // The trailing slash is load-bearing: A2A clients resolve the well-known
+  // agent-card path relative to this URL, and WHATWG URL resolution drops
+  // the final segment of a slashless base (…/invocations + ./.well-known/…
+  // → …/.well-known/…, a 404).
+  return `https://bedrock-agentcore.${resolved}.amazonaws.com/runtimes/${encodeURIComponent(runtimeArn)}/invocations/`
 }
