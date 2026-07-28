@@ -346,7 +346,7 @@ Defaults mirror the Python SDK's `serve_a2a`: port comes from the `PORT` env var
 AgentCore Runtime injects per-request headers into every proxied A2A call. `serveA2A` extracts them into the same request context used by the HTTP protocol path, so `getContext()` — and everything built on it, including the identity wrappers `withApiKey` and `withAccessToken` — works unchanged inside executors:
 
 ```typescript
-import { getContext } from 'bedrock-agentcore'
+import { getContext } from 'bedrock-agentcore/runtime/a2a'
 
 class MyExecutor {
   async execute(requestContext, eventBus) {
