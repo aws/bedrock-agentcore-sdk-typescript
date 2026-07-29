@@ -5,10 +5,6 @@
  * - AWS credentials configured
  * - AgentCore Identity service available in the region
  * - Permissions to create/delete identities and providers
- *
- * For OAuth2 token tests:
- * - Set OAUTH2_PROVIDER_NAME env var to test OAuth2 M2M flow
- * - Set OAUTH2_SCOPES env var (comma-separated)
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
