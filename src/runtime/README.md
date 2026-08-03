@@ -74,7 +74,10 @@ app.run()
 
 - **Type Safety**: Request is automatically typed based on your Zod schema
 - **Runtime Validation**: Invalid requests are rejected with 400 status code
-- **Optional**: Validation is opt-in - omit `requestSchema` for untyped requests
+- **String Typing**: String schemas keep text-only agent inputs typed as strings
+
+`requestSchema` is optional for compatibility with arbitrary handlers, but no-schema handlers receive the raw request
+body and should validate input before forwarding it to an agent framework.
 
 ## Handler Function
 

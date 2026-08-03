@@ -23,6 +23,8 @@ describe('BedrockAgentCoreApp Integration', () => {
       }
     }
 
+    // This suite intentionally verifies raw no-schema passthrough. Production agent handlers should validate input
+    // before forwarding it to an agent framework.
     app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
     fastify = (app as any)._app
     await (app as any)._registerPlugins()

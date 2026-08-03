@@ -809,6 +809,34 @@ describe('BedrockAgentCoreApp', () => {
         details: expect.any(Array),
       })
     })
+
+    it('rejects non-string prompts when the prompt schema requires a string', async () => {
+      const requestSchema = z.object({ prompt: z.string() })
+      const mockHandler = vi.fn(async (_request, _context) => ({ result: 'success' }))
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler, requestSchema } })
+      const mockApp = app['_app'] as any
+
+      app['_setupRoutes']()
+
+      const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
+      const invocationHandler = postCall[2]
+      const mockReq = {
+        body: {
+          prompt: [{ type: 'text', text: 'not a string prompt' }],
+        },
+        headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
+      }
+      const mockReply = { send: vi.fn(), status: vi.fn().mockReturnThis() }
+
+      await invocationHandler(mockReq, mockReply)
+
+      expect(mockHandler).not.toHaveBeenCalled()
+      expect(mockReply.status).toHaveBeenCalledWith(400)
+      expect(mockReply.send).toHaveBeenCalledWith({
+        error: 'Invalid request body format',
+        details: expect.any(Array),
+      })
+    })
   })
 
   describe('websocket handler', () => {
