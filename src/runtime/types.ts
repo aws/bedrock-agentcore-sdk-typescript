@@ -249,7 +249,8 @@ export interface BedrockAgentCoreAppParams<TSchema extends z.ZodSchema = z.ZodSc
     /**
      * Optional Zod schema for request validation and TypeScript typing.
      * When provided, validates request.body before passing to handler.
-     * When omitted, handler receives unknown request type.
+     * When omitted, the handler receives the raw request body as an unknown type and should validate it
+     * before forwarding it to an agent framework.
      */
     requestSchema?: TSchema
   }

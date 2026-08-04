@@ -74,6 +74,9 @@ const app = new BedrockAgentCoreApp({
 app.run()
 ```
 
+Use `requestSchema` to validate agent entrypoint input. Keep user prompts typed as strings and pass only prompt text
+to the agent framework.
+
 `BedrockAgentCoreApp` creates an AgentCore Runtime-compliant server—handling request parsing, streaming responses, and session management for seamless deployment.
 
 ---
