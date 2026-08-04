@@ -11,6 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.4.2] - 2026-08-04
+
+### Fixed
+- fix: remove unused integration test secrets (#231) (8c31a4b)
+- fix: disambiguate generated integration docs (#219) (a91a7d4)
+
+### Documentation
+- docs: clarify invocation input validation (#236) (b8e0143)
+
+### Other Changes
+- chore(deps): bump fast-uri from 3.1.2 to 3.1.5 (#241) (bac92c1)
+- chore(deps): bump find-my-way from 9.5.0 to 9.7.0 (#223) (6f22b55)
+- ci: wire shared composite actions (#227) (7397b64)
+- ci: migrate workflows to shared reusable workflows (#221) (b54b64a)
+
 ## [0.4.1] - 2026-07-16
 
 ### Other Changes
