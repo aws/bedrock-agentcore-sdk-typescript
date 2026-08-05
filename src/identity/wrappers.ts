@@ -119,3 +119,36 @@ export function withApiKey(config: ApiKeyWrapperConfig) {
     }
   }
 }
+
+/**
+ * Wraps an async function to automatically inject the Workload Access Token (WAT).
+ * The WAT is read from the current request context and injected as the last parameter.
+ *
+ *
+ * @param fn - Async function whose last parameter receives the WAT
+ * @returns Wrapped function that injects the WAT automatically
+ *
+ * @example
+ * ```typescript
+ * const callGateway = withWAT(async (query: string, wat: string) => {
+ *   return fetch('https://gateway.example.com/mcp', {
+ *     headers: { 'X-Amz-Bedrock-AgentCore-Identity-WAT': wat }
+ *   })
+ * })
+ *
+ * // Inside a request handler — wat injected from context
+ * await callGateway('what is the weather?')
+ * ```
+ */
+export function withWAT<TParams extends unknown[], TReturn>(
+  fn: (...args: [...TParams, string]) => Promise<TReturn>
+): (...args: TParams) => Promise<TReturn> {
+  return async (...args: TParams): Promise<TReturn> => {
+    const context = getContext()
+    const wat = context?.workloadAccessToken
+    if (!wat) {
+      throw new Error('No workload access token in context. Ensure the agent is running on AgentCore Runtime.')
+    }
+    return fn(...args, wat)
+  }
+}

@@ -7,7 +7,14 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import request from 'supertest'
 import WebSocket from 'ws'
+import {
+  BedrockAgentCoreClient,
+  InvokeCodeInterpreterCommand,
+  CreateEventCommand,
+} from '@aws-sdk/client-bedrock-agentcore'
 import { BedrockAgentCoreApp } from '../src/runtime/app.js'
+import { withWatPropagation } from '../src/identity/middleware.js'
+import { runWithContext } from '../src/runtime/context.js'
 import type { InvocationHandler } from '../src/runtime/types.js'
 
 describe('BedrockAgentCoreApp Integration', () => {
@@ -154,7 +161,10 @@ describe('BedrockAgentCoreApp Integration', () => {
       await request(fastify.server).post('/invocations').send({ test: 'data' }).expect(400)
     })
 
-    it('extracts workloadAccessToken from header', async () => {
+    it.each([
+      { headerName: 'workloadaccesstoken', token: 'legacy-token-123' },
+      { headerName: 'x-amz-bedrock-agentcore-identity-wat', token: 'wat-token-456' },
+    ])('extracts workloadAccessToken from $headerName header', async ({ headerName, token }) => {
       const handler: InvocationHandler = async (req, context) => {
         return { token: context.workloadAccessToken }
       }
@@ -166,11 +176,11 @@ describe('BedrockAgentCoreApp Integration', () => {
       await request((testApp as any)._app.server)
         .post('/invocations')
         .set('x-amzn-bedrock-agentcore-runtime-session-id', 'test-session')
-        .set('workloadaccesstoken', 'test-token-123')
+        .set(headerName, token)
         .send({})
         .expect(200)
         .expect(function (res) {
-          expect(res.body.token).toBe('test-token-123')
+          expect(res.body.token).toBe(token)
         })
     })
 
@@ -1518,6 +1528,55 @@ Bob Johnson,35,Chicago`
         await new Promise<void>((resolve) => {
           mixedServer.close(() => resolve())
         })
+      }
+    })
+  })
+
+  describe('Identity WAT Propagation', () => {
+    it.each([
+      {
+        name: 'attaches WAT on Invoke operations',
+        command: new InvokeCodeInterpreterCommand({ codeInterpreterIdentifier: 'fake', name: 'executeCode' }),
+        expectHeader: true,
+      },
+      {
+        name: 'does not attach WAT on non-Invoke operations',
+        command: new CreateEventCommand({ memoryId: 'fake', actorId: 'fake', eventTimestamp: new Date(), payload: [] }),
+        expectHeader: false,
+      },
+    ])('$name', async ({ command, expectHeader }) => {
+      const client = new BedrockAgentCoreClient({
+        region: 'us-east-1',
+        endpoint: 'https://fake.example.com',
+        credentials: { accessKeyId: 'fake', secretAccessKey: 'fake' },
+      })
+      withWatPropagation(client)
+
+      let capturedHeaders: Record<string, string> = {}
+
+      client.middlewareStack.add(
+        ((_next: any) => async (args: any) => {
+          capturedHeaders = args.request.headers
+          return { output: {}, response: {} }
+        }) as any,
+        { step: 'finalizeRequest', priority: 'low', name: 'testInterceptor' }
+      )
+
+      await runWithContext(
+        { sessionId: 'test', headers: {}, workloadAccessToken: 'my-wat-token', log: console as any },
+        async () => {
+          try {
+            await client.send(command as any)
+          } catch {
+            /* expected */
+          }
+        }
+      )
+
+      if (expectHeader) {
+        expect(capturedHeaders['x-amz-bedrock-agentcore-identity-wat']).toBe('my-wat-token')
+      } else {
+        expect(capturedHeaders['x-amz-bedrock-agentcore-identity-wat']).toBeUndefined()
       }
     })
   })
