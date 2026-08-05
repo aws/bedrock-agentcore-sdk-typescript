@@ -7,7 +7,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import request from 'supertest'
 import WebSocket from 'ws'
-import { BedrockAgentCoreClient, InvokeCodeInterpreterCommand } from '@aws-sdk/client-bedrock-agentcore'
+import {
+  BedrockAgentCoreClient,
+  InvokeCodeInterpreterCommand,
+  CreateEventCommand,
+} from '@aws-sdk/client-bedrock-agentcore'
 import { BedrockAgentCoreApp } from '../src/runtime/app.js'
 import { withWatPropagation } from '../src/identity/middleware.js'
 import { runWithContext } from '../src/runtime/context.js'
@@ -1529,13 +1533,27 @@ Bob Johnson,35,Chicago`
   })
 
   describe('Identity WAT Propagation', () => {
-    it('middleware attaches WAT header to outbound SDK requests', async () => {
-      const client = new BedrockAgentCoreClient({ region: 'us-east-1' })
+    it.each([
+      {
+        name: 'attaches WAT on Invoke operations',
+        command: new InvokeCodeInterpreterCommand({ codeInterpreterIdentifier: 'fake', name: 'executeCode' }),
+        expectHeader: true,
+      },
+      {
+        name: 'does not attach WAT on non-Invoke operations',
+        command: new CreateEventCommand({ memoryId: 'fake', actorId: 'fake', eventTimestamp: new Date(), payload: [] }),
+        expectHeader: false,
+      },
+    ])('$name', async ({ command, expectHeader }) => {
+      const client = new BedrockAgentCoreClient({
+        region: 'us-east-1',
+        endpoint: 'https://fake.example.com',
+        credentials: { accessKeyId: 'fake', secretAccessKey: 'fake' },
+      })
       withWatPropagation(client)
 
       let capturedHeaders: Record<string, string> = {}
 
-      // Interceptor: capture headers, don't send to AWS
       client.middlewareStack.add(
         ((_next: any) => async (args: any) => {
           capturedHeaders = args.request.headers
@@ -1544,24 +1562,22 @@ Bob Johnson,35,Chicago`
         { step: 'finalizeRequest', priority: 'low', name: 'testInterceptor' }
       )
 
-      // Run inside a context that has a WAT
       await runWithContext(
         { sessionId: 'test', headers: {}, workloadAccessToken: 'my-wat-token', log: console as any },
         async () => {
           try {
-            await client.send(
-              new InvokeCodeInterpreterCommand({
-                codeInterpreterIdentifier: 'fake',
-                name: 'executeCode',
-              })
-            )
+            await client.send(command as any)
           } catch {
             /* expected */
           }
         }
       )
 
-      expect(capturedHeaders['x-amz-bedrock-agentcore-identity-wat']).toBe('my-wat-token')
+      if (expectHeader) {
+        expect(capturedHeaders['x-amz-bedrock-agentcore-identity-wat']).toBe('my-wat-token')
+      } else {
+        expect(capturedHeaders['x-amz-bedrock-agentcore-identity-wat']).toBeUndefined()
+      }
     })
   })
 })

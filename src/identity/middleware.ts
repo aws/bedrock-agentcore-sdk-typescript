@@ -3,6 +3,7 @@ import type {
   FinalizeHandler,
   FinalizeHandlerArguments,
   FinalizeHandlerOutput,
+  HandlerExecutionContext,
   MetadataBearer,
   MiddlewareStack,
 } from '@smithy/types'
@@ -18,7 +19,7 @@ interface AwsClient {
 
 /**
  * Registers middleware that attaches the WAT header to outbound AWS SDK requests.
- * No-ops when no WAT is present in context.
+ * Only applies to Invoke* operations. No-ops when no WAT is present in context.
  *
  * @param client - Any AWS SDK v3 client instance
  *
@@ -34,9 +35,12 @@ interface AwsClient {
 export function withWatPropagation(client: AwsClient): void {
   client.middlewareStack.add(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (next: FinalizeHandler<any, any>): FinalizeHandler<any, any> =>
+    (next: FinalizeHandler<any, any>, context: HandlerExecutionContext): FinalizeHandler<any, any> =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       async (args: FinalizeHandlerArguments<any>): Promise<FinalizeHandlerOutput<any>> => {
+        if (!context.commandName?.startsWith('Invoke')) {
+          return next(args)
+        }
         const wat = getContext()?.workloadAccessToken
         if (wat && HttpRequest.isInstance(args.request)) {
           args.request.headers[IDENTITY_WAT_HEADER] = wat
