@@ -119,7 +119,6 @@ const agent = new Agent({
 npm install bedrock-agentcore
 ```
 
-
 **Prerequisites:** Node.js 20+, [AWS credentials](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html), [AgentCore access](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html)
 
 ---

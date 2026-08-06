@@ -120,17 +120,17 @@ const model = new OpenAIModel({
 
 The change is backward compatible—all existing string-based usage continues
 to work without modification.
-
 ````
 
 ✅ **Use Cases section:**
+
 ```markdown
 ## Use Cases
 
 - **API key rotation**: Rotate keys without application restart
 - **Secret manager integration**: Fetch credentials from AWS Secrets Manager, Vault, etc.
 - **Multi-tenant systems**: Dynamically select API keys based on context
-````
+```
 
 ## Template
 
@@ -175,7 +175,6 @@ showing when developers would use this feature. Skip for trivial changes obvious
 // After
 [new code]
 ```
-
 ````
 
 ## Why These Guidelines?
@@ -193,8 +192,8 @@ showing when developers would use this feature. Skip for trivial changes obvious
 
 ## Checklist Items
 
- - [ ] Does the PR description target a Senior Engineer familiar with the project?
- - [ ] Does the PR description give an overview of the feature being implemented, including any notes on key implemention decisions
- - [ ] Does the PR include a "Resolves #<ISSUE NUMBER>" in the body and is not bolded?
- - [ ] Does the PR contain the motivation or use-cases behind the change?
- - [ ] Does the PR omit irrelevent details not needed for historical reference?
+- [ ] Does the PR description target a Senior Engineer familiar with the project?
+- [ ] Does the PR description give an overview of the feature being implemented, including any notes on key implemention decisions
+- [ ] Does the PR include a "Resolves #<ISSUE NUMBER>" in the body and is not bolded?
+- [ ] Does the PR contain the motivation or use-cases behind the change?
+- [ ] Does the PR omit irrelevent details not needed for historical reference?

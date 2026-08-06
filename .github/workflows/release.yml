@@ -83,12 +83,12 @@ jobs:
 
           # Build version bump command
           BUMP_CMD="npx tsx scripts/bump-version.ts $BUMP_TYPE"
-          
+
           # Add changelog if provided
           if [ -n "$CHANGELOG_INPUT" ]; then
             BUMP_CMD="$BUMP_CMD --changelog \"$CHANGELOG_INPUT\""
           fi
-          
+
           # Add prerelease-tag if provided and bump_type is prerelease
           if [ "$BUMP_TYPE" = "prerelease" ]; then
             if [ -n "$PRERELEASE_TAG" ]; then
@@ -98,7 +98,7 @@ jobs:
               BUMP_CMD="$BUMP_CMD --prerelease-tag \"beta\""
             fi
           fi
-          
+
           # Run the bump command
           eval $BUMP_CMD
 
@@ -154,27 +154,27 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
         run: |
           BRANCH_NAME="release/v$NEW_VERSION"
-          
+
           WARNING_TEXT=""
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then
             WARNING_TEXT="**WARNING**: Not running from main branch!"
           else
             WARNING_TEXT="✅ Running from main branch"
           fi
-          
+
           gh pr create \
             --base main \
             --head "$BRANCH_NAME" \
             --title "Release v$NEW_VERSION" \
             --body "## 🚀 Release v$NEW_VERSION
-          
+
           This PR was automatically created by the release workflow.
-          
+
           ### ⚠️  Pre-merge Checklist
           - [ ] Review CHANGELOG.md - ensure it has meaningful release notes
           - [ ] Verify version numbers are correct in all files
           - [ ] All CI checks are passing
-          
+
           ### 📝 How to improve changelog
           If the auto-generated changelog isn't good enough:
           1. Edit CHANGELOG.md in this PR
@@ -291,7 +291,7 @@ jobs:
       - name: Checkout latest main (AFTER PR merge)
         uses: actions/checkout@v6
         with:
-          ref: main  # CRITICAL: Always checkout main, not the original trigger commit
+          ref: main # CRITICAL: Always checkout main, not the original trigger commit
           fetch-depth: 0
 
       - name: Verify we have the merged code
@@ -336,7 +336,7 @@ jobs:
         run: |
           echo "Version in main branch: $VERSION"
           echo "Expected version from PR: $EXPECTED_VERSION"
-          
+
           if [ "$VERSION" != "$EXPECTED_VERSION" ]; then
             echo ""
             echo "❌ ERROR: Version mismatch!"
@@ -349,7 +349,7 @@ jobs:
             echo ""
             exit 1
           fi
-          
+
           echo "✅ Version matches - PR was merged correctly"
 
       - name: Check if version exists on npm

@@ -88,6 +88,7 @@ src/tools/browser/
 ### Why is the DCV SDK vendored?
 
 The NICE DCV Web Client SDK is not published to npm. It's a set of pre-built JS files that must be:
+
 1. Aliased as bare specifiers (`dcv`, `dcv-ui`) via bundler config
 2. Copied to the build output for runtime loading (workers, WASM decoders)
 
@@ -146,9 +147,13 @@ export default defineConfig({
       'dcv-ui': resolve(dcvSdkDir, 'dcv-ui/dcv-ui.js'),
     },
     dedupe: [
-      'react', 'react-dom', 'prop-types',
-      '@cloudscape-design/components', '@cloudscape-design/global-styles',
-      '@cloudscape-design/design-tokens', '@babel/runtime',
+      'react',
+      'react-dom',
+      'prop-types',
+      '@cloudscape-design/components',
+      '@cloudscape-design/global-styles',
+      '@cloudscape-design/design-tokens',
+      '@babel/runtime',
     ],
   },
   plugins: [
@@ -169,6 +174,7 @@ export default defineConfig({
 The presigned URL was signed with `wss:` protocol instead of `https:`. The DCV auth channel (`/auth` suffix) is lenient, but the main streaming channel validates the SigV4 signature strictly. Use `generateLiveViewUrl()` which signs with `https:`.
 
 Symptoms:
+
 - `[authentication] INFO Auth WebSocket connection opened` — auth works
 - `Main channel was closed before the connection was fully established` — repeated with exponential backoff
 - `[client] ERROR Connection failed: {"code":16,"message":"Connection failed"}`
@@ -180,6 +186,7 @@ Missing bundler aliases. The DCV SDK uses bare specifiers `dcv` and `dcv-ui` whi
 ### `Cannot resolve "@cloudscape-design/components"` (or similar)
 
 Two possible causes:
+
 1. Missing dependency — install it: `npm install @cloudscape-design/components`
 2. Missing `resolve.dedupe` — Vite resolves imports from the vendored SDK's physical path (inside `node_modules/bedrock-agentcore/dist/...`), not from the consumer's `node_modules`. Add the package to `resolve.dedupe`.
 

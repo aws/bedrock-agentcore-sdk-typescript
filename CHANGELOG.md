@@ -5,29 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-
-
-
-
-
-
-
-
 ## [0.4.3] - 2026-08-06
 
 ### Other Changes
+
 - feat(runtime): provide tools for consuming and propagating WAT (#243) (189088e)
 
 ## [0.4.2] - 2026-08-04
 
 ### Fixed
+
 - fix: remove unused integration test secrets (#231) (8c31a4b)
 - fix: disambiguate generated integration docs (#219) (a91a7d4)
 
 ### Documentation
+
 - docs: clarify invocation input validation (#236) (b8e0143)
 
 ### Other Changes
+
 - chore(deps): bump fast-uri from 3.1.2 to 3.1.5 (#241) (bac92c1)
 - chore(deps): bump find-my-way from 9.5.0 to 9.7.0 (#223) (6f22b55)
 - ci: wire shared composite actions (#227) (7397b64)
@@ -36,20 +32,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.1] - 2026-07-16
 
 ### Other Changes
+
 - feat(memory): promote AgentCore Memory Strands integration to GA (#213) (477bfc3)
 - ci: add API reference docs generation workflow (#209) (88532f0)
 
 ## [0.4.0] - 2026-06-30
 
 ### Added
+
 - feat: add extractionMode support to AgentCoreEventSender (#200) (e46b183)
 
 ### Fixed
+
 - fix: govcloud support (#206) (3558f03)
 
 ## [0.3.0] - 2026-06-25
 
 ### Other Changes
+
 - fix(runtime/shell): apply prettier formatting to session.ts (#201) (4e65fe0)
 - fix(runtime/shell): make reconnect spec-conformant (#199) (a59fdb0)
 - feat(memory): add AgentCore Memory Strands integration (experimental) (#187) (773c6cc)
@@ -62,9 +62,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.4] - 2026-05-12
 
 ### Fixed
+
 - fix: resolve tsdoc lint error blocking release workflow (#169) (093e76d)
 
 ### Other Changes
+
 - chore(deps): bump fast-uri from 3.1.0 to 3.1.2 (#162) (aae7635)
 - chore(deps): bump fast-xml-builder from 1.1.5 to 1.2.0 (#161) (8092844)
 - chore: replace PAT token with GitHub App token (#166) (1d57d60)
@@ -73,14 +75,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.3] - 2026-04-30
 
 ### Added
+
 - feat: support on-behalf-of token exchange and additional parameters (#149) (91d7e0a)
 
 ### Fixed
+
 - fix: return time_of_last_update as Unix timestamp in seconds (#129) (05b59d1)
 - fix: prevent FST_ERR_REP_INVALID_PAYLOAD_TYPE when streaming SSE responses (#66) (#118) (4bb857e)
 - fix: split labeler into separate workflow with pull_request_target for fork PR permissions (#109) (223d85e)
 
 ### Other Changes
+
 - revert: bump version to 0.2.3 (#152) (0af605c)
 - chore: bump version to 0.2.3 (#150) (a28acfa)
 - chore(deps-dev): bump eslint from 9.39.1 to 10.0.3 (#105) (942e7e3)
@@ -101,12 +106,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.2] - 2026-03-12
 
 ### Added
+
 - feat: add Slack notification workflow for new issues (#56) (ca67c52)
 
 ### Fixed
+
 - fix: escape special characters in Slack notification payload (#58) (abdbb84)
 
 ### Other Changes
+
 - feat(browser): Add BrowserLiveView component for DCV live-view streaming (#92) (5e89b17)
 - Clarify framework compatibility in README (#91) (c5b3843)
 - ci(deps): bump actions/github-script from 7 to 8 (#28) (2f80f49)
@@ -131,36 +139,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add daily Slack notification for open PRs (#84) (caaef3a)
 - Add proxy, extensions, and profile configuration support to TypeScript SDK (#72) (1453a15)
 - chore: bump version to 0.2.1 (#63) (e87908c)
-- docs(readme): fix incorrect code examples    (#50) (5e3cf94)
+- docs(readme): fix incorrect code examples (#50) (5e3cf94)
 
 ## [Unreleased]
 
 ### Added
-- Add proxy, extensions, and profile configuration support for browser sessions (#72)
 
+- Add proxy, extensions, and profile configuration support for browser sessions (#72)
 
 ## [0.2.1] - 2026-02-03
 
 ### Added
+
 - feat: add Slack notification workflow for new issues (#56) (ca67c52)
 
 ### Fixed
+
 - fix: escape special characters in Slack notification payload (#58) (abdbb84)
 
 ### Other Changes
-- docs(readme): fix incorrect code examples    (#50) (5e3cf94)
+
+- docs(readme): fix incorrect code examples (#50) (5e3cf94)
 
 ## [0.2.0] - 2026-01-22
 
 ### Added
+
 - feat: add AsyncLocalStorage-based request context system (14ddf41)
 - feat: enhance logging configuration with FastifyLoggerOptions (0a54bb9)
 - feat: add request-scoped logger to handler context (b9261dd)
 - feat: mark Strands SDK integration as experimental (#53) (60c3e87)
 - feat: add Strands SDK integration for CodeInterpreter and Browser tools (#38) (cc64712)
-- feat: Allowed Customers to specify request object using zod  (#34) (c442424)
+- feat: Allowed Customers to specify request object using zod (#34) (c442424)
 - feat: add session management features for Python SDK parity (3c71667)
-- feat:  Added Websocket integration, refactored runtime's integ tests and refactor BedrockAgentCoreRuntimeApp's Constructor (#16) (18af927)
+- feat: Added Websocket integration, refactored runtime's integ tests and refactor BedrockAgentCoreRuntimeApp's Constructor (#16) (18af927)
 - feat: add authorizationServerMetadata support for OAuth2 providers (af1ff3b)
 - feat: implement AgentCore Identity SDK (692b6e2)
 - feat: add OAuth bearer token authentication to RuntimeClient (0161e61)
@@ -173,6 +185,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - feat: Added a new AGENTS.md for github workflow agents (5a5f0d3)
 
 ### Fixed
+
 - fix: preserve AsyncLocalStorage context during async generator streaming (1bff14a)
 - fix: respect Accept header for non-streaming responses in SSE mode (869e8a0)
 - fix: handle non-streaming responses when SSE mode is active (e6f77b7)
@@ -199,10 +212,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - fix: improve examples reliability and reduce token usage and update release workflow to remove dry run (#23) (d8b2778)
 
 ### Documentation
+
 - docs: readme rewrite (#45) (0c785ae)
 - docs: update identity README to reflect public API changes (d36a64e)
 
 ### Other Changes
+
 - fix(code-interpreter): use directoryPath parameter for listFiles command (#44) (63d64aa)
 - test: add unit tests for SSE non-streaming response handling (6c8a5b7)
 - Updating not sure if this is what we want (8336da1)
@@ -250,17 +265,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.1] - 2025-11-26
 
 ### Added
+
 - feat: add comprehensive Vercel AI SDK examples and tests (e6d43d5)
 
 ### Fixed
+
 - fix: release workflow (fcdfe5f)
 
 ### Documentation
+
 - docs: improve SDK scope visibility and browser automation description (#17) (39a3b3d)
 - docs: fix double slash in AWS CLI documentation URL (5175eb9)
 - docs: update README links to TypeScript repository (71aad2d)
 
 ### Other Changes
+
 - chore: bump version to 0.1.0 (#20) (1543943)
 - chore: reset version for automated release (#19) (d096378)
 - Merge pull request #15 from aws/feat/add-vercel-ai-examples (f65370c)
@@ -280,17 +299,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2025-11-26
 
 ### Added
+
 - feat: add comprehensive Vercel AI SDK examples and tests (e6d43d5)
 
 ### Fixed
+
 - fix: release workflow (fcdfe5f)
 
 ### Documentation
+
 - docs: improve SDK scope visibility and browser automation description (#17) (39a3b3d)
 - docs: fix double slash in AWS CLI documentation URL (5175eb9)
 - docs: update README links to TypeScript repository (71aad2d)
 
 ### Other Changes
+
 - chore: reset version for automated release (#19) (d096378)
 - Merge pull request #15 from aws/feat/add-vercel-ai-examples (f65370c)
 - chore: update package-lock.json for tsx dependency (9af2dad)

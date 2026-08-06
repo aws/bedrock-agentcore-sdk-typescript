@@ -11,18 +11,21 @@ This document contains comprehensive testing guidelines for the Strands TypeScri
 **Rule**: Tests MUST validate behavior through the public API only. Do NOT access private members, internal state, or implementation details.
 
 **Why black-box testing:**
+
 - Tests remain valid when implementation changes
 - Tests document the public contract
 - Tests catch real user-facing bugs
 - Refactoring is safer and easier
 
 **✅ DO:**
+
 - Test public methods and their return values
 - Test observable side effects (HTTP responses, file changes, etc.)
 - Test error conditions through public API
 - Use dependency injection for testability
 
 **❌ DON'T:**
+
 - Access private properties or methods directly (use bracket notation if needed)
 - Test internal state directly
 - Use `any` type to bypass type checking unnecessarily
@@ -31,61 +34,65 @@ This document contains comprehensive testing guidelines for the Strands TypeScri
 ### Examples
 
 **❌ Bad: White-box testing (accessing internals)**
+
 ```typescript
 it('registers routes correctly', () => {
   const app = new BedrockAgentCoreApp({ handler })
-  
+
   // ❌ Accessing private members
   const mockApp = app._app
   app._setupRoutes()
-  
+
   // ❌ Testing internal implementation
   expect(mockApp.get).toHaveBeenCalledWith('/ping')
 })
 ```
 
 **✅ Good: Black-box testing (testing behavior)**
+
 ```typescript
 it('responds to health check requests', async () => {
   const app = new BedrockAgentCoreApp({ handler })
   app.run()
-  
+
   // ✅ Testing through public API
   const response = await request(app).get('/ping')
-  
+
   expect(response.status).toBe(200)
   expect(response.body).toEqual({
     status: 'Healthy',
-    activeTaskCount: 0
+    activeTaskCount: 0,
   })
 })
 ```
 
 **❌ Bad: Testing internal state**
+
 ```typescript
 it('tracks tasks internally', () => {
   const app = new BedrockAgentCoreApp({ handler })
-  
+
   // ❌ Accessing private state
   expect(app._activeTasksMap.size).toBe(0)
-  
+
   app.addAsyncTask('test')
-  
+
   // ❌ Verifying internal state
   expect(app._activeTasksMap.size).toBe(1)
 })
 ```
 
 **✅ Good: Testing observable behavior**
+
 ```typescript
 it('reports active task count', () => {
   const app = new BedrockAgentCoreApp({ handler })
-  
+
   // ✅ Using public API
   expect(app.getAsyncTaskInfo().activeCount).toBe(0)
-  
+
   app.addAsyncTask('test')
-  
+
   // ✅ Verifying through public method
   expect(app.getAsyncTaskInfo().activeCount).toBe(1)
 })
@@ -107,7 +114,7 @@ In cases where testing requires accessing private members and no public API exis
 // Accessing private properties
 const server = app['_app']
 
-// Calling private methods  
+// Calling private methods
 app['_setupRoutes']()
 
 // With type casting when needed
@@ -116,11 +123,13 @@ mockApp.get.mock.calls // Access mock properties
 ```
 
 **When this is acceptable:**
+
 - Testing integrations with dependencies
 - Testing specific error codes or internal behavior that can't be tested through public API
 - Temporary solution while refactoring to more black-box approaches
 
 **Best practices:**
+
 - Use sparingly - prefer public API testing
 - Document why private access is needed
 - Consider if the behavior could be tested through side effects instead
@@ -132,6 +141,7 @@ mockApp.get.mock.calls // Access mock properties
 The project uses `tsconfig.test.json` to type-check test files separately from production code. This ensures test code has the same type safety as production code.
 
 **Running type checks:**
+
 ```bash
 npm run type-check        # Check production code only
 npm run type-check:tests  # Check test files only
@@ -141,39 +151,43 @@ npm run type-check:all    # Check both (used in CI)
 **Common type issues in tests:**
 
 1. **Missing `.js` extensions in imports**
+
    ```typescript
    // ❌ Wrong
    import { Client } from '../client'
-   
+
    // ✅ Correct
    import { Client } from '../client.js'
    ```
 
 2. **Generic type inference failures**
+
    ```typescript
    // ❌ TypeScript can't infer types
    const wrapped = withAccessToken(config)(fn)
-   
+
    // ✅ Provide explicit type parameters
    const wrapped = withAccessToken<[string], { result: string }>(config)(fn)
    ```
 
 3. **Array access returns `T | undefined`**
+
    ```typescript
    // ❌ items[0] is possibly undefined
    expect(response.items[0].id).toBe('123')
-   
+
    // ✅ Use non-null assertion after verifying length
    expect(response.items.length).toBeGreaterThan(0)
    expect(response.items[0]!.id).toBe('123')
    ```
 
 4. **Mock objects don't match real types**
+
    ```typescript
    // When accessing mock-specific properties
    const mockApp = app['_app'] as any
    const calls = mockApp.get.mock.calls
-   
+
    // When passing incomplete mock objects
    const mockRequest = { headers: {...}, body: {} }
    handler(mockRequest as any)
@@ -182,35 +196,35 @@ npm run type-check:all    # Check both (used in CI)
 ### Testing with Mocked Dependencies
 
 **When mocking is acceptable:**
+
 - ✅ External dependencies (AWS SDK, databases, third-party APIs)
 - ✅ Handler functions to verify they're called with correct parameters
 - ✅ Expensive operations in unit tests (network calls, file I/O)
 
 **When mocking is NOT acceptable:**
+
 - ❌ The class/function you're testing (test the real implementation)
 - ❌ Internal implementation details (test behavior, not implementation)
 - ❌ In integration tests (defeats the purpose of end-to-end testing)
 
 **Example: Good use of mocking**
+
 ```typescript
 it('invokes handler with correct context', async () => {
   // ✅ Mock the handler to verify it receives correct parameters
   const mockHandler = vi.fn(async (request, context) => ({ result: 'success' }))
   const app = new BedrockAgentCoreApp({ handler: mockHandler })
-  
+
   // Test the real app behavior
   const mockApp = app['_app'] as any
   app['_setupRoutes']()
-  
-  const postCall = mockApp.post.mock.calls.find(call => call[0] === '/invocations')
+
+  const postCall = mockApp.post.mock.calls.find((call) => call[0] === '/invocations')
   const invocationHandler = postCall[2]
   await invocationHandler(mockReq, mockReply)
-  
+
   // Verify handler was called correctly
-  expect(mockHandler).toHaveBeenCalledWith(
-    { test: 'data' },
-    expect.objectContaining({ sessionId: 'session-123' })
-  )
+  expect(mockHandler).toHaveBeenCalledWith({ test: 'data' }, expect.objectContaining({ sessionId: 'session-123' }))
 })
 ```
 
@@ -219,6 +233,7 @@ it('invokes handler with correct context', async () => {
 Tests should be **minimal and focused** on exactly what you're testing. Avoid unnecessary complexity, boilerplate, or setup that doesn't directly contribute to validating the behavior under test.
 
 **Key principles:**
+
 - **Reuse expensive resources** - Don't recreate resources (like AWS services, database connections, or test infrastructure) if they can be shared across tests
 - **Batch related assertions** - When setup cost exceeds test logic cost, combine related assertions into a single test
 - **Minimize boilerplate** - Use fixtures, helpers, and shared setup to reduce repetitive code
@@ -322,16 +337,16 @@ Integration tests validate end-to-end functionality with real external services.
 describe('Identity Integration Tests', () => {
   let client: IdentityClient
   let sharedCognitoPool: CognitoUserPool
-  
+
   beforeAll(async () => {
     client = new IdentityClient('us-west-2')
-    
+
     // Check if pool exists, create only if needed
     sharedCognitoPool = await getOrCreateUserPool('test-pool-name')
   })
-  
+
   // Don't delete shared resources in afterAll - reuse on next run
-  
+
   it('performs OAuth2 M2M flow', async () => {
     // Use shared pool - no expensive setup
     const token = await client.getOAuth2Token({
@@ -340,12 +355,16 @@ describe('Identity Integration Tests', () => {
     })
     expect(token).toBeDefined()
   })
-  
+
   it('handles concurrent token requests', async () => {
     // Reuse same pool - fast test execution
-    const promises = Array(5).fill(null).map(() => 
-      client.getOAuth2Token({ /* ... */ })
-    )
+    const promises = Array(5)
+      .fill(null)
+      .map(() =>
+        client.getOAuth2Token({
+          /* ... */
+        })
+      )
     const tokens = await Promise.all(promises)
     expect(tokens).toHaveLength(5)
   })
@@ -361,27 +380,28 @@ describe('Identity Integration Tests', () => {
     const pool = await createCognitoUserPool(`test-${Date.now()}`)
     const domain = await createDomain(pool)
     await waitForDomainActive(domain) // 5+ seconds!
-    
+
     // Test logic...
-    
+
     // ❌ Deletes pool - next test will recreate it
     await deleteUserPool(pool)
   })
-  
+
   it('handles concurrent token requests', async () => {
     // ❌ Recreates everything again!
     const pool = await createCognitoUserPool(`test-${Date.now()}`)
     const domain = await createDomain(pool)
     await waitForDomainActive(domain) // Another 5+ seconds!
-    
+
     // Test logic...
-    
+
     await deleteUserPool(pool)
   })
 })
 ```
 
 **Key principles:**
+
 - Use stable resource names (not `Date.now()` suffixes)
 - Check if resource exists before creating
 - Don't delete shared resources after tests
@@ -390,6 +410,7 @@ describe('Identity Integration Tests', () => {
 ### What to Include in Integration Tests
 
 **✅ DO test:**
+
 - Real service integration (actual AWS Bedrock calls)
 - Public API validation (main client classes)
 - Complete user workflows
@@ -399,6 +420,7 @@ describe('Identity Integration Tests', () => {
 - Framework integrations (Vercel AI, LangChain, etc.)
 
 **❌ DON'T test:**
+
 - Internal helper functions
 - Mocked services (defeats the purpose)
 - Unit-level logic
@@ -452,16 +474,19 @@ describe('[FeatureName] Integration Tests', () => {
 ### Prerequisites for Integration Tests
 
 **AWS Credentials:**
+
 - Configure via environment variables or AWS config
 - Ensure credentials have required permissions
 - Tests will fail with `AccessDeniedException` if credentials are expired
 
 **Service Access:**
+
 - Access to AWS Bedrock AgentCore service
 - Valid runtime ARNs (for runtime client tests)
 - Appropriate service quotas and limits
 
 **Environment Variables:**
+
 ```bash
 AWS_REGION=us-west-2
 AWS_ACCESS_KEY_ID=your-access-key
@@ -472,16 +497,17 @@ AWS_SECRET_ACCESS_KEY=your-secret-key
 ### Common Integration Test Patterns
 
 **Session Lifecycle Testing:**
+
 ```typescript
 describe('Session Management', () => {
   it('creates and manages sessions', async () => {
     const session = await client.startSession({ name: 'test-session' })
     expect(session.sessionId).toBeDefined()
-    
+
     // Use session
     const result = await client.performOperation({ sessionId: session.sessionId })
     expect(result).toBeDefined()
-    
+
     // Cleanup
     await client.stopSession()
   })
@@ -489,34 +515,38 @@ describe('Session Management', () => {
 ```
 
 **Multi-Step Workflows:**
+
 ```typescript
 describe('Real-World Workflows', () => {
   it('performs complete workflow', async () => {
     // Step 1: Setup
     await client.initialize()
-    
+
     // Step 2: Execute
     const result1 = await client.step1()
     const result2 = await client.step2(result1)
-    
+
     // Step 3: Validate
     expect(result2).toMatchObject({
       status: 'success',
-      data: expect.any(Object)
+      data: expect.any(Object),
     })
   })
 })
 ```
 
 **Error Scenario Testing:**
+
 ```typescript
 describe('Error Handling', () => {
   it('handles invalid parameters', async () => {
-    await expect(client.method({
-      invalidParam: 'bad-value'
-    })).rejects.toThrow('Invalid parameter')
+    await expect(
+      client.method({
+        invalidParam: 'bad-value',
+      })
+    ).rejects.toThrow('Invalid parameter')
   })
-  
+
   it('handles service unavailable', async () => {
     // Test with invalid region or credentials
     const invalidClient = new ClientClass({ region: 'invalid-region' })
@@ -670,8 +700,9 @@ describe('calculateTotal', () => {
   it('should work', () => {
     expect(calculateTotal([1, 2, 3])).toBeTruthy()
   })
-  
-  it('should return the sum', () => { // ❌ Don't use "should"
+
+  it('should return the sum', () => {
+    // ❌ Don't use "should"
     expect(calculateTotal([1, 2, 3])).toBe(6)
   })
 })
@@ -722,13 +753,13 @@ it('takes screenshot', async () => {
 // ✅ Single expensive setup, multiple related assertions
 it('performs navigation and content extraction', async () => {
   await browser.navigate({ url: 'https://example.com' })
-  
+
   const html = await browser.getHtml()
   expect(html).toContain('Example')
-  
+
   const title = await browser.getText({ selector: 'h1' })
   expect(title).toBeTruthy()
-  
+
   const screenshot = await browser.screenshot()
   expect(screenshot).toBeDefined()
 }, 90000)
@@ -842,7 +873,7 @@ it('retrieves OAuth2 token', async () => {
     authFlow: 'M2M',
     workloadIdentityToken: 'token-123',
   })
-  
+
   expect(token).toBeDefined()
   expect(typeof token).toBe('string')
 })
