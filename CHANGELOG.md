@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.4.3] - 2026-08-06
+
+### Other Changes
+- feat(runtime): provide tools for consuming and propagating WAT (#243) (189088e)
+
 ## [0.4.2] - 2026-08-04
 
 ### Fixed
