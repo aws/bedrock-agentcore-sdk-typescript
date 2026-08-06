@@ -77,8 +77,8 @@
     "test:integ": "vitest run --project integ",
     "lint": "eslint src tests_integ",
     "lint:fix": "eslint src tests_integ --fix",
-    "format": "prettier --write src tests_integ",
-    "format:check": "prettier --check src tests_integ",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "type-check": "tsc --noEmit",
     "type-check:tests": "tsc --noEmit -p tsconfig.test.json",
     "type-check:all": "npm run type-check && npm run type-check:tests",
@@ -132,7 +132,11 @@
     "vitest": "^4.0.8"
   },
   "lint-staged": {
-    "*.{ts,tsx}": [
+    "src/**/*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "tests_integ/**/*.{ts,tsx}": [
       "eslint --fix",
       "prettier --write"
     ],

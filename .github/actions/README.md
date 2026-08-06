@@ -19,7 +19,7 @@ graph LR
     B --> C[Read-Only Agent]
     C --> D[Write Operations]
     D --> E[Cleanup]
-    
+
     B -.-> B1[Permission Check]
     C -.-> C1[AWS + AI Execution]
     D -.-> D1[Repository Updates]
@@ -34,10 +34,10 @@ graph LR
 3. **Copy required files** to your repository:
    - `.github/workflows/strands-command.yml`
    - `.github/actions/` directory
-   - `.github/scripts/` directory  
+   - `.github/scripts/` directory
    - `.github/agent-sops/` directory
 4. **Comment `/strands [your task]`** on any issue or PR
-   - **On Issues**: 
+   - **On Issues**:
      - Use `/strands <your task>` to have an agent help you refine an issue within the context of the current github repo
      - Use `/strands implement <your task>` to create a new PR based on the description of an issue
    - **On PRs**: `/strands <your task>` will instruct an Agent to review PR comments and make updates to the issue
@@ -49,6 +49,7 @@ graph LR
 Executes AI agents with AWS integration and controlled permissions.
 
 **Inputs:**
+
 - `ref` (required): Git reference to checkout
 - `system_prompt` (required): System instructions for the agent
 - `session_id` (required): Session identifier for persistence
@@ -58,6 +59,7 @@ Executes AI agents with AWS integration and controlled permissions.
 - `write_permission` (required): Permission level flag for Read-only Sandbox mode (`true`/`false`)
 
 **Features:**
+
 - Strands Agent running with Agent SOPs specifically designed to instruct an Agent on how to develop in Github
 - Python 3.13 and Node.js 20 environment setup (Node.js setup and npm install are optional and can be removed - only included for this repo's development)
 - Read-only Sandbox support: Agent write actions can be deferred to the `strands-write-executor` action if you want your agent to execute with read-only github permissions
@@ -67,10 +69,12 @@ Executes AI agents with AWS integration and controlled permissions.
 Executes write operations from agent-generated artifacts if `strands-agent-runner` was run with `write_permissions: false`.
 
 **Inputs:**
+
 - `ref` (required): Target branch for changes
 - `issue_id` (optional): Associated issue number
 
 **Features:**
+
 - Reads Agent modified repository state from artifacts, and pushes changes to pr branch
 - Reads deferred write operations from artifact and executes them
 
@@ -87,6 +91,7 @@ Main workflow that orchestrates the complete Strands command execution:
 5. **Cleanup**: Removes temporary labels and artifacts
 
 **Triggers:**
+
 - Issue comments starting with `/strands`
 - Manual workflow dispatch with parameters
 
@@ -99,6 +104,7 @@ Implements features using test-driven development principles.
 **Workflow**: Setup → Explore → Plan → Code → Commit → Pull Request
 
 **Capabilities:**
+
 - Feature implementation with TDD approach
 - Comprehensive testing and documentation
 - Pull request creation and iteration
@@ -111,6 +117,7 @@ Refines and clarifies task requirements before implementation.
 **Workflow**: Read Issue → Analyze → Research → Clarify → Iterate
 
 **Capabilities:**
+
 - Requirement analysis and gap identification
 - Clarifying question generation
 - Implementation planning and preparation
@@ -156,29 +163,18 @@ Your IAM role must have these permissions in order to execute:
     {
       "Sid": "Bedrock Access",
       "Effect": "Allow",
-      "Action": [
-        "bedrock:InvokeModelWithResponseStream",
-        "bedrock:InvokeModel"
-      ],
+      "Action": ["bedrock:InvokeModelWithResponseStream", "bedrock:InvokeModel"],
       "Resource": "*"
     },
     {
       "Effect": "Allow",
-      "Action": [
-        "s3:PutObject",
-        "s3:GetObject",
-        "s3:DeleteObject"
-      ],
-      "Resource": [
-        "arn:aws:s3:::YOUR_STRANDS_SESSION_BUCKET/*"
-      ]
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+      "Resource": ["arn:aws:s3:::YOUR_STRANDS_SESSION_BUCKET/*"]
     },
     {
       "Effect": "Allow",
       "Action": "s3:ListBucket",
-      "Resource": [
-        "arn:aws:s3:::YOUR_STRANDS_SESSION_BUCKET"
-      ]
+      "Resource": ["arn:aws:s3:::YOUR_STRANDS_SESSION_BUCKET"]
     }
   ]
 }
@@ -187,6 +183,7 @@ Your IAM role must have these permissions in order to execute:
 ### Setup Steps
 
 1. **Create OIDC Provider** (if not exists):
+
    ```bash
    aws iam create-open-id-connect-provider \
      --url https://token.actions.githubusercontent.com \
@@ -209,17 +206,20 @@ Your IAM role must have these permissions in order to execute:
 ### Security Features
 
 #### Authorization Controls
+
 - **Collaborator Verification**: Only users with write access get auto-approval
 - **Manual Approval Gates**: Unknown users require manual approval via GitHub environments
 - **Permission Separation**: Read and write operations isolated in separate jobs
 
 #### AWS Security
+
 - **OIDC Authentication**: No long-lived credentials stored in GitHub
 - **Minimal Permissions**: Inline session policy limits access to required resources only
 - **Temporary Credentials**: Each execution gets fresh, time-limited AWS credentials. You can further limit these by updating the `strands-agent-runner` "Configure AWS credentials" step, and set the `role-duration-seconds` value
 - **Resource Scoping**: S3 access limited to specific session bucket
 
 #### Prompt Injection Mitigation
+
 - **Trusted Sources Only**: Implement strict user authorization
 - **AWS Guardrails**: Use AWS Bedrock guardrails to filter malicious prompts
 - **Input Validation**: Validate and sanitize all user inputs
@@ -229,28 +229,29 @@ Your IAM role must have these permissions in order to execute:
 
 ### GitHub Secrets
 
-| Secret | Description | Example |
-|--------|-------------|---------|
-| `AWS_ROLE_ARN` | IAM role for AWS access | `arn:aws:iam::123456789012:role/GitHubActionsRole` |
-| `STRANDS_SESSION_BUCKET` | S3 bucket for sessions | `my-strands-sessions-bucket` |
+| Secret                   | Description             | Example                                            |
+| ------------------------ | ----------------------- | -------------------------------------------------- |
+| `AWS_ROLE_ARN`           | IAM role for AWS access | `arn:aws:iam::123456789012:role/GitHubActionsRole` |
+| `STRANDS_SESSION_BUCKET` | S3 bucket for sessions  | `my-strands-sessions-bucket`                       |
 
 ### Environment Variables
 
 The actions use these environment variables during execution:
 
-| Variable | Purpose | Set By |
-|----------|---------|--------|
-| `GITHUB_WRITE` | Permission level indicator | Action |
-| `SESSION_ID` | Agent session identifier | Workflow |
-| `S3_SESSION_BUCKET` | Session storage location | Input |
-| `STRANDS_TOOL_CONSOLE_MODE` | Tool execution mode | Action |
-| `BYPASS_TOOL_CONSENT` | Automated tool approval | Action |
+| Variable                    | Purpose                    | Set By   |
+| --------------------------- | -------------------------- | -------- |
+| `GITHUB_WRITE`              | Permission level indicator | Action   |
+| `SESSION_ID`                | Agent session identifier   | Workflow |
+| `S3_SESSION_BUCKET`         | Session storage location   | Input    |
+| `STRANDS_TOOL_CONSOLE_MODE` | Tool execution mode        | Action   |
+| `BYPASS_TOOL_CONSENT`       | Automated tool approval    | Action   |
 
 ## Usage Examples
 
 ### Basic Task Implementation
 
 Comment on an issue:
+
 ```
 /strands Implement a new user authentication feature with JWT tokens
 ```
@@ -258,6 +259,7 @@ Comment on an issue:
 ### Task Refinement
 
 Comment on an issue with unclear requirements:
+
 ```
 /strands refine Please help clarify the requirements for this feature
 ```
@@ -265,6 +267,7 @@ Comment on an issue with unclear requirements:
 ### Manual Execution
 
 Use workflow dispatch with:
+
 - **issue_id**: `123`
 - **command**: `Implement the requested feature`
 - **session_id**: `optional-session-id`
@@ -283,4 +286,3 @@ Use workflow dispatch with:
 ---
 
 **Note**: This system is designed for trusted environments. Always review security implications before deployment and implement appropriate guardrails for your use case.
-

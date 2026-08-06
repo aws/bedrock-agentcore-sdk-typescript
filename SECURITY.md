@@ -5,6 +5,7 @@
 If you discover a potential security issue in this project, we ask that you notify AWS Security via our [vulnerability reporting page](https://aws.amazon.com/security/vulnerability-reporting/) or directly via email to [aws-security@amazon.com](mailto:aws-security@amazon.com). Please do **not** create a public GitHub issue for security vulnerabilities.
 
 When reporting, please include:
+
 - Type of issue (e.g., credential exposure, injection vulnerability, etc.)
 - Full paths of source file(s) related to the issue
 - Location of affected source code (tag/branch/commit or direct URL)
@@ -32,8 +33,8 @@ const codeInterpreter = new CodeInterpreterTools({
   region: 'us-east-1',
   credentials: {
     accessKeyId: 'AKIAIOSFODNN7EXAMPLE',
-    secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
-  }
+    secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+  },
 })
 ```
 
@@ -42,7 +43,7 @@ const codeInterpreter = new CodeInterpreterTools({
 ```typescript
 // GOOD - Let AWS SDK handle credentials
 const codeInterpreter = new CodeInterpreterTools({
-  region: 'us-east-1'
+  region: 'us-east-1',
   // Credentials loaded from environment, IAM role, or AWS config
 })
 ```
@@ -74,7 +75,7 @@ try {
 
   const result = await codeInterpreter.executeCode({
     code: 'print("Hello, secure world!")',
-    language: 'python'
+    language: 'python',
   })
 
   console.log(result)
@@ -95,8 +96,7 @@ import { z } from 'zod'
 // Example from execute-code-tool.ts:
 const inputSchema = z.object({
   code: z.string().describe('The code to execute'),
-  language: z.enum(['python', 'javascript', 'typescript'])
-    .default('python')
+  language: z.enum(['python', 'javascript', 'typescript']).default('python'),
 })
 
 // Invalid inputs are automatically rejected before execution
@@ -105,11 +105,13 @@ const inputSchema = z.object({
 ### 4. Secure Communication
 
 **HTTPS Enforcement:**
+
 - All AWS API calls use HTTPS by default
 - TLS 1.2+ required
 - AWS Signature Version 4 authentication
 
 **Request Signing:**
+
 ```typescript
 // SDK automatically signs all requests with AWS SigV4
 // No manual signing needed - handled by @aws-sdk/client-bedrock-agentcore
@@ -145,11 +147,12 @@ const codeInterpreter = new CodeInterpreterTools()
 // Sandboxed execution - isolated from your infrastructure
 const result = await agent.run({
   prompt: 'Analyze this CSV data: ' + userProvidedData,
-  tools: codeInterpreter.tools
+  tools: codeInterpreter.tools,
 })
 ```
 
 **Best practices:**
+
 - Validate user inputs before passing to agent prompts
 - Set execution timeouts to prevent resource exhaustion
 - Monitor costs and usage patterns
@@ -166,7 +169,7 @@ const browser = new BrowserTools()
 function isAllowedDomain(url: string): boolean {
   const allowed = ['example.com', 'trusted-site.com']
   const hostname = new URL(url).hostname
-  return allowed.some(domain => hostname === domain || hostname.endsWith(`.${domain}`))
+  return allowed.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))
 }
 
 // Only navigate to validated URLs
@@ -201,6 +204,7 @@ npm install --save-dev eslint-plugin-security
 ```
 
 **GitHub Security Features:**
+
 - Enable Dependabot alerts in your repository
 - Use CodeQL for automated security scanning
 - Configure secret scanning to prevent credential commits
@@ -208,6 +212,7 @@ npm install --save-dev eslint-plugin-security
 ## Compliance & Standards
 
 This SDK follows:
+
 - [AWS Well-Architected Security Pillar](https://docs.aws.amazon.com/wellarchitected/latest/security-pillar/welcome.html)
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/) guidelines
 - AWS SDK security best practices

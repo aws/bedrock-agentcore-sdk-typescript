@@ -5,6 +5,7 @@ This document provides guidance specifically for AI agents working on the AWS Be
 ## Purpose and Scope
 
 **AGENTS.md** contains agent-specific repository information including:
+
 - Directory structure with summaries of what is included in each directory
 - Development workflow instructions for agents to follow when developing features
 - Coding patterns and testing patterns to follow when writing code
@@ -142,7 +143,6 @@ bedrock-agentcore-sdk-typescript/
 
 **IMPORTANT**: After making changes that affect the directory structure (adding new directories, moving files, or adding significant new files), you MUST update this directory structure section to reflect the current state of the repository.
 
-
 ## Architecture Overview
 
 ### Three-Layer Architecture
@@ -193,6 +193,7 @@ The SDK follows a layered integration pattern:
 ### 1. Environment Setup
 
 See [CONTRIBUTING.md - Development Environment](CONTRIBUTING.md#development-environment) for:
+
 - Prerequisites (Node.js 20+, npm)
 - Installation steps
 - Verification commands
@@ -221,6 +222,7 @@ See [PR.md](docs/PR.md) for the complete guidance and template.
 ### 4. Quality Gates
 
 Pre-commit hooks automatically run:
+
 - Unit tests (via npm test)
 - Linting (via npm run lint)
 - Format checking (via npm run format:check)
@@ -247,6 +249,7 @@ See [TESTING.md](docs/TESTING.md) for the complete testing reference.
 The SDK uses a structured logging format consistent with the Python SDK for better log parsing and searchability.
 
 **Format**:
+
 ```typescript
 // With context fields
 logger.warn(`field1=<${value1}>, field2=<${value2}> | human readable message`)
@@ -293,11 +296,10 @@ logger.warn(`stop_reason=${stopReason} | unknown stop reason`)
 logger.warn(`event_type=<${eventType}> | Unsupported event type.`)
 ```
 
-
-
 ### File Organization Pattern
 
 **For source files**:
+
 ```
 src/
 ├── module.ts              # Source file
@@ -306,12 +308,14 @@ src/
 ```
 
 **Function ordering within files**:
+
 - Functions MUST be ordered from most general to most specific (top-down reading)
 - Public/exported functions MUST appear before private helper functions
 - Main entry point functions MUST be at the top of the file
 - Helper functions SHOULD follow in order of their usage
 
 **Example**:
+
 ```typescript
 // ✅ Good: Main function first, helpers follow
 export async function* mainFunction() {
@@ -339,6 +343,7 @@ export async function* mainFunction() {
 ```
 
 **For integration tests**:
+
 ```
 test/integ/
 └── feature.test.ts        # Tests public API
@@ -384,6 +389,7 @@ export class ExampleClient {
 ```
 
 **Rules**:
+
 - Private fields come first
 - Constructor follows private fields
 - Public methods ordered from general to specific operations
@@ -393,6 +399,7 @@ export class ExampleClient {
 ### TypeScript Type Safety
 
 **Strict requirements**:
+
 ```typescript
 // Good: Explicit return types
 export function process(input: string): string {
@@ -416,6 +423,7 @@ export function getData(): any {
 ```
 
 **Rules**:
+
 - Always provide explicit return types
 - Never use `any` type (enforced by ESLint)
 - Use TypeScript strict mode features
@@ -443,7 +451,7 @@ export class Example {
 
 // ❌ Bad: No underscore for private fields
 export class Example {
-  private readonly config: Config  // Missing underscore
+  private readonly config: Config // Missing underscore
 
   constructor(config: Config) {
     this.config = config
@@ -452,11 +460,12 @@ export class Example {
 ```
 
 **Rules**:
+
 - Private fields MUST use underscore prefix (e.g., `_field`)
 - Public fields MUST NOT use underscore prefix
 - This convention improves code readability and makes the distinction between public and private members immediately visible
 
-### 
+###
 
 **Use camelCase for variables, functions, and object properties**:
 
@@ -496,12 +505,13 @@ export const DEFAULT_REGION = 'us-west-2'
 
 ```typescript
 // ✅ Good: PascalCase for types
-export class CodeInterpreter { }
-interface SessionInfo { }
-type ExecuteCodeParams = { }
+export class CodeInterpreter {}
+interface SessionInfo {}
+type ExecuteCodeParams = {}
 ```
 
 **Rules**:
+
 - Variables, functions, and object properties MUST use camelCase
 - Constants MUST use SCREAMING_SNAKE_CASE
 - Classes, interfaces, and types MUST use PascalCase
@@ -511,14 +521,14 @@ type ExecuteCodeParams = { }
 
 **TSDoc format** (required for all exported functions):
 
-```typescript
+````typescript
 /**
  * Brief description of what the function does.
- * 
+ *
  * @param paramName - Description of the parameter
  * @param optionalParam - Description of optional parameter
  * @returns Description of what is returned
- * 
+ *
  * @example
  * ```typescript
  * const result = functionName('input')
@@ -528,7 +538,7 @@ type ExecuteCodeParams = { }
 export function functionName(paramName: string, optionalParam?: number): string {
   // Implementation
 }
-```
+````
 
 **Interface property documentation**:
 
@@ -551,6 +561,7 @@ export interface MyConfig {
 ```
 
 **Requirements**:
+
 - All exported functions, classes, and interfaces must have TSDoc
 - Include `@param` for all parameters
 - Include `@returns` for return values
@@ -563,6 +574,7 @@ export interface MyConfig {
 ### Code Style Guidelines
 
 **Formatting** (enforced by Prettier):
+
 - No semicolons
 - Single quotes
 - Line length: 120 characters
@@ -570,6 +582,7 @@ export interface MyConfig {
 - Trailing commas in ES5 style
 
 **Example**:
+
 ```typescript
 export function example(name: string, options?: Options): Result {
   const config = {
@@ -598,12 +611,12 @@ async function startSession(params: StartSessionParams): Promise<SessionInfo> {
 
 // ❌ Bad: Raw Promises
 function startSession(params: StartSessionParams): Promise<SessionInfo> {
-  return this._client.send(new StartSessionCommand(params))
-    .then(response => ({ sessionId: response.sessionId! }))
+  return this._client.send(new StartSessionCommand(params)).then((response) => ({ sessionId: response.sessionId! }))
 }
 ```
 
 **Rules**:
+
 - All asynchronous operations must use async/await syntax
 - Avoid Promise chains (.then(), .catch()) in favor of try/catch blocks
 - This improves readability and makes error handling more consistent
@@ -627,6 +640,7 @@ import type { Options, Config } from '../types'
 ```
 
 **Rules**:
+
 - External dependencies come first
 - Internal modules use relative paths (`./` or `../`)
 - Type-only imports come last (when separated from value imports)
@@ -650,7 +664,9 @@ export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock
 export class TextBlock {
   readonly type = 'textBlock' as const
   readonly text: string
-  constructor(data: { text: string }) { this.text = data.text }
+  constructor(data: { text: string }) {
+    this.text = data.text
+  }
 }
 
 export class ToolUseBlock {
@@ -684,7 +700,8 @@ export interface TextBlockData {
   text: string
 }
 
-export interface Message {  // Top-level should come first
+export interface Message {
+  // Top-level should come first
   role: Role
   content: ContentBlock[]
 }
@@ -699,22 +716,26 @@ export interface Message {  // Top-level should come first
 ```typescript
 // ✅ Correct - type matches class name (first letter lowercase)
 export class TextBlock {
-  readonly type = 'textBlock' as const  // Matches 'TextBlock' class name
+  readonly type = 'textBlock' as const // Matches 'TextBlock' class name
   readonly text: string
-  constructor(data: { text: string }) { this.text = data.text }
+  constructor(data: { text: string }) {
+    this.text = data.text
+  }
 }
 
 export class CachePointBlock {
-  readonly type = 'cachePointBlock' as const  // Matches 'CachePointBlock' class name
+  readonly type = 'cachePointBlock' as const // Matches 'CachePointBlock' class name
   readonly cacheType: 'default'
-  constructor(data: { cacheType: 'default' }) { this.cacheType = data.cacheType }
+  constructor(data: { cacheType: 'default' }) {
+    this.cacheType = data.cacheType
+  }
 }
 
 export type ContentBlock = TextBlock | ToolUseBlock | CachePointBlock
 
 // ❌ Wrong - type doesn't match class name
 export class CachePointBlock {
-  readonly type = 'cachePoint' as const  // Should be 'cachePointBlock'
+  readonly type = 'cachePoint' as const // Should be 'cachePointBlock'
   readonly cacheType: 'default'
 }
 ```
@@ -817,6 +838,7 @@ export class ValidationError extends Error {
 ## Things to Do
 
 ✅ **Do**:
+
 - Use relative imports for internal modules
 - Co-locate unit tests with source under `__tests__` directories
 - Follow nested describe pattern for test organization
@@ -830,6 +852,7 @@ export class ValidationError extends Error {
 ## Things NOT to Do
 
 ❌ **Don't**:
+
 - Use `any` type (enforced by ESLint)
 - Put unit tests in separate `tests/` directory (use `src/**/__tests__/**`)
 - Skip documentation for exported functions
@@ -844,6 +867,7 @@ export class ValidationError extends Error {
 For detailed command usage, see [CONTRIBUTING.md - Testing Instructions](CONTRIBUTING.md#testing-instructions-and-best-practices).
 
 Quick reference:
+
 ```bash
 npm test              # Run unit tests in Node.js
 npm run test:browser  # Run unit tests in browser (Chromium via Playwright)
@@ -879,6 +903,7 @@ For comprehensive troubleshooting guidance, see [docs/TROUBLESHOOTING.md](docs/T
 - When to seek additional help
 
 **Quick fixes for common issues:**
+
 - **TypeScript compilation fails**: Run `npm run type-check` to see all type errors
 - **ESLint errors**: Run `npm run lint -- --fix` to auto-fix formatting issues
 - **Test failures**: Ensure proper session cleanup in `afterEach` blocks
@@ -897,8 +922,8 @@ For comprehensive troubleshooting guidance, see [docs/TROUBLESHOOTING.md](docs/T
 4. **Document as you go** with TSDoc comments
 5. **Run all checks** before committing (pre-commit hooks will enforce this)
 
-
 ### Writing code
+
 - YOU MUST make the SMALLEST reasonable changes to achieve the desired outcome.
 - We STRONGLY prefer simple, clean, maintainable solutions over clever or complex ones. Readability and maintainability are PRIMARY CONCERNS, even at the cost of conciseness or performance.
 - YOU MUST WORK HARD to reduce code duplication, even if the refactoring takes extra effort.
@@ -906,18 +931,18 @@ For comprehensive troubleshooting guidance, see [docs/TROUBLESHOOTING.md](docs/T
 - YOU MUST NOT manually change whitespace that does not affect execution or output. Otherwise, use a formatting tool.
 - Fix broken things immediately when you find them. Don't ask permission to fix bugs.
 
-
 #### Code Comments
- - NEVER add comments explaining that something is "improved", "better", "new", "enhanced", or referencing what it used to be
- - Comments should explain WHAT the code does or WHY it exists, not how it's better than something else
- - YOU MUST NEVER add comments about what used to be there or how something has changed. 
- - YOU MUST NEVER refer to temporal context in comments (like "recently refactored" "moved") or code. Comments should be evergreen and describe the code as it is.
- - YOU MUST NEVER write overly verbose comments. Use concise language.
 
+- NEVER add comments explaining that something is "improved", "better", "new", "enhanced", or referencing what it used to be
+- Comments should explain WHAT the code does or WHY it exists, not how it's better than something else
+- YOU MUST NEVER add comments about what used to be there or how something has changed.
+- YOU MUST NEVER refer to temporal context in comments (like "recently refactored" "moved") or code. Comments should be evergreen and describe the code as it is.
+- YOU MUST NEVER write overly verbose comments. Use concise language.
 
 ### Code Review Considerations
 
 When responding to PR feedback:
+
 - Address all review comments
 - Test changes thoroughly
 - Update documentation if behavior changes
