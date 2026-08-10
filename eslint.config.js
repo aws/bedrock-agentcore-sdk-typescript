@@ -63,6 +63,8 @@ export default [
         setTimeout: 'readonly',
         Buffer: 'readonly',
         URL: 'readonly',
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
       },
     },
     plugins: {

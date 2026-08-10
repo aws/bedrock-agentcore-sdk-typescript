@@ -54,6 +54,10 @@
       "import": "./dist/src/memory/integrations/strands/index.js",
       "types": "./dist/src/memory/integrations/strands/index.d.ts"
     },
+    "./experimental/harness/strands": {
+      "import": "./dist/src/harness/integrations/strands/index.js",
+      "types": "./dist/src/harness/integrations/strands/index.d.ts"
+    },
     "./runtime": {
       "import": "./dist/src/runtime/index.js",
       "types": "./dist/src/runtime/index.d.ts"
@@ -156,7 +160,7 @@
   "dependencies": {
     "@aws-crypto/sha256-js": "^5.2.0",
     "@aws-sdk/client-bedrock-agentcore": "^3.1065.0",
-    "@aws-sdk/client-bedrock-agentcore-control": "^3.996.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "^3.1035.0",
     "@aws-sdk/credential-providers": "^3.996.0",
     "@aws-sdk/protocol-http": "^3.370.0",
     "@aws-sdk/signature-v4": "^3.370.0",
