@@ -32,7 +32,6 @@ export const noopLogger: Logger = {
 export const DEFAULT_MAX_RETRIES = 5
 export const DEFAULT_BASE_DELAY = 1000 // ms
 export const DEFAULT_MAX_DELAY = 15000 // ms
-export const DEFAULT_METADATA_TIMEOUT = 10_000 // ms
 export const DEFAULT_RECONNECT_WINDOW = 900_000 // ms — ~15 min, matches server-side KARP idle timeout
 export const DEFAULT_OUTER_LOOP_DELAY = 30_000 // ms
 export const DEFAULT_KEEPALIVE_INTERVAL = 30_000 // ms — KARP idle timeout is ~60s; ping every 30s
@@ -49,9 +48,8 @@ export const DEFAULT_KEEPALIVE_INTERVAL = 30_000 // ms — KARP idle timeout is 
  * const config: ReconnectConfig = {
  *   maxRetries: 5,
  *   reconnectWindow: null, // unlimited
- *   onReconnect: async (reconnected) => {
- *     if (reconnected) console.log('Reattached — buffered output will follow')
- *     else console.log('New shell started')
+ *   onReconnect: async () => {
+ *     console.log('Reconnected to shell')
  *   }
  * }
  * const shell = await client.openShell(runtimeArn, { reconnectConfig: config })
@@ -86,8 +84,6 @@ export interface ReconnectConfig {
 
   /**
    * Optional callback invoked after each successful reconnect.
-   * Receives `reconnected: true` when the existing PTY was reattached;
-   * `false` when a fresh shell was started.
    */
-  onReconnect?: (reconnected: boolean) => void | Promise<void>
+  onReconnect?: () => void | Promise<void>
 }
