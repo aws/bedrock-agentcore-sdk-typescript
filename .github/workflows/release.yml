@@ -36,9 +36,11 @@ jobs:
 
     steps:
       - name: Validate running from main
+        env: 
+          GITHUB_REF: ${{ github.ref }}
         run: |
-          if [[ "${{ github.ref }}" != "refs/heads/main" ]]; then
-            echo "⚠️  WARNING: Running from ${{ github.ref }}"
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "⚠️  WARNING: Running from $GITHUB_REF"
             echo "⚠️  Production releases should only run from main branch"
           fi
 
