@@ -108,6 +108,7 @@ const agent = new Agent({
 - **Browser** — Cloud-based web automation → [Examples](https://github.com/awslabs/bedrock-agentcore-samples-typescript/tree/main/primitives/tools/browser)
 - **Identity** — Manage API keys and OAuth tokens → [Examples](https://github.com/awslabs/bedrock-agentcore-samples-typescript/tree/main/primitives/identity)
 - **Memory** — Persistent knowledge across sessions → [Guide](docs/MEMORY.md)
+- **Harness** — Invoke a deployed Harness as a Strands agent (experimental) → [Guide](src/harness/integrations/strands/README.md)
 - **Gateway** — Transform APIs into MCP tools (coming soon)
 - **Observability** — OpenTelemetry tracing (coming soon)
 
