@@ -39,6 +39,16 @@ bedrock-agentcore-sdk-typescript/
 │   └── TESTING.md                # Comprehensive testing guidelines
 │
 ├── src/                          # Source code (all production code)
+│   ├── harness/                  # AgentCore Harness integrations
+│   │   └── integrations/         # Framework-specific integrations
+│   │       └── strands/          # AgentCoreHarnessAgent (Strands InvokableAgent)
+│   │           ├── __tests__/    # Unit tests for the Harness adapter
+│   │           ├── README.md     # Harness Strands usage and ownership guide
+│   │           ├── agent.ts      # AgentCoreHarnessAgent implementation
+│   │           ├── events.ts     # Harness stream event wrappers
+│   │           ├── index.ts      # Harness Strands integration exports
+│   │           ├── stream-decoder.ts  # InvokeHarness stream to Strands message
+│   │           └── types.ts      # Harness adapter type definitions
 │   ├── runtime/                  # Runtime server for hosting agents
 │   │   ├── __tests__/            # Unit tests for runtime
 │   │   ├── app.ts                # BedrockAgentCoreApp implementation
@@ -129,6 +139,8 @@ bedrock-agentcore-sdk-typescript/
 - **`.husky/`**: Git hooks for pre-commit quality checks and validation
 - **`docs/`**: Comprehensive documentation for development processes and guidelines
 - **`src/`**: All production source code for the SDK
+- **`src/harness/`**: Adapters exposing a deployed AgentCore Harness through agent-framework interfaces
+- **`src/harness/integrations/strands/`**: `AgentCoreHarnessAgent`, a Strands `InvokableAgent` backed by `InvokeHarness`
 - **`src/runtime/`**: HTTP server for hosting agents on AWS Bedrock AgentCore Runtime
 - **`src/tools/`**: Tool definitions and implementations for browser automation and code interpretation
 - **`src/tools/browser/`**: Browser automation client with AWS Bedrock integration
@@ -187,6 +199,10 @@ The SDK follows a layered integration pattern:
 2. **Integrations translate**: Convert between framework types and AWS types
 3. **Clear separation**: Each framework gets its own subdirectory
 4. **Testability**: Mock at client layer, not AWS SDK layer
+
+The Harness integration translates directly between Strands and
+`@aws-sdk/client-bedrock-agentcore` because `InvokeHarness` is already the framework-agnostic client
+surface. It does not introduce a redundant Harness base client.
 
 ## Development Workflow for Agents
 
