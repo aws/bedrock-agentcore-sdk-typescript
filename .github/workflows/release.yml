@@ -29,7 +29,7 @@ permissions:
 jobs:
   prepare-release:
     name: Prepare Release
-    runs-on: ubuntu-latest
+    runs-on: aws-release-4-core
     outputs:
       version: ${{ steps.bump.outputs.version }}
       branch: ${{ steps.bump.outputs.branch }}
@@ -198,7 +198,7 @@ jobs:
   test-and-build:
     name: Test and Build
     needs: prepare-release
-    runs-on: ubuntu-latest
+    runs-on: aws-release-4-core
 
     steps:
       - uses: actions/checkout@v6
@@ -256,7 +256,7 @@ jobs:
   release-approval:
     name: Release Approval
     needs: test-and-build
-    runs-on: ubuntu-latest
+    runs-on: aws-release-4-core
     environment:
       name: npm-approval
 
@@ -279,7 +279,7 @@ jobs:
   publish-npm:
     name: Publish to npm
     needs: [prepare-release, release-approval]
-    runs-on: ubuntu-latest
+    runs-on: aws-release-4-core
     # CRITICAL: Only run from main branch
     if: github.ref == 'refs/heads/main'
     environment:
