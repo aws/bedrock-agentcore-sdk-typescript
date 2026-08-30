@@ -41,6 +41,13 @@ bedrock-agentcore-sdk-typescript/
 ├── src/                          # Source code (all production code)
 │   ├── runtime/                  # Runtime server for hosting agents
 │   │   ├── __tests__/            # Unit tests for runtime
+│   │   ├── a2a/                  # A2A protocol server (serveA2A, agent cards, header allowlist)
+│   │   │   ├── __tests__/        # Unit tests for A2A support
+│   │   │   ├── agent-card.ts     # Agent card construction and URL rewriting
+│   │   │   ├── app.ts            # serveA2A / buildA2AApp implementation
+│   │   │   ├── headers.ts        # AgentCore header extraction and allowlist
+│   │   │   ├── index.ts          # A2A exports
+│   │   │   └── runtime-url.ts    # InvokeAgentRuntime URL construction
 │   │   ├── app.ts                # BedrockAgentCoreApp implementation
 │   │   ├── index.ts              # Runtime exports
 │   │   └── types.ts              # Runtime type definitions
@@ -130,6 +137,7 @@ bedrock-agentcore-sdk-typescript/
 - **`docs/`**: Comprehensive documentation for development processes and guidelines
 - **`src/`**: All production source code for the SDK
 - **`src/runtime/`**: HTTP server for hosting agents on AWS Bedrock AgentCore Runtime
+- **`src/runtime/a2a/`**: A2A protocol server implementing the AgentCore Runtime A2A container contract (optional peer deps: `@a2a-js/sdk`, `express`)
 - **`src/tools/`**: Tool definitions and implementations for browser automation and code interpretation
 - **`src/tools/browser/`**: Browser automation client with AWS Bedrock integration
 - **`src/tools/code-interpreter/`**: Code execution client with sandboxed environment support

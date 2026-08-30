@@ -92,7 +92,7 @@ The JSON payload from AgentCore Runtime (typed as `unknown` for maximum flexibil
 An object containing:
 
 - `sessionId` (string): Unique identifier for the session
-- `headers` (Record<string, string>): Filtered HTTP headers (Authorization and Custom-\* headers only)
+- `headers` (Record<string, string>): Forwardable HTTP headers (Authorization and Custom-\* headers on this path; the A2A path forwards everything the runtime header allowlist permits)
 - `workloadAccessToken` (string | undefined): Workload access token for Identity SDK
 - `requestId` (string | undefined): Request ID for tracing and logging (auto-generated if not provided)
 - `oauth2CallbackUrl` (string | undefined): OAuth2 callback URL for authentication flows
@@ -318,6 +318,68 @@ status.runningJobs.forEach((job) => {
   console.log(`  ${job.name}: ${job.duration.toFixed(2)}s`)
 })
 ```
+
+## A2A Protocol Support
+
+Agents that talk to other agents can serve the [A2A protocol](https://a2a-protocol.org/) instead of the HTTP protocol. `serveA2A` implements the AgentCore Runtime A2A container contract — JSON-RPC 2.0 at `POST /`, the agent card at `GET /.well-known/agent-card.json`, and the `GET /ping` health check — around any `@a2a-js/sdk` `AgentExecutor`:
+
+```typescript
+import { serveA2A, buildAgentCard } from 'bedrock-agentcore/runtime/a2a'
+
+await serveA2A({
+  executor: myExecutor, // an @a2a-js/sdk AgentExecutor
+  agentCard: buildAgentCard({
+    name: 'research-agent',
+    description: 'Deep research specialist',
+    skills: [{ id: 'main', name: 'research', description: 'Research a topic' }],
+  }),
+})
+```
+
+A2A support requires the optional peer dependencies:
+
+```bash
+npm install bedrock-agentcore @a2a-js/sdk express
+```
+
+Defaults mirror the Python SDK's `serve_a2a`: port comes from the `PORT` env var or 9000 (the AgentCore A2A protocol port), the host binds `0.0.0.0` inside containers (detected via `/.dockerenv` or `DOCKER_CONTAINER`) and loopback otherwise, and the agent card is auto-built when omitted. When `AGENTCORE_RUNTIME_URL` is set (deployed on AgentCore), the card's JSONRPC interface URLs are rewritten to the runtime URL so a deployed agent never advertises a stale local address.
+
+### Deploying to AgentCore Runtime
+
+AgentCore Runtime does not create `/.dockerenv` inside the container, so set the container marker explicitly in your Dockerfile — otherwise the server binds loopback, the platform's health checks never reach it, and the runtime fails with opaque startup timeouts:
+
+```dockerfile
+ENV DOCKER_CONTAINER=1
+```
+
+(The same applies to Podman-built local containers.) Alternatively, pass `host: '0.0.0.0'` to `serveA2A` in code. Deploy the container with `--protocol-configuration '{"serverProtocol": "A2A"}'`; the platform proxies `InvokeAgentRuntime` payloads to `POST /` unmodified and injects the session/request headers described below. Callers reaching the agent card through the runtime endpoint need `bedrock-agentcore:GetAgentCard` in addition to `bedrock-agentcore:InvokeAgentRuntime` in their IAM policy.
+
+### Request context inside A2A executors
+
+AgentCore Runtime injects per-request headers into every proxied A2A call. `serveA2A` extracts them into the same request context used by the HTTP protocol path, so `getContext()` — and everything built on it, including the identity wrappers `withApiKey` and `withAccessToken` — works unchanged inside executors:
+
+```typescript
+import { getContext } from 'bedrock-agentcore/runtime/a2a'
+
+class MyExecutor {
+  async execute(requestContext, eventBus) {
+    const ctx = getContext()
+    console.log('Session:', ctx?.sessionId, 'Request:', ctx?.requestId)
+    // ctx.workloadAccessToken feeds the identity wrappers automatically
+  }
+}
+```
+
+Forwarded caller headers follow the AgentCore runtime header allowlist (`isForwardableHeader`): `Authorization` and `x-amzn-bedrock-agentcore-runtime-custom-*` pass through, restricted headers and reserved `x-amz-*`/`x-amzn-*` prefixes do not, and trace propagation headers (`traceparent`, `baggage`) are allowed.
+
+The same fields are also mirrored into `ServerCallContext.state` (keys: `headers`, `requestId`, `sessionId`, `workloadAccessToken`, `oauth2CallbackUrl`) for executors that prefer reading `requestContext.context.state`.
+
+### Embedding and customization
+
+- `buildA2AApp(options)` returns the Express app without binding a port, for embedding or socket-less testing.
+- `pingHandler` customizes the health status (`'Healthy' | 'HealthyBusy'`); a throwing handler degrades to `Healthy`.
+- `taskStore` injects task persistence (defaults to `InMemoryTaskStore`); `contextBuilder` overrides the `ServerCallContext` factory.
+- `buildRuntimeUrl(runtimeArn)` constructs the SigV4-signed `InvokeAgentRuntime` URL an A2A client needs to call a deployed agent.
 
 ## Client Disconnect Handling
 
