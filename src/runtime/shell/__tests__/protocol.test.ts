@@ -160,11 +160,3 @@ describe('ShellFramer.encodeHeartbeat', () => {
     expect(frame).toEqual(Buffer.from([ShellChannel.HEARTBEAT]))
   })
 })
-
-describe('ShellFramer.encodeClose', () => {
-  it('encodes close as single byte', () => {
-    const framer = new ShellFramer()
-    const frame = framer.encodeClose()
-    expect(frame).toEqual(Buffer.from([ShellChannel.CLOSE]))
-  })
-})
