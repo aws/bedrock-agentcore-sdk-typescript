@@ -35,6 +35,7 @@ export const DEFAULT_MAX_DELAY = 15000 // ms
 export const DEFAULT_RECONNECT_WINDOW = 900_000 // ms — ~15 min, matches server-side KARP idle timeout
 export const DEFAULT_OUTER_LOOP_DELAY = 30_000 // ms
 export const DEFAULT_KEEPALIVE_INTERVAL = 30_000 // ms — KARP idle timeout is ~60s; ping every 30s
+export const DEFAULT_CLOSE_WAIT_TIMEOUT = 10_000 // ms — bound on waiting for the authoritative 'close' after an 'error'
 
 /**
  * Configuration for automatic reconnection on WebSocket disconnect.

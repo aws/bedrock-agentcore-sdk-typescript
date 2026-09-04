@@ -741,3 +741,80 @@ describe('ShellSession: connect ready immediately', () => {
     expect(session.shellId).toBe('instant-shell')
   })
 })
+
+describe('ShellSession: socket closes between the open event and state promotion', () => {
+  // 'open' and 'close' land in the same tick, so the socket is dead before the awaited open
+  // race resumes _connectWithUpgrade. The close listener ignores closes while the session is
+  // still 'connecting', so the promotion step must re-check the socket itself.
+  function makeRaceOpts(closeCode: number) {
+    const sockets: MockWs[] = []
+    const wsFactory = (): WebSocket => {
+      const ws = makeMockWs()
+      sockets.push(ws)
+      return ws as unknown as WebSocket
+    }
+    const connectFn: ConnectFn = vi.fn(async () => {
+      process.nextTick(() => {
+        const ws = sockets[sockets.length - 1]!
+        ws.emit('upgrade', { headers: {} })
+        ws.emit('open')
+        ws.readyState = 3 // CLOSED
+        ws.emit('close', closeCode, Buffer.from(''))
+      })
+      return { url: 'wss://test.local/runtimes/x/ws/shells', headers: {} }
+    })
+    return { connectFn, _wsFactory: wsFactory, sockets }
+  }
+
+  it('connect() rejects with the close code instead of resolving with a dead socket', async () => {
+    const opts = makeRaceOpts(1006)
+    const session = new ShellSession(opts)
+    await expect(session.connect()).rejects.toThrow(/1006/)
+    expect(opts.sockets[0]!.terminate).toHaveBeenCalled()
+  })
+
+  it('leaves the session idle so send() reports not-connected, not a raw readyState error', async () => {
+    const session = new ShellSession(makeRaceOpts(1006))
+    await expect(session.connect()).rejects.toThrow()
+    await expect(session.send('x')).rejects.toThrow(/not connected/)
+  })
+
+  it('a reconnect attempt that dies at open is retried by the reconnect loop', async () => {
+    const sockets: MockWs[] = []
+    const wsFactory = (): WebSocket => {
+      const ws = makeMockWs()
+      sockets.push(ws)
+      return ws as unknown as WebSocket
+    }
+    let callCount = 0
+    const connectFn: ConnectFn = vi.fn(async () => {
+      const n = ++callCount
+      process.nextTick(() => {
+        const ws = sockets[sockets.length - 1]!
+        ws.emit('upgrade', { headers: {} })
+        ws.emit('open')
+        if (n === 1) {
+          process.nextTick(() => ws.emit('close', 1006, Buffer.from(''))) // drop → reconnect engages
+        } else if (n === 2) {
+          ws.readyState = 3 // CLOSED
+          ws.emit('close', 1006, Buffer.from('')) // dies in the open→promotion gap
+        } else {
+          process.nextTick(() => ws.emit('message', closeFrame())) // healthy reattach, then clean close
+        }
+      })
+      return { url: 'wss://test.local/runtimes/x/ws/shells', headers: {} }
+    })
+
+    const session = new ShellSession({
+      connectFn,
+      _wsFactory: wsFactory,
+      reconnectConfig: { maxRetries: 3, baseDelay: 0, reconnectWindow: null },
+    })
+    await session.connect()
+    for await (const _ of session) {
+      /* drain */
+    }
+    expect(callCount).toBe(3)
+    expect(session.kicked).toBe(false)
+  })
+})
