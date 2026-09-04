@@ -160,7 +160,7 @@
     "@aws-sdk/credential-providers": "^3.996.0",
     "@aws-sdk/protocol-http": "^3.370.0",
     "@aws-sdk/signature-v4": "^3.370.0",
-    "@fastify/sse": "^0.4.0",
+    "@fastify/sse": "^0.6.0",
     "@fastify/websocket": "^11.0.1",
     "@smithy/protocol-http": "^5.3.5",
     "@smithy/signature-v4": "^5.3.5",
