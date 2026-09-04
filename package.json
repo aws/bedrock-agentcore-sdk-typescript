@@ -128,7 +128,7 @@
     "react-dom": "^19.2.4",
     "supertest": "^7.1.4",
     "tsx": "^4.19.4",
-    "typescript": "^5.5.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.8"
   },
   "lint-staged": {
