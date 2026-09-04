@@ -39,6 +39,7 @@ import { ShellFramer, ShellChannel, type ShellFrame } from './protocol.js'
 import { validateShellId } from './validation.js'
 import {
   DEFAULT_BASE_DELAY,
+  DEFAULT_CLOSE_WAIT_TIMEOUT,
   DEFAULT_KEEPALIVE_INTERVAL,
   DEFAULT_MAX_DELAY,
   DEFAULT_MAX_RETRIES,
@@ -197,7 +198,7 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
         protocols?.length ? new WebSocket(url, protocols, options) : new WebSocket(url, options))
   }
 
-  /** Connect and read the initial STATUS metadata frame. */
+  /** Connect the session. Resolves once the WebSocket upgrade completes; no inbound frame is awaited. */
   async connect(): Promise<this> {
     if (this._state.status === 'closed') throw new Error('ShellSession is closed')
     if (this._state.status !== 'idle') {
@@ -369,7 +370,7 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
     })
   }
 
-  /** Open WebSocket, capture 101 upgrade headers, then read metadata frame. */
+  /** Open the WebSocket, capture 101 upgrade headers, and promote the session to 'open'. */
   private async _connectWithUpgrade(): Promise<void> {
     // Guard must be the very first check — any state mutation below would violate the
     // closed invariant if close() has already fired.
@@ -473,6 +474,27 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
       throw err
     } finally {
       openRaceAc.abort()
+    }
+
+    // close() may have fired while the open race was pending — bail out rather than
+    // reviving a session the caller has already closed.
+    if (this._isClosed()) {
+      ws.terminate()
+      return
+    }
+
+    // The socket can die between the 'open' event and this continuation (e.g. a receiver
+    // error on data bundled with the 101 response destroys it before the microtask runs).
+    // The close listener above deliberately ignores closes while status is 'connecting'
+    // (the open race owns pre-open failures), so promoting here would record a dead socket
+    // as 'open', start a keepalive on it, and bypass the close-driven reconnect path. Fail
+    // the attempt instead: connect() surfaces the error and the reconnect loop retries it.
+    if (ws.readyState !== WebSocket.OPEN) {
+      const err = this._closeError ?? new Error(`WebSocket not open after upgrade (readyState ${ws.readyState})`)
+      ws.terminate()
+      this._state = { status: 'idle' }
+      this.log.debug(`ShellSession: socket closed before session opened (shellId=${this.shellId}): ${String(err)}`)
+      throw err
     }
 
     const keepaliveTimer = this._startKeepalive(ws, controller.signal)
@@ -624,7 +646,7 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
   private async _waitForClose(ws: WebSocket): Promise<void> {
     if (this._closeError !== null || this._isClosed()) return
     const ac = new AbortController()
-    const timer = globalThis.setTimeout(() => ac.abort(), 10_000)
+    const timer = globalThis.setTimeout(() => ac.abort(), DEFAULT_CLOSE_WAIT_TIMEOUT)
     try {
       await once(ws, 'close', { signal: ac.signal })
     } catch {
