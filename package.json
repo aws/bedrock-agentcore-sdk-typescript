@@ -46,6 +46,10 @@
       "import": "./dist/src/tools/code-interpreter/integrations/strands/index.js",
       "types": "./dist/src/tools/code-interpreter/integrations/strands/index.d.ts"
     },
+    "./web-search": {
+      "import": "./dist/src/tools/web-search/index.js",
+      "types": "./dist/src/tools/web-search/index.d.ts"
+    },
     "./memory/strands": {
       "import": "./dist/src/memory/integrations/strands/index.js",
       "types": "./dist/src/memory/integrations/strands/index.d.ts"

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { getDataPlaneEndpoint } from '../endpoints.js'
+import { getDataPlaneEndpoint, getGatewayMcpEndpoint } from '../endpoints.js'
 
 describe('getDataPlaneEndpoint', () => {
   const ENDPOINT_OVERRIDE_ENV = 'BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT'
@@ -114,6 +114,116 @@ describe('getDataPlaneEndpoint', () => {
     it('preserves region case in endpoint', () => {
       const endpoint = getDataPlaneEndpoint('US-WEST-2')
       expect(endpoint).toBe('https://bedrock-agentcore.US-WEST-2.amazonaws.com')
+    })
+  })
+})
+
+describe('getGatewayMcpEndpoint', () => {
+  const GATEWAY_OVERRIDE_ENV = 'BEDROCK_AGENTCORE_GATEWAY_ENDPOINT'
+  let originalEnvValue: string | undefined
+
+  beforeEach(() => {
+    originalEnvValue = process.env[GATEWAY_OVERRIDE_ENV]
+    delete process.env[GATEWAY_OVERRIDE_ENV]
+  })
+
+  afterEach(() => {
+    if (originalEnvValue !== undefined) {
+      process.env[GATEWAY_OVERRIDE_ENV] = originalEnvValue
+    } else {
+      delete process.env[GATEWAY_OVERRIDE_ENV]
+    }
+  })
+
+  describe('when called with a valid gateway id and region', () => {
+    it('builds the streamable HTTP MCP URL', () => {
+      expect(getGatewayMcpEndpoint('my-gateway-abc123', 'us-east-1')).toBe(
+        'https://my-gateway-abc123.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp'
+      )
+    })
+
+    it('works in every region web search is offered in', () => {
+      expect(getGatewayMcpEndpoint('gw', 'eu-west-1')).toBe(
+        'https://gw.gateway.bedrock-agentcore.eu-west-1.amazonaws.com/mcp'
+      )
+      expect(getGatewayMcpEndpoint('gw', 'ap-northeast-1')).toBe(
+        'https://gw.gateway.bedrock-agentcore.ap-northeast-1.amazonaws.com/mcp'
+      )
+    })
+
+    it('accepts a 63 character gateway id, the DNS label limit', () => {
+      const id = 'a'.repeat(63)
+      expect(getGatewayMcpEndpoint(id, 'us-east-1')).toContain(`https://${id}.gateway.`)
+    })
+  })
+
+  describe('when the gateway identifier is not a DNS label', () => {
+    it('rejects an ARN, which is the likely mistake', () => {
+      expect(() =>
+        getGatewayMcpEndpoint('arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/gw', 'us-east-1')
+      ).toThrow(/Invalid gateway identifier/)
+    })
+
+    it('rejects a URL', () => {
+      expect(() => getGatewayMcpEndpoint('https://gw.example.com', 'us-east-1')).toThrow(/Invalid gateway identifier/)
+    })
+
+    it('rejects an empty identifier', () => {
+      expect(() => getGatewayMcpEndpoint('', 'us-east-1')).toThrow(/Invalid gateway identifier/)
+    })
+
+    it('rejects an identifier with a dot, which would add a host label', () => {
+      expect(() => getGatewayMcpEndpoint('gw.evil', 'us-east-1')).toThrow(/Invalid gateway identifier/)
+    })
+
+    it('rejects an identifier with a slash, which would change the path', () => {
+      expect(() => getGatewayMcpEndpoint('gw/../other', 'us-east-1')).toThrow(/Invalid gateway identifier/)
+    })
+
+    it('rejects an identifier that starts or ends with a hyphen', () => {
+      expect(() => getGatewayMcpEndpoint('-gw', 'us-east-1')).toThrow(/Invalid gateway identifier/)
+      expect(() => getGatewayMcpEndpoint('gw-', 'us-east-1')).toThrow(/Invalid gateway identifier/)
+    })
+
+    it('rejects an identifier over the DNS label limit', () => {
+      expect(() => getGatewayMcpEndpoint('a'.repeat(64), 'us-east-1')).toThrow(/Invalid gateway identifier/)
+    })
+  })
+
+  describe('when the region is empty or malformed', () => {
+    it('throws for an empty region', () => {
+      expect(() => getGatewayMcpEndpoint('gw', '')).toThrow('Region cannot be empty')
+    })
+
+    it('throws for a whitespace-only region', () => {
+      expect(() => getGatewayMcpEndpoint('gw', '   ')).toThrow('Region cannot be empty')
+    })
+
+    it('throws for a region that would inject another host label', () => {
+      expect(() => getGatewayMcpEndpoint('gw', 'us-east-1.evil.com')).toThrow(/Invalid region/)
+    })
+
+    it('throws for an uppercase region, since hostnames here are lowercase', () => {
+      expect(() => getGatewayMcpEndpoint('gw', 'US-EAST-1')).toThrow(/Invalid region/)
+    })
+  })
+
+  describe('when the environment variable override is set', () => {
+    it('returns the override instead of the built URL', () => {
+      process.env[GATEWAY_OVERRIDE_ENV] = 'http://localhost:8080/mcp'
+      expect(getGatewayMcpEndpoint('gw', 'us-east-1')).toBe('http://localhost:8080/mcp')
+    })
+
+    it('still validates its inputs, so a typo is not hidden by an override', () => {
+      process.env[GATEWAY_OVERRIDE_ENV] = 'http://localhost:8080/mcp'
+      expect(() => getGatewayMcpEndpoint('gw.evil', 'us-east-1')).toThrow(/Invalid gateway identifier/)
+    })
+
+    it('falls back to the built URL when the override is an empty string', () => {
+      process.env[GATEWAY_OVERRIDE_ENV] = ''
+      expect(getGatewayMcpEndpoint('gw', 'us-east-1')).toBe(
+        'https://gw.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp'
+      )
     })
   })
 })
