@@ -26,6 +26,38 @@ const GATEWAY_ID_PATTERN = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/
 const REGION_PATTERN = /^[a-z0-9-]+$/
 
 /**
+ * Host suffixes an AWS endpoint can have.
+ */
+const AWS_DOMAINS = ['.amazonaws.com', '.amazonaws.com.cn', '.api.aws']
+
+/**
+ * Checks that an endpoint URL resolves to an AWS host.
+ *
+ * Requests to these endpoints are signed with the caller's credentials, including a
+ * session token, so an endpoint that came from configuration or user input gets
+ * checked before anything is signed for it. This also catches URL manipulation that
+ * slips past the gateway identifier and region patterns.
+ *
+ * @param url - The endpoint URL to check
+ * @returns The URL, unchanged
+ *
+ * @throws Error if the URL cannot be parsed or its host is not an AWS host.
+ */
+export function validateEndpointUrl(url: string): string {
+  let hostname: string
+  try {
+    hostname = new URL(url).hostname
+  } catch {
+    throw new Error(`Not a valid endpoint URL: '${url}'`)
+  }
+
+  if (!AWS_DOMAINS.some((domain) => hostname.endsWith(domain))) {
+    throw new Error(`Endpoint resolves to a non-AWS host: '${hostname}'`)
+  }
+  return url
+}
+
+/**
  * Gets the data plane endpoint for the Bedrock AgentCore service.
  *
  * The endpoint can be overridden using the BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT
@@ -71,7 +103,8 @@ export function getDataPlaneEndpoint(region: string): string {
  * gateway call is computed over.
  *
  * The endpoint can be overridden using the BEDROCK_AGENTCORE_GATEWAY_ENDPOINT
- * environment variable.
+ * environment variable. An override is returned as given, so a local MCP mock can be
+ * pointed at, while a URL built from arguments is checked to resolve to an AWS host.
  *
  * @param gatewayId - Gateway identifier, not an ARN (e.g. 'my-gateway-abc123')
  * @param region - AWS region the gateway lives in (e.g. 'us-east-1')
@@ -107,5 +140,5 @@ export function getGatewayMcpEndpoint(gatewayId: string, region: string): string
     return override
   }
 
-  return `https://${gatewayId}.gateway.bedrock-agentcore.${region}.amazonaws.com/mcp`
+  return validateEndpointUrl(`https://${gatewayId}.gateway.bedrock-agentcore.${region}.amazonaws.com/mcp`)
 }

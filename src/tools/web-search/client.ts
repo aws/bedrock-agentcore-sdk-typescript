@@ -12,7 +12,7 @@ import { HttpRequest } from '@smithy/protocol-http'
 import { SignatureV4 } from '@smithy/signature-v4'
 import { Sha256 } from '@aws-crypto/sha256-js'
 
-import { getGatewayMcpEndpoint } from '../../_utils/endpoints.js'
+import { getGatewayMcpEndpoint, validateEndpointUrl } from '../../_utils/endpoints.js'
 import type {
   SearchOptions,
   WebSearchBackend,
@@ -190,13 +190,15 @@ export class GatewayMcpBackend implements WebSearchBackend {
   }
 
   /**
-   * Sends one JSON-RPC message and returns the decoded reply, if there is one.
+   * Sends one JSON-RPC message and returns the reply to it, if there is one.
    *
    * A notification is answered with an empty body, which is a null reply rather
-   * than an error.
+   * than an error. A message addressed to another id, such as a server notification
+   * arriving ahead of the reply, is skipped rather than mistaken for the answer.
    */
   private async post(message: Record<string, unknown>): Promise<JsonRpcReply | null> {
     const body = JSON.stringify(message)
+    const expectedId = message.id as number | undefined
 
     const extra: Record<string, string> = {}
     if (this.mcpSessionId) {
@@ -206,12 +208,25 @@ export class GatewayMcpBackend implements WebSearchBackend {
       extra['mcp-protocol-version'] = this.protocolVersion
     }
 
-    const response = await this.fetchImpl(this.endpoint, {
-      method: 'POST',
-      body,
-      headers: await this.signedHeaders(body, extra),
-      signal: AbortSignal.timeout(this.timeout),
-    })
+    const headers = await this.signedHeaders(body, extra)
+
+    let response: Response
+    try {
+      response = await this.fetchImpl(this.endpoint, {
+        method: 'POST',
+        body,
+        headers,
+        signal: AbortSignal.timeout(this.timeout),
+      })
+    } catch (error) {
+      // A refused connection, a DNS or TLS failure and an expired timeout all reject
+      // here, as a TypeError or a DOMException. search() promises WebSearchError, so
+      // they do not escape as something else.
+      throw new WebSearchError(
+        `Web search request to ${this.endpoint} failed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error }
+      )
+    }
 
     const sessionId = response.headers.get('mcp-session-id')
     if (sessionId) {
@@ -221,6 +236,12 @@ export class GatewayMcpBackend implements WebSearchBackend {
     const text = await response.text()
 
     if (!response.ok) {
+      // 404 against a session we hold is the spec's signal that the session is gone.
+      // Forget it, so the next call re-initializes rather than failing this way until
+      // someone calls close().
+      if (response.status === 404 && this.mcpSessionId) {
+        this.resetSession()
+      }
       throw new WebSearchError(`Web search request failed with HTTP ${response.status}: ${text.slice(0, 500)}`)
     }
 
@@ -228,12 +249,15 @@ export class GatewayMcpBackend implements WebSearchBackend {
       return null
     }
 
-    const reply = decodeJsonRpc(response.headers.get('content-type') ?? '', text)
+    const reply = decodeJsonRpc(response.headers.get('content-type') ?? '', text, expectedId)
     if (reply === null) {
       return null
     }
     if (reply.error) {
       throw new WebSearchError(`Gateway returned a JSON-RPC error ${reply.error.code}: ${reply.error.message}`)
+    }
+    if (expectedId !== undefined && reply.result === undefined) {
+      throw new WebSearchError(`Gateway reply carried neither a result nor an error: ${JSON.stringify(reply)}`)
     }
     return reply
   }
@@ -271,8 +295,17 @@ export class GatewayMcpBackend implements WebSearchBackend {
       this.protocolVersion = negotiated
     }
 
+    // Set before the notification is sent, because from here on every request carries
+    // mcp-protocol-version. If the notification fails the handshake did not complete,
+    // so this is rolled back rather than left claiming a session the gateway never
+    // acknowledged.
     this.initialized = true
-    await this.post({ jsonrpc: '2.0', method: 'notifications/initialized' })
+    try {
+      await this.post({ jsonrpc: '2.0', method: 'notifications/initialized' })
+    } catch (error) {
+      this.resetSession()
+      throw error
+    }
   }
 
   /**
@@ -366,6 +399,11 @@ export class GatewayMcpBackend implements WebSearchBackend {
 
   /** Forgets the MCP session so the next search starts a new one. */
   close(): void {
+    this.resetSession()
+  }
+
+  /** Forgets the MCP session, so the next call performs the handshake again. */
+  private resetSession(): void {
     this.initialized = false
     this.mcpSessionId = undefined
   }
@@ -449,7 +487,11 @@ export class WebSearchClient {
       )
     }
 
-    const endpoint = resolvedId ? getGatewayMcpEndpoint(resolvedId, region) : gatewayEndpoint
+    // A caller-supplied endpoint is checked too, not only one built from an ID, because
+    // every request to it is signed with the caller's credentials.
+    const endpoint = resolvedId
+      ? getGatewayMcpEndpoint(resolvedId, region)
+      : gatewayEndpoint && validateEndpointUrl(gatewayEndpoint)
     if (!endpoint) {
       throw new Error('One of gatewayId, gatewayArn, gatewayEndpoint or backend is required')
     }
@@ -625,28 +667,17 @@ function toWebSearchResponse(payload: unknown): WebSearchResponse {
 }
 
 /**
- * Decodes a JSON-RPC reply from either a JSON body or an SSE stream.
+ * Decodes the JSON-RPC reply to `expectedId` from either a JSON body or an SSE
+ * stream.
  *
- * Returns null when the body carries no JSON-RPC message, which is what a
+ * Returns null when the body carries no reply to that id, which is what a
  * notification acknowledgement looks like.
  */
-function decodeJsonRpc(contentType: string, text: string): JsonRpcReply | null {
+function decodeJsonRpc(contentType: string, text: string, expectedId?: number): JsonRpcReply | null {
   if (contentType.toLowerCase().includes('text/event-stream')) {
-    for (const line of text.split(/\r?\n/)) {
-      if (!line.startsWith('data:')) {
-        continue
-      }
-      const chunk = line.slice('data:'.length).trim()
-      if (!chunk) {
-        continue
-      }
-      try {
-        const message = JSON.parse(chunk)
-        if (message && typeof message === 'object' && 'jsonrpc' in message) {
-          return message as JsonRpcReply
-        }
-      } catch {
-        continue
+    for (const message of sseMessages(text)) {
+      if (answers(message, expectedId)) {
+        return message
       }
     }
     return null
@@ -658,7 +689,73 @@ function decodeJsonRpc(contentType: string, text: string): JsonRpcReply | null {
   } catch {
     throw new WebSearchError(`Could not decode gateway response as JSON: ${text.slice(0, 200)}`)
   }
-  return message && typeof message === 'object' && !Array.isArray(message) ? (message as JsonRpcReply) : null
+  if (!message || typeof message !== 'object' || Array.isArray(message)) {
+    return null
+  }
+  return answers(message as JsonRpcReply, expectedId) ? (message as JsonRpcReply) : null
+}
+
+/** Whether a decoded JSON-RPC message is the reply to `expectedId`. */
+function answers(message: JsonRpcReply, expectedId: number | undefined): boolean {
+  if (message.jsonrpc === undefined) {
+    return false
+  }
+  if (message.error !== undefined) {
+    // A JSON-RPC error is allowed to carry a null id, so it is always surfaced rather
+    // than filtered out for not matching.
+    return true
+  }
+  if (expectedId === undefined) {
+    return true
+  }
+  return message.id === expectedId
+}
+
+/**
+ * Yields the JSON objects carried by the `data` field of each SSE event.
+ *
+ * Consecutive `data:` lines belonging to one event are joined with a newline, as the
+ * SSE specification requires, so a message split across lines is decoded rather than
+ * dropped. A blank line ends an event, and one leading space after the colon is part
+ * of the framing rather than the data.
+ */
+function* sseMessages(text: string): Generator<JsonRpcReply> {
+  let buffer: string[] = []
+
+  function flush(): JsonRpcReply | null {
+    if (buffer.length === 0) {
+      return null
+    }
+    const joined = buffer.join('\n')
+    buffer = []
+    try {
+      const message: unknown = JSON.parse(joined)
+      return message && typeof message === 'object' && !Array.isArray(message) ? (message as JsonRpcReply) : null
+    } catch {
+      return null
+    }
+  }
+
+  for (const line of text.split(/\r\n|\r|\n/)) {
+    if (line.startsWith('data:')) {
+      const value = line.slice('data:'.length)
+      buffer.push(value.startsWith(' ') ? value.slice(1) : value)
+      continue
+    }
+    if (line.trim()) {
+      // Any other SSE field (event:, id:, retry:) or a comment line.
+      continue
+    }
+    const message = flush()
+    if (message !== null) {
+      yield message
+    }
+  }
+
+  const last = flush()
+  if (last !== null) {
+    yield last
+  }
 }
 
 /** Pulls the gateway ID and region out of a gateway ARN. */

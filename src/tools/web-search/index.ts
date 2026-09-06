@@ -20,7 +20,6 @@ export { SearchOptionsSchema, SearchQuerySchema } from './types.js'
 
 // Constants
 export {
-  DEFAULT_TARGET_NAME,
   DEFAULT_TIMEOUT,
   GATEWAY_SIGNING_SERVICE,
   GATEWAY_TOOL_NAME_DELIMITER,

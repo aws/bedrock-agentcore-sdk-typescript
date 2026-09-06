@@ -16,11 +16,6 @@ export const WEB_SEARCH_TOOL_NAME = 'WebSearch'
 export const GATEWAY_TOOL_NAME_DELIMITER = '___'
 
 /**
- * Default target name used when a web search target is created without one.
- */
-export const DEFAULT_TARGET_NAME = 'amazon-web-search'
-
-/**
  * Service name the gateway data plane signs as.
  */
 export const GATEWAY_SIGNING_SERVICE = 'bedrock-agentcore'
@@ -66,8 +61,8 @@ export const DEFAULT_TIMEOUT = 30_000
  * Raised when a web search call fails.
  */
 export class WebSearchError extends Error {
-  constructor(message: string) {
-    super(message)
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
     this.name = 'WebSearchError'
   }
 }

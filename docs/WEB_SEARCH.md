@@ -44,13 +44,17 @@ blocked, only warned about, so a newly added region does not need an SDK release
 
 Pass exactly one of:
 
-| Option            | Use when                                                               |
-| ----------------- | ---------------------------------------------------------------------- |
-| `gatewayId`       | Usual case. The MCP endpoint is derived from the ID and the region.    |
-| `gatewayArn`      | You have the ARN. The ID and the region are read out of it.            |
-| `gatewayEndpoint` | You already have an MCP endpoint URL, including a local test endpoint. |
+| Option            | Use when                                                            |
+| ----------------- | ------------------------------------------------------------------- |
+| `gatewayId`       | Usual case. The MCP endpoint is derived from the ID and the region. |
+| `gatewayArn`      | You have the ARN. The ID and the region are read out of it.         |
+| `gatewayEndpoint` | You already have an MCP endpoint URL.                               |
 
 `region` is required unless a `gatewayArn` supplies it.
+
+Every request is signed with the caller's credentials, so an endpoint has to resolve to an AWS host
+whether it was built from an ID or passed in. To point a test at a local MCP mock, set
+`BEDROCK_AGENTCORE_GATEWAY_ENDPOINT`, which is an operator-set override and is used as given.
 
 ## Tool naming, and why `targetName` saves a round trip
 
@@ -138,8 +142,15 @@ Notes:
 
 - **One session is reused.** `initialize` runs once per backend, including when two searches start
   concurrently. `close()` forgets the session so the next search starts a new one.
+- **An expired session recovers by itself.** HTTP 404 against a session the client holds is the
+  transport's signal that the session is gone, so the session is forgotten and the next search
+  performs the handshake again instead of failing the same way until someone calls `close()`.
 - **Both response framings are handled.** A gateway may answer a POST with `application/json` or
-  with `text/event-stream`.
+  with `text/event-stream`. Replies are matched to the request they answer, so a server notification
+  arriving first is not mistaken for the answer.
+- **Every failure arrives as `WebSearchError`.** A refused connection, a DNS or TLS failure and an
+  expired timeout reject out of `fetch` rather than returning a response, and each is wrapped with
+  the original error kept as `cause`.
 - **Per-request timeout** defaults to 30 seconds, set with `timeout`.
 - **`fetchImpl`** replaces the fetch implementation, which is how the unit tests run with neither a
   network nor credentials.

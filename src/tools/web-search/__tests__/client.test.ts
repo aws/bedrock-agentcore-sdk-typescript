@@ -123,6 +123,12 @@ describe('WebSearchClient construction', () => {
     expect(client.backend).toBeInstanceOf(GatewayMcpBackend)
   })
 
+  it('refuses to sign for an endpoint that is not an AWS host', () => {
+    expect(() => new WebSearchClient({ region: REGION, gatewayEndpoint: 'https://evil.example.com/mcp' })).toThrow(
+      /non-AWS host/
+    )
+  })
+
   it('rejects more than one way of naming the gateway', () => {
     expect(() => new WebSearchClient({ region: REGION, gatewayId: GATEWAY_ID, gatewayEndpoint: ENDPOINT })).toThrow(
       /only one of gatewayId, gatewayArn or gatewayEndpoint/
@@ -452,7 +458,7 @@ describe('GatewayMcpBackend over MCP', () => {
     expect(payload).toEqual({ results: [{ text: 'sse hit' }] })
   })
 
-  it('ignores non-data lines and undecodable data chunks in an SSE body', async () => {
+  it('ignores comments, other fields and undecodable events in an SSE body', async () => {
     const fetchImpl: FetchLike = async (_url, init) => {
       const body = JSON.parse(String(init.body))
       if (body.method === 'notifications/initialized') {
@@ -464,12 +470,165 @@ describe('GatewayMcpBackend over MCP', () => {
         'event: message',
         'data:',
         'data: not json',
-        `data: ${JSON.stringify({ jsonrpc: '2.0', id: body.id, result })}`,
+        '',
+        'id: 7',
+        'retry: 500',
+        `data:${JSON.stringify({ jsonrpc: '2.0', id: body.id, result })}`,
+        '',
       ]
       return new Response(lines.join('\r\n'), { status: 200, headers: { 'content-type': 'text/event-stream' } })
     }
 
     await expect(backendFor({ fetchImpl }).search({ query: 'q' })).resolves.toEqual({ results: [] })
+  })
+
+  it('joins a data field split over several lines, as SSE framing requires', async () => {
+    const fetchImpl: FetchLike = async (_url, init) => {
+      const body = JSON.parse(String(init.body))
+      if (body.method === 'notifications/initialized') {
+        return new Response('', { status: 202 })
+      }
+      const result = body.method === 'initialize' ? {} : textResult({ results: [{ text: 'split hit' }] })
+      const encoded = JSON.stringify({ jsonrpc: '2.0', id: body.id, result })
+      const at = encoded.indexOf(',') + 1
+      // One event whose data field arrives as two lines. Joined with a newline they are
+      // valid JSON; read independently neither line is.
+      const event = `event: message\ndata: ${encoded.slice(0, at)}\ndata: ${encoded.slice(at)}\n\n`
+      return new Response(event, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    }
+
+    await expect(backendFor({ fetchImpl }).search({ query: 'q' })).resolves.toEqual({
+      results: [{ text: 'split hit' }],
+    })
+  })
+
+  it('decodes a final SSE event that has no trailing blank line', async () => {
+    const fetchImpl: FetchLike = async (_url, init) => {
+      const body = JSON.parse(String(init.body))
+      if (body.method === 'notifications/initialized') {
+        return new Response('', { status: 202 })
+      }
+      const result = body.method === 'initialize' ? {} : textResult({ results: [{ text: 'last hit' }] })
+      return new Response(`data: ${JSON.stringify({ jsonrpc: '2.0', id: body.id, result })}`, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    }
+
+    await expect(backendFor({ fetchImpl }).search({ query: 'q' })).resolves.toEqual({
+      results: [{ text: 'last hit' }],
+    })
+  })
+
+  it('skips a message addressed to another id and takes the reply to this one', async () => {
+    const fetchImpl: FetchLike = async (_url, init) => {
+      const body = JSON.parse(String(init.body))
+      if (body.method === 'notifications/initialized') {
+        return new Response('', { status: 202 })
+      }
+      const result = body.method === 'initialize' ? {} : textResult({ results: [{ text: 'right reply' }] })
+      // A server notification and a reply to an unrelated id arrive first.
+      const events = [
+        `data: ${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/message', params: { level: 'info' } })}`,
+        `data: ${JSON.stringify({ jsonrpc: '2.0', id: 9999, result: { tools: [] } })}`,
+        `data: ${JSON.stringify({ jsonrpc: '2.0', id: body.id, result })}`,
+      ]
+      return new Response(`${events.join('\n\n')}\n\n`, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    }
+
+    await expect(backendFor({ fetchImpl }).search({ query: 'q' })).resolves.toEqual({
+      results: [{ text: 'right reply' }],
+    })
+  })
+
+  it('surfaces a JSON-RPC error that carries no id', async () => {
+    const fetchImpl: FetchLike = async () =>
+      jsonResponse({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } })
+
+    await expect(backendFor({ fetchImpl }).search({ query: 'q' })).rejects.toThrow(
+      /JSON-RPC error -32600: Invalid Request/
+    )
+  })
+
+  it('reports a reply that carries neither a result nor an error', async () => {
+    const fetchImpl: FetchLike = async (_url, init) => {
+      const body = JSON.parse(String(init.body))
+      if (body.method === 'initialize') {
+        return jsonResponse({ jsonrpc: '2.0', id: body.id, result: {} })
+      }
+      if (body.method === 'notifications/initialized') {
+        return new Response('', { status: 202 })
+      }
+      return jsonResponse({ jsonrpc: '2.0', id: body.id })
+    }
+
+    await expect(backendFor({ fetchImpl }).search({ query: 'q' })).rejects.toThrow(
+      /carried neither a result nor an error/
+    )
+  })
+
+  it('wraps a transport failure in WebSearchError and keeps the cause', async () => {
+    const failure = new TypeError('fetch failed')
+    const fetchImpl: FetchLike = async () => {
+      throw failure
+    }
+
+    const error = await backendFor({ fetchImpl })
+      .search({ query: 'q' })
+      .catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(WebSearchError)
+    expect((error as WebSearchError).message).toContain(`request to ${ENDPOINT} failed: fetch failed`)
+    expect((error as WebSearchError).cause).toBe(failure)
+  })
+
+  it('starts a new session after the gateway reports the old one is gone', async () => {
+    let firstCall = true
+    const { fetchImpl: inner, requests } = mcpFetch()
+    const fetchImpl: FetchLike = async (url, init) => {
+      const body = JSON.parse(String(init.body))
+      if (body.method === 'tools/call' && firstCall) {
+        firstCall = false
+        requests.push({ method: body.method, body, headers: init.headers as Record<string, string> })
+        return new Response('{"message":"Session not found"}', {
+          status: 404,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      return inner(url, init)
+    }
+
+    const backend = backendFor({ fetchImpl })
+    await expect(backend.search({ query: 'a' })).rejects.toThrow(/HTTP 404/)
+    await expect(backend.search({ query: 'b' })).resolves.toEqual({ results: [] })
+
+    expect(requests.filter((r) => r.method === 'initialize')).toHaveLength(2)
+  })
+
+  it('does not claim a session when the initialized notification fails', async () => {
+    let failNotification = true
+    const { fetchImpl: inner, requests } = mcpFetch()
+    const fetchImpl: FetchLike = async (url, init) => {
+      const body = JSON.parse(String(init.body))
+      if (body.method === 'notifications/initialized' && failNotification) {
+        failNotification = false
+        requests.push({ method: body.method, body, headers: init.headers as Record<string, string> })
+        return new Response('boom', { status: 500 })
+      }
+      return inner(url, init)
+    }
+
+    const backend = backendFor({ fetchImpl })
+    await expect(backend.search({ query: 'a' })).rejects.toThrow(/HTTP 500/)
+    await expect(backend.search({ query: 'b' })).resolves.toEqual({ results: [] })
+
+    // The handshake is redone rather than the client sending mcp-protocol-version for a
+    // session the gateway never acknowledged.
+    expect(requests.filter((r) => r.method === 'initialize')).toHaveLength(2)
+    expect(requests.find((r) => r.method === 'tools/call')?.headers['mcp-protocol-version']).toBe('2025-06-18')
   })
 
   it('surfaces an HTTP error with the status and the body', async () => {

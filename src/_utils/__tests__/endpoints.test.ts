@@ -1,5 +1,31 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { getDataPlaneEndpoint, getGatewayMcpEndpoint } from '../endpoints.js'
+import { getDataPlaneEndpoint, getGatewayMcpEndpoint, validateEndpointUrl } from '../endpoints.js'
+
+describe('validateEndpointUrl', () => {
+  it('returns an AWS endpoint unchanged', () => {
+    const url = 'https://gw.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp'
+    expect(validateEndpointUrl(url)).toBe(url)
+  })
+
+  it('accepts the China and dual stack suffixes', () => {
+    expect(validateEndpointUrl('https://gw.gateway.bedrock-agentcore.cn-north-1.amazonaws.com.cn/mcp')).toContain(
+      'amazonaws.com.cn'
+    )
+    expect(validateEndpointUrl('https://bedrock-agentcore.us-east-1.api.aws/mcp')).toContain('api.aws')
+  })
+
+  it('rejects a host outside AWS', () => {
+    expect(() => validateEndpointUrl('https://evil.example.com/mcp')).toThrow(/non-AWS host/)
+  })
+
+  it('rejects a host that only looks like an AWS one', () => {
+    expect(() => validateEndpointUrl('https://amazonaws.com.evil.io/mcp')).toThrow(/non-AWS host/)
+  })
+
+  it('rejects a string that is not a URL', () => {
+    expect(() => validateEndpointUrl('not a url')).toThrow(/Not a valid endpoint URL/)
+  })
+})
 
 describe('getDataPlaneEndpoint', () => {
   const ENDPOINT_OVERRIDE_ENV = 'BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT'
