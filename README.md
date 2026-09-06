@@ -106,6 +106,7 @@ const agent = new Agent({
 - **Runtime** — Secure, session-isolated compute → [Examples](https://github.com/awslabs/bedrock-agentcore-samples-typescript/tree/main/primitives/runtime)
 - **Code Interpreter** — Execute Python/JS/TS in a sandbox → [Examples](https://github.com/awslabs/bedrock-agentcore-samples-typescript/tree/main/primitives/tools/code-interpreter)
 - **Browser** — Cloud-based web automation → [Examples](https://github.com/awslabs/bedrock-agentcore-samples-typescript/tree/main/primitives/tools/browser)
+- **Web Search** — Search the web through a Gateway connector target → [Guide](docs/WEB_SEARCH.md)
 - **Identity** — Manage API keys and OAuth tokens → [Examples](https://github.com/awslabs/bedrock-agentcore-samples-typescript/tree/main/primitives/identity)
 - **Memory** — Persistent knowledge across sessions → [Guide](docs/MEMORY.md)
 - **Gateway** — Transform APIs into MCP tools (coming soon)

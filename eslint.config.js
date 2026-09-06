@@ -33,6 +33,8 @@ export default [
         URLSearchParams: 'readonly',
         AbortController: 'readonly',
         AbortSignal: 'readonly',
+        Response: 'readonly',
+        RequestInit: 'readonly',
       },
     },
     plugins: {
@@ -63,6 +65,8 @@ export default [
         setTimeout: 'readonly',
         Buffer: 'readonly',
         URL: 'readonly',
+        Response: 'readonly',
+        AbortSignal: 'readonly',
       },
     },
     plugins: {
