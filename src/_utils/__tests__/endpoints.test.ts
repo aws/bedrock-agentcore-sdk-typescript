@@ -14,6 +14,12 @@ describe('validateEndpointUrl', () => {
     expect(validateEndpointUrl('https://bedrock-agentcore.us-east-1.api.aws/mcp')).toContain('api.aws')
   })
 
+  it('rejects plain HTTP, which would put signed credentials in the clear', () => {
+    expect(() => validateEndpointUrl('http://gw.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp')).toThrow(
+      /must use https/
+    )
+  })
+
   it('rejects a host outside AWS', () => {
     expect(() => validateEndpointUrl('https://evil.example.com/mcp')).toThrow(/non-AWS host/)
   })

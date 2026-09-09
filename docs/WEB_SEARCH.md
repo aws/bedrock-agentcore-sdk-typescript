@@ -37,8 +37,9 @@ This SDK does not yet have gateway control-plane helpers (see **Gateway** in the
 list), so create the gateway and the target with the console, the CLI, or
 `@aws-sdk/client-bedrock-agentcore-control`. Once it exists, everything below is data plane only.
 
-Web search is offered in `us-east-1`, `eu-west-1` and `ap-northeast-1`. Another region is not
-blocked, only warned about, so a newly added region does not need an SDK release.
+Web search is offered in `us-east-1`, `eu-west-1` and `ap-northeast-1`. The client does not restrict
+the region, so a newly added one does not need an SDK release. The three are exported as
+`KNOWN_REGIONS` for callers who want to check before they call.
 
 ## Naming the gateway
 
@@ -50,7 +51,8 @@ Pass exactly one of:
 | `gatewayArn`      | You have the ARN. The ID and the region are read out of it.         |
 | `gatewayEndpoint` | You already have an MCP endpoint URL.                               |
 
-`region` is required unless a `gatewayArn` supplies it.
+`region` is required unless a `gatewayArn` supplies it. Passing both a `gatewayArn` and a `region`
+that disagrees with it throws, rather than one of them silently winning.
 
 Every request is signed with the caller's credentials, so an endpoint has to resolve to an AWS host
 whether it was built from an ID or passed in. To point a test at a local MCP mock, set
@@ -92,6 +94,10 @@ The documented limits are enforced before a request is signed and sent: `query` 
 fewer, `maxResults` is 1 to 25 (the service default is 10), and each domain list holds up to 100
 entries. A root domain matches its subdomains. The date filters are inclusive, ISO-8601 UTC, and
 apply to web results only.
+
+A value outside those limits throws a `ZodError` naming the field, before anything is signed, which
+is how the rest of this SDK reports invalid arguments. Everything that happens after a request goes
+out arrives as `WebSearchError`, so catch both if you catch by type.
 
 Filter options need connector version 1.2.0 or later on the target. On an earlier version the tool
 accepts only `query` and `maxResults`.
@@ -151,6 +157,9 @@ Notes:
 - **Every failure arrives as `WebSearchError`.** A refused connection, a DNS or TLS failure and an
   expired timeout reject out of `fetch` rather than returning a response, and each is wrapped with
   the original error kept as `cause`.
+- **Tool discovery happens once and is bounded.** Searches that start together share a single
+  `tools/list`, and pagination gives up with an error after 50 pages or on a cursor that repeats,
+  rather than following a server that keeps handing out cursors.
 - **Per-request timeout** defaults to 30 seconds, set with `timeout`.
 - **`fetchImpl`** replaces the fetch implementation, which is how the unit tests run with neither a
   network nor credentials.

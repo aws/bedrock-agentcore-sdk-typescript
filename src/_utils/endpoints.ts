@@ -31,28 +31,35 @@ const REGION_PATTERN = /^[a-z0-9-]+$/
 const AWS_DOMAINS = ['.amazonaws.com', '.amazonaws.com.cn', '.api.aws']
 
 /**
- * Checks that an endpoint URL resolves to an AWS host.
+ * Checks that an endpoint URL is HTTPS and resolves to an AWS host.
  *
- * Requests to these endpoints are signed with the caller's credentials, including a
- * session token, so an endpoint that came from configuration or user input gets
- * checked before anything is signed for it. This also catches URL manipulation that
- * slips past the gateway identifier and region patterns.
+ * Requests to these endpoints are signed with the caller's credentials, so the signed
+ * headers carry an access key id and a session token. Over plain HTTP those go out in
+ * the clear, and to a non-AWS host they go to whoever asked for them, so an endpoint
+ * that came from configuration or user input gets checked before anything is signed
+ * for it. This also catches URL manipulation that slips past the gateway identifier
+ * and region patterns.
  *
  * @param url - The endpoint URL to check
  * @returns The URL, unchanged
  *
- * @throws Error if the URL cannot be parsed or its host is not an AWS host.
+ * @throws Error if the URL cannot be parsed, is not HTTPS, or its host is not an AWS
+ * host.
  */
 export function validateEndpointUrl(url: string): string {
-  let hostname: string
+  let parsed: URL
   try {
-    hostname = new URL(url).hostname
+    parsed = new URL(url)
   } catch {
     throw new Error(`Not a valid endpoint URL: '${url}'`)
   }
 
-  if (!AWS_DOMAINS.some((domain) => hostname.endsWith(domain))) {
-    throw new Error(`Endpoint resolves to a non-AWS host: '${hostname}'`)
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`Endpoint must use https, got '${parsed.protocol}//' in '${url}'`)
+  }
+
+  if (!AWS_DOMAINS.some((domain) => parsed.hostname.endsWith(domain))) {
+    throw new Error(`Endpoint resolves to a non-AWS host: '${parsed.hostname}'`)
   }
   return url
 }

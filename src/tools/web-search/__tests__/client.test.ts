@@ -1,7 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { HttpRequest } from '@smithy/protocol-http'
+import { SignatureV4 } from '@smithy/signature-v4'
+import { Sha256 } from '@aws-crypto/sha256-js'
 import { GatewayMcpBackend, WebSearchClient } from '../client.js'
 import type { FetchLike, GatewayMcpBackendConfig } from '../client.js'
-import { WebSearchError, type WebSearchBackend, type WebSearchToolArguments } from '../types.js'
+import {
+  MAX_TOOL_LIST_PAGES,
+  MCP_PROTOCOL_VERSION,
+  WebSearchError,
+  type WebSearchBackend,
+  type WebSearchToolArguments,
+} from '../types.js'
+import { SDK_VERSION } from '../../../_utils/version.js'
 
 const REGION = 'us-east-1'
 const GATEWAY_ID = 'my-gateway-abc123'
@@ -69,6 +79,15 @@ function mcpFetch(handlers: { toolsList?: unknown; toolsCall?: unknown; sessionI
   return { fetchImpl, requests }
 }
 
+/** Turns the `20260909T101112Z` stamp a signer sends back into the date it was made from. */
+function amzDate(stamp: string): Date {
+  const [date, time] = stamp.split('T')
+  return new Date(
+    `${date!.slice(0, 4)}-${date!.slice(4, 6)}-${date!.slice(6, 8)}T` +
+      `${time!.slice(0, 2)}:${time!.slice(2, 4)}:${time!.slice(4, 6)}Z`
+  )
+}
+
 /** Wraps a search payload the way the connector does, as JSON inside a text block. */
 function textResult(payload: unknown): Record<string, unknown> {
   return { content: [{ type: 'text', text: JSON.stringify(payload) }], isError: false }
@@ -100,16 +119,32 @@ describe('WebSearchClient construction', () => {
     expect(client.region).toBe('eu-west-1')
   })
 
-  it('prefers an explicit region over the one in the arn', () => {
+  it('accepts a region that agrees with the arn', () => {
     const client = new WebSearchClient({
-      region: REGION,
+      region: 'eu-west-1',
       gatewayArn: `arn:aws:bedrock-agentcore:eu-west-1:123456789012:gateway/${GATEWAY_ID}`,
     })
-    expect(client.region).toBe(REGION)
+    expect(client.region).toBe('eu-west-1')
+  })
+
+  it('rejects a region that disagrees with the arn, rather than picking one', () => {
+    expect(
+      () =>
+        new WebSearchClient({
+          region: REGION,
+          gatewayArn: `arn:aws:bedrock-agentcore:eu-west-1:123456789012:gateway/${GATEWAY_ID}`,
+        })
+    ).toThrow(/region 'us-east-1' does not match the region in the gateway ARN, 'eu-west-1'/)
   })
 
   it('rejects an arn that is not a gateway arn', () => {
     expect(() => new WebSearchClient({ gatewayArn: 'arn:aws:s3:::my-bucket' })).toThrow(/Not a gateway ARN/)
+  })
+
+  it('rejects a gateway arn for another service', () => {
+    expect(() => new WebSearchClient({ gatewayArn: 'arn:aws:apigateway:us-east-1:123456789012:gateway/abc' })).toThrow(
+      /Not a gateway ARN/
+    )
   })
 
   it('rejects a gateway arn with no id', () => {
@@ -126,6 +161,12 @@ describe('WebSearchClient construction', () => {
   it('refuses to sign for an endpoint that is not an AWS host', () => {
     expect(() => new WebSearchClient({ region: REGION, gatewayEndpoint: 'https://evil.example.com/mcp' })).toThrow(
       /non-AWS host/
+    )
+  })
+
+  it('refuses to sign for an endpoint that is not https', () => {
+    expect(() => new WebSearchClient({ region: REGION, gatewayEndpoint: ENDPOINT.replace('https:', 'http:') })).toThrow(
+      /must use https/
     )
   })
 
@@ -149,18 +190,12 @@ describe('WebSearchClient construction', () => {
     expect(() => new WebSearchClient({ region: REGION })).toThrow(/is required/)
   })
 
-  it('warns on a region where web search is not offered, without blocking', () => {
+  it('does not block a region web search has not launched in, and stays quiet about it', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const client = new WebSearchClient({ region: 'us-west-2', gatewayId: GATEWAY_ID })
-    expect(warn).toHaveBeenCalledOnce()
-    expect(warn.mock.calls[0]![0]).toContain('us-east-1, eu-west-1, ap-northeast-1')
     expect(client.backend).toBeInstanceOf(GatewayMcpBackend)
-    warn.mockRestore()
-  })
-
-  it('does not warn on a supported region', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    new WebSearchClient({ region: 'ap-northeast-1', gatewayId: GATEWAY_ID })
+    // KNOWN_REGIONS is exported for callers who want to check. Constructing a client is
+    // not the place to write to the console, and the list goes stale on every launch.
     expect(warn).not.toHaveBeenCalled()
     warn.mockRestore()
   })
@@ -321,6 +356,58 @@ describe('GatewayMcpBackend over MCP', () => {
     expect(signedHeaders).toContain('host')
   })
 
+  it('signs the query string of the endpoint it posts to', async () => {
+    const endpoint = `${ENDPOINT}?tenant=abc&x=1`
+    const { fetchImpl, requests } = mcpFetch()
+    const urls: string[] = []
+    const spy: FetchLike = async (url, init) => {
+      urls.push(url)
+      return fetchImpl(url, init)
+    }
+    await backendFor({ fetchImpl: spy, endpoint }).search({ query: 'q' })
+
+    // The request goes to the whole URL, so the query has to be part of the canonical
+    // request. Signing the same initialize call here, query included, reproduces the
+    // header the client sent. Dropping the query would produce a different signature.
+    const initialize = requests[0]!
+    const url = new URL(endpoint)
+    const signer = new SignatureV4({
+      service: 'bedrock-agentcore',
+      region: REGION,
+      credentials: await CREDENTIALS(),
+      sha256: Sha256,
+    })
+    const expected = await signer.sign(
+      new HttpRequest({
+        method: 'POST',
+        protocol: url.protocol,
+        hostname: url.hostname,
+        path: url.pathname,
+        query: Object.fromEntries(url.searchParams.entries()),
+        headers: {
+          host: url.host,
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+        },
+        body: JSON.stringify(initialize.body),
+      }),
+      { signingDate: amzDate(initialize.headers['x-amz-date']!) }
+    )
+
+    expect(urls[0]).toBe(endpoint)
+    expect(initialize.headers.authorization).toBe(expected.headers['authorization'])
+  })
+
+  it('reports the SDK version to the gateway, not the protocol version', async () => {
+    const { fetchImpl, requests } = mcpFetch()
+    await backendFor({ fetchImpl }).search({ query: 'q' })
+
+    const clientInfo = requests[0]!.body.params.clientInfo
+    expect(clientInfo.name).toBe('bedrock-agentcore-typescript')
+    expect(clientInfo.version).toBe(SDK_VERSION)
+    expect(clientInfo.version).not.toBe(MCP_PROTOCOL_VERSION)
+  })
+
   it('echoes the MCP session id back on later requests', async () => {
     const { fetchImpl, requests } = mcpFetch({ sessionId: 'session-xyz' })
     await backendFor({ fetchImpl }).search({ query: 'q' })
@@ -369,6 +456,45 @@ describe('GatewayMcpBackend over MCP', () => {
     expect(requests.filter((r) => r.method === 'initialize')).toHaveLength(1)
   })
 
+  it('holds a second search until the initialized notification has gone out', async () => {
+    let release: () => void = () => {}
+    const notificationSent = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let notificationInFlight = false
+
+    const { fetchImpl, requests } = mcpFetch()
+    const gated: FetchLike = async (url, init) => {
+      const body = JSON.parse(String(init.body))
+      if (body.method === 'notifications/initialized') {
+        notificationInFlight = true
+        await notificationSent
+      }
+      return fetchImpl(url, init)
+    }
+
+    const backend = backendFor({ fetchImpl: gated })
+    const first = backend.search({ query: 'a' })
+    // Wait for the initialize round trip to finish, so the notification is the request
+    // the gate is holding when the second search starts.
+    for (let attempt = 0; attempt < 100 && !notificationInFlight; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+    expect(notificationInFlight).toBe(true)
+    const second = backend.search({ query: 'b' })
+    // Give the second search every chance to sign and post a tool call while the
+    // notification is still in flight, which is the race being guarded against.
+    for (let tick = 0; tick < 10; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+    release()
+    await Promise.all([first, second])
+
+    const methods = requests.map((r) => r.method)
+    expect(methods.indexOf('tools/call')).toBeGreaterThan(methods.indexOf('notifications/initialized'))
+    expect(methods.filter((method) => method === 'initialize')).toHaveLength(1)
+  })
+
   it('initializes again after close', async () => {
     const { fetchImpl, requests } = mcpFetch()
     const backend = backendFor({ fetchImpl })
@@ -411,6 +537,52 @@ describe('GatewayMcpBackend over MCP', () => {
 
     await backendFor({ fetchImpl, targetName: undefined }).search({ query: 'q' })
     expect(page).toBe(2)
+  })
+
+  it('shares one tools/list between searches that start together', async () => {
+    const { fetchImpl, requests } = mcpFetch({ toolsList: { tools: [{ name: 'tgt___WebSearch' }] } })
+    const backend = backendFor({ fetchImpl, targetName: undefined })
+    await Promise.all([backend.search({ query: 'a' }), backend.search({ query: 'b' })])
+
+    expect(requests.filter((r) => r.method === 'tools/list')).toHaveLength(1)
+    expect(requests.filter((r) => r.method === 'tools/call')).toHaveLength(2)
+  })
+
+  it('stops when tools/list hands back the cursor it was given', async () => {
+    const fetchImpl: FetchLike = async (_url, init) => {
+      const body = JSON.parse(String(init.body))
+      if (body.method === 'initialize') {
+        return jsonResponse({ jsonrpc: '2.0', id: body.id, result: {} })
+      }
+      if (body.method === 'notifications/initialized') {
+        return new Response('', { status: 202 })
+      }
+      return jsonResponse({ jsonrpc: '2.0', id: body.id, result: { tools: [{ name: 'a' }], nextCursor: 'stuck' } })
+    }
+
+    await expect(backendFor({ fetchImpl, targetName: undefined }).search({ query: 'q' })).rejects.toThrow(
+      /same tools\/list cursor twice/
+    )
+  })
+
+  it('gives up on tools/list pagination that never ends', async () => {
+    let page = 0
+    const fetchImpl: FetchLike = async (_url, init) => {
+      const body = JSON.parse(String(init.body))
+      if (body.method === 'initialize') {
+        return jsonResponse({ jsonrpc: '2.0', id: body.id, result: {} })
+      }
+      if (body.method === 'notifications/initialized') {
+        return new Response('', { status: 202 })
+      }
+      page += 1
+      return jsonResponse({ jsonrpc: '2.0', id: body.id, result: { tools: [{ name: 'a' }], nextCursor: `c${page}` } })
+    }
+
+    await expect(backendFor({ fetchImpl, targetName: undefined }).search({ query: 'q' })).rejects.toThrow(
+      new RegExp(`past ${MAX_TOOL_LIST_PAGES} pages`)
+    )
+    expect(page).toBe(MAX_TOOL_LIST_PAGES)
   })
 
   it('accepts an unprefixed WebSearch tool name', async () => {

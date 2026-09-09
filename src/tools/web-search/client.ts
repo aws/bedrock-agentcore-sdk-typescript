@@ -13,6 +13,7 @@ import { SignatureV4 } from '@smithy/signature-v4'
 import { Sha256 } from '@aws-crypto/sha256-js'
 
 import { getGatewayMcpEndpoint, validateEndpointUrl } from '../../_utils/endpoints.js'
+import { SDK_VERSION } from '../../_utils/version.js'
 import type {
   SearchOptions,
   WebSearchBackend,
@@ -24,7 +25,7 @@ import {
   DEFAULT_TIMEOUT,
   GATEWAY_SIGNING_SERVICE,
   GATEWAY_TOOL_NAME_DELIMITER,
-  KNOWN_REGIONS,
+  MAX_TOOL_LIST_PAGES,
   MCP_PROTOCOL_VERSION,
   SearchOptionsSchema,
   SearchQuerySchema,
@@ -130,6 +131,8 @@ export class GatewayMcpBackend implements WebSearchBackend {
   private initialized = false
   /** In-flight initialize, so concurrent searches share one MCP session. */
   private initializing: Promise<void> | undefined
+  /** In-flight tool discovery, so concurrent searches share one `tools/list`. */
+  private resolvingToolName: Promise<string> | undefined
 
   constructor(config: GatewayMcpBackendConfig) {
     this.endpoint = config.endpoint
@@ -150,7 +153,9 @@ export class GatewayMcpBackend implements WebSearchBackend {
    * Signs a request body with SigV4 and returns the headers to send.
    *
    * Content-Length is deliberately not signed: fetch sets it itself, and signing a
-   * header the runtime then rewrites invalidates the signature.
+   * header the runtime then rewrites invalidates the signature. The query string is
+   * signed, because the request goes to the whole endpoint URL: a gateway URL carries
+   * no query today, but a signature over a path that drops one would be rejected.
    */
   private async signedHeaders(body: string, extra: Record<string, string>): Promise<Record<string, string>> {
     const url = new URL(this.endpoint)
@@ -161,6 +166,7 @@ export class GatewayMcpBackend implements WebSearchBackend {
       hostname: url.hostname,
       ...(url.port && { port: Number(url.port) }),
       path: url.pathname,
+      query: Object.fromEntries(url.searchParams.entries()),
       method: 'POST',
       body,
       headers: {
@@ -195,8 +201,16 @@ export class GatewayMcpBackend implements WebSearchBackend {
    * A notification is answered with an empty body, which is a null reply rather
    * than an error. A message addressed to another id, such as a server notification
    * arriving ahead of the reply, is skipped rather than mistaken for the answer.
+   *
+   * @param message - The JSON-RPC message to send
+   * @param options - `sendProtocolVersion` overrides whether this request carries
+   * `mcp-protocol-version`, which the initialized notification needs before the
+   * handshake counts as done.
    */
-  private async post(message: Record<string, unknown>): Promise<JsonRpcReply | null> {
+  private async post(
+    message: Record<string, unknown>,
+    options: { sendProtocolVersion?: boolean } = {}
+  ): Promise<JsonRpcReply | null> {
     const body = JSON.stringify(message)
     const expectedId = message.id as number | undefined
 
@@ -204,7 +218,7 @@ export class GatewayMcpBackend implements WebSearchBackend {
     if (this.mcpSessionId) {
       extra['mcp-session-id'] = this.mcpSessionId
     }
-    if (this.initialized) {
+    if (options.sendProtocolVersion ?? this.initialized) {
       extra['mcp-protocol-version'] = this.protocolVersion
     }
 
@@ -262,15 +276,23 @@ export class GatewayMcpBackend implements WebSearchBackend {
     return reply
   }
 
+  /**
+   * Runs the handshake once, and makes every other caller wait for it.
+   *
+   * The in-flight handshake is checked before the initialized flag, so a search that
+   * starts while the initialized notification is still in the air waits for it instead
+   * of sending a tool call ahead of it.
+   */
   private async ensureInitialized(): Promise<void> {
+    if (this.initializing) {
+      return this.initializing
+    }
     if (this.initialized) {
       return
     }
-    if (!this.initializing) {
-      this.initializing = this.initialize().finally(() => {
-        this.initializing = undefined
-      })
-    }
+    this.initializing = this.initialize().finally(() => {
+      this.initializing = undefined
+    })
     return this.initializing
   }
 
@@ -282,7 +304,7 @@ export class GatewayMcpBackend implements WebSearchBackend {
       params: {
         protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: {},
-        clientInfo: { name: 'bedrock-agentcore-typescript', version: MCP_PROTOCOL_VERSION },
+        clientInfo: { name: 'bedrock-agentcore-typescript', version: SDK_VERSION },
       },
     })
 
@@ -295,22 +317,25 @@ export class GatewayMcpBackend implements WebSearchBackend {
       this.protocolVersion = negotiated
     }
 
-    // Set before the notification is sent, because from here on every request carries
-    // mcp-protocol-version. If the notification fails the handshake did not complete,
-    // so this is rolled back rather than left claiming a session the gateway never
-    // acknowledged.
-    this.initialized = true
+    // The notification carries mcp-protocol-version, which is asked for explicitly
+    // rather than by setting initialized early: initialized stays false until the
+    // handshake is complete, so nothing else can slip a request in ahead of this one or
+    // find a session the gateway never acknowledged.
     try {
-      await this.post({ jsonrpc: '2.0', method: 'notifications/initialized' })
+      await this.post({ jsonrpc: '2.0', method: 'notifications/initialized' }, { sendProtocolVersion: true })
     } catch (error) {
       this.resetSession()
       throw error
     }
+    this.initialized = true
   }
 
   /**
    * Resolves the fully qualified tool name, discovering it only when it cannot be
    * derived, since a `tools/list` costs a round trip.
+   *
+   * Concurrent first searches share one discovery, the same way they share one
+   * handshake, rather than each paging through the tool list.
    */
   private async ensureToolName(): Promise<string> {
     if (this.toolName) {
@@ -322,6 +347,16 @@ export class GatewayMcpBackend implements WebSearchBackend {
       return this.toolName
     }
 
+    if (!this.resolvingToolName) {
+      this.resolvingToolName = this.discoverToolName().finally(() => {
+        this.resolvingToolName = undefined
+      })
+    }
+    return this.resolvingToolName
+  }
+
+  /** Finds the web search tool among everything the gateway exposes. */
+  private async discoverToolName(): Promise<string> {
     const suffix = `${GATEWAY_TOOL_NAME_DELIMITER}${WEB_SEARCH_TOOL_NAME}`
     const candidates = (await this.listToolNames()).filter(
       (name) => name === WEB_SEARCH_TOOL_NAME || name.endsWith(suffix)
@@ -345,12 +380,27 @@ export class GatewayMcpBackend implements WebSearchBackend {
     return resolved
   }
 
-  /** Lists every tool the gateway exposes, following pagination. */
+  /**
+   * Lists every tool the gateway exposes, following pagination.
+   *
+   * A cursor that repeats, or more pages than {@link MAX_TOOL_LIST_PAGES}, ends the
+   * call with an error, so a server that hands out cursors forever fails rather than
+   * hanging the caller.
+   */
   private async listToolNames(): Promise<string[]> {
     const names: string[] = []
     let cursor: string | undefined
+    let pages = 0
 
     for (;;) {
+      pages += 1
+      if (pages > MAX_TOOL_LIST_PAGES) {
+        throw new WebSearchError(
+          `Gateway kept paginating tools/list past ${MAX_TOOL_LIST_PAGES} pages on ${this.endpoint}. ` +
+            'Pass targetName or toolName to skip discovery.'
+        )
+      }
+
       const reply = await this.post({
         jsonrpc: '2.0',
         id: this.nextId(),
@@ -369,6 +419,9 @@ export class GatewayMcpBackend implements WebSearchBackend {
       const nextCursor = result.nextCursor
       if (typeof nextCursor !== 'string' || !nextCursor) {
         return names
+      }
+      if (nextCursor === cursor) {
+        throw new WebSearchError(`Gateway returned the same tools/list cursor twice on ${this.endpoint}`)
       }
       cursor = nextCursor
     }
@@ -473,18 +526,16 @@ export class WebSearchClient {
     if (gatewayArn) {
       const parsed = parseGatewayArn(gatewayArn)
       resolvedId = parsed.gatewayId
-      region = region ?? parsed.region
+      // A gateway lives in one region, so a region that disagrees with the ARN is a
+      // mistake either way round. Saying so here beats a 403 or a DNS failure later.
+      if (region !== undefined && region !== parsed.region) {
+        throw new Error(`region '${region}' does not match the region in the gateway ARN, '${parsed.region}'`)
+      }
+      region = parsed.region
     }
 
     if (!region) {
       throw new Error('region is required. Pass region, or a gatewayArn to read it from.')
-    }
-
-    if (!(KNOWN_REGIONS as readonly string[]).includes(region)) {
-      console.warn(
-        `Web search is offered in ${KNOWN_REGIONS.join(', ')}. ` +
-          `Calling ${region} may fail if the connector is not available there.`
-      )
     }
 
     // A caller-supplied endpoint is checked too, not only one built from an ID, because
@@ -526,6 +577,9 @@ export class WebSearchClient {
    * @param options - Result limit and filters
    * @returns The search results
    *
+   * @throws ZodError if the query or the options are outside the documented limits.
+   * Validation runs before anything is signed or sent, and the zod error names the
+   * offending field, which a wrapped error would lose.
    * @throws WebSearchError if the call fails or the response cannot be decoded.
    */
   async search(query: string, options: SearchOptions = {}): Promise<WebSearchResponse> {
@@ -763,7 +817,13 @@ function parseGatewayArn(arn: string): { gatewayId: string; region: string } {
   const parts = arn.split(':')
   const resource = parts[5]
   const region = parts[3]
-  if (parts[0] !== 'arn' || region === undefined || resource === undefined || !resource.startsWith('gateway/')) {
+  if (
+    parts[0] !== 'arn' ||
+    parts[2] !== GATEWAY_SIGNING_SERVICE ||
+    region === undefined ||
+    resource === undefined ||
+    !resource.startsWith('gateway/')
+  ) {
     throw new Error(
       `Not a gateway ARN: '${arn}'. Expected 'arn:aws:bedrock-agentcore:<region>:<account>:gateway/<id>'.`
     )

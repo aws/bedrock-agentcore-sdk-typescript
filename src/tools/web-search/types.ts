@@ -41,10 +41,17 @@ export const MAX_MAX_RESULTS = 25
 export const MAX_DOMAIN_FILTER_ENTRIES = 100
 
 /**
- * Regions where the web search connector is offered. Used for a warning only,
- * never to block a call, so a newly added region does not require an SDK release.
+ * Regions where the web search connector is offered, for callers who want to check
+ * before they call. The client itself never blocks a region, so a newly added one does
+ * not require an SDK release.
  */
 export const KNOWN_REGIONS = ['us-east-1', 'eu-west-1', 'ap-northeast-1'] as const
+
+/**
+ * How many pages of `tools/list` are followed before giving up, so a server that keeps
+ * handing out cursors ends the call with an error instead of looping.
+ */
+export const MAX_TOOL_LIST_PAGES = 50
 
 /**
  * MCP protocol version this client offers during initialize. The version the
