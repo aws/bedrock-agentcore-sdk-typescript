@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-09-11
+
+### Other Changes
+
+- feat(tools): add WebSearchClient for AgentCore Web Search (#257) (ddaee27)
+- Bump agentcore-devx-devtools reusable workflow pin (#259) (fd772b1)
+- chore(deps): bump fast-uri from 3.1.5 to 3.1.7 (#256) (da22b46)
+- ci: use dedicated release runners (#250) (26cdfc0)
+- fix(ci): remove interpolated context value in script (#248) (6053efe)
+- fix(ci): simplify pre-commit hook to leverage lint-staged. (#245) (9a7c7ff)
+
 ## [0.4.3] - 2026-08-06
 
 ### Other Changes
