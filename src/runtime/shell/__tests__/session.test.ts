@@ -150,30 +150,15 @@ describe('ShellSession: construction', () => {
 
   it('initial attributes are correct', () => {
     const session = new ShellSession(makeOpts([]))
-    expect(session.reconnected).toBe(false)
     expect(session.kicked).toBe(false)
-    expect(session.bytesDropped).toBe(0)
     expect(session.exitCode).toBeNull()
   })
 })
 
 describe('ShellSession: connect', () => {
-  it('reads shellId and reconnected=false from STATUS confirmation frame', async () => {
-    const session = new ShellSession(makeOpts([confirmationFrame('srv-shell', false)]))
-    await session.connect()
-    expect(session.shellId).toBe('srv-shell')
-    expect(session.reconnected).toBe(false)
-  })
-
-  it('sets reconnected=true from STATUS frame', async () => {
-    const session = new ShellSession(makeOpts([confirmationFrame('s', true)]))
-    await session.connect()
-    expect(session.reconnected).toBe(true)
-  })
-
   it('reads shellId and sessionId from 101 upgrade headers', async () => {
     const session = new ShellSession(
-      makeOpts([confirmationFrame('hdr-shell')], {
+      makeOpts([], {
         headers: {
           'x-amzn-bedrock-agentcore-shell-id': 'hdr-shell',
           'x-amzn-bedrock-agentcore-runtime-session-id': 'hdr-session',
@@ -184,49 +169,11 @@ describe('ShellSession: connect', () => {
     expect(session.shellId).toBe('hdr-shell')
     expect(session.sessionId).toBe('hdr-session')
   })
-
-  it('stashes non-STATUS frames received before confirmation', async () => {
-    const session = new ShellSession(makeOpts([stdoutFrame('early'), confirmationFrame('s')]))
-    await session.connect()
-    const frames = []
-    for await (const f of session) {
-      frames.push(f)
-      if (frames.length === 1) break
-    }
-    expect(frames[0]!.channel).toBe(ShellChannel.STDOUT)
-    expect(frames[0]!.text).toBe('early')
-  })
-
-  it('proceeds with warning when STATUS confirmation times out', async () => {
-    const warnSpy = vi.spyOn(console, 'warn')
-
-    let capturedWs: MockWs | null = null
-    const wsFactory = (_url: string): WebSocket => {
-      const ws = makeMockWs()
-      capturedWs = ws
-      return ws as unknown as WebSocket
-    }
-    const connectFn: ConnectFn = vi.fn(async (_shellId, _sessionId) => {
-      process.nextTick(() => {
-        capturedWs!.emit('upgrade', { headers: {} })
-        capturedWs!.emit('open')
-        // No frames emitted — metadata timeout fires after DEFAULT_METADATA_TIMEOUT ms
-      })
-      return { url: 'wss://test.local/runtimes/x/ws/shells', headers: {} }
-    })
-
-    const session = new ShellSession({ connectFn, _wsFactory: wsFactory, logger: console })
-    // AbortSignal.timeout() uses real timers — no fake timers needed, just await with real timeout
-    await session.connect()
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('imed out'))
-  }, 15_000)
 })
 
 describe('ShellSession: iterator', () => {
   it('yields STDOUT frames in order', async () => {
-    const session = new ShellSession(
-      makeOpts([confirmationFrame('s'), stdoutFrame('hello'), stdoutFrame('world'), closeFrame()])
-    )
+    const session = new ShellSession(makeOpts([stdoutFrame('hello'), stdoutFrame('world'), closeFrame()]))
     await session.connect()
     const texts: string[] = []
     for await (const f of session) {
@@ -236,9 +183,7 @@ describe('ShellSession: iterator', () => {
   })
 
   it('swallows HEARTBEAT frames — never yields to caller', async () => {
-    const session = new ShellSession(
-      makeOpts([confirmationFrame('s'), heartbeatFrame(), stdoutFrame('after-hb'), closeFrame()])
-    )
+    const session = new ShellSession(makeOpts([heartbeatFrame(), stdoutFrame('after-hb'), closeFrame()]))
     await session.connect()
     const channels: ShellChannel[] = []
     for await (const f of session) channels.push(f.channel)
@@ -247,7 +192,7 @@ describe('ShellSession: iterator', () => {
   })
 
   it('stops on CLOSE frame', async () => {
-    const session = new ShellSession(makeOpts([confirmationFrame('s'), stdoutFrame('x'), closeFrame()]))
+    const session = new ShellSession(makeOpts([stdoutFrame('x'), closeFrame()]))
     await session.connect()
     let count = 0
     for await (const _ of session) count++
@@ -255,7 +200,7 @@ describe('ShellSession: iterator', () => {
   })
 
   it('stops on WebSocket close 1000', async () => {
-    const session = new ShellSession(makeOpts([confirmationFrame('s'), stdoutFrame('x')], { closeCode: 1000 }))
+    const session = new ShellSession(makeOpts([stdoutFrame('x')], { closeCode: 1000 }))
     await session.connect()
     let count = 0
     for await (const _ of session) count++
@@ -263,7 +208,7 @@ describe('ShellSession: iterator', () => {
   })
 
   it('sets kicked=true on close code 4000', async () => {
-    const session = new ShellSession(makeOpts([confirmationFrame('s')], { closeCode: 4000 }))
+    const session = new ShellSession(makeOpts([], { closeCode: 4000 }))
     await session.connect()
     for await (const _ of session) {
       /* drain */
@@ -273,9 +218,7 @@ describe('ShellSession: iterator', () => {
 
   it('stops on close code 1003 without reconnecting and warns', async () => {
     const warnSpy = vi.spyOn(console, 'warn')
-    // reconnectConfig is present so that if 1003 incorrectly fell through to the
-    // reconnect path it would trigger a retry; we assert it does not.
-    const opts = makeOpts([confirmationFrame('s'), stdoutFrame('x')], { closeCode: 1003 })
+    const opts = makeOpts([stdoutFrame('x')], { closeCode: 1003 })
     const session = new ShellSession({ ...opts, reconnectConfig: { maxRetries: 1, baseDelay: 0 }, logger: console })
     await session.connect()
     let count = 0
@@ -283,12 +226,11 @@ describe('ShellSession: iterator', () => {
     expect(count).toBe(1)
     expect((session as unknown as { _state: { status: string } })._state.status).not.toBe('open')
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('1003'))
-    // connectFn called exactly once — reconnect loop was not entered
     expect((opts.connectFn as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1)
   })
 
   it('stops cleanly when close() is called mid-iteration', async () => {
-    const session = new ShellSession(makeOpts([confirmationFrame('s'), stdoutFrame('x')]))
+    const session = new ShellSession(makeOpts([stdoutFrame('x')]))
     await session.connect()
     let count = 0
     for await (const _ of session) {
@@ -302,7 +244,7 @@ describe('ShellSession: iterator', () => {
 
 describe('ShellSession: exitCode', () => {
   it('is null during STDOUT frames, set after termination STATUS', async () => {
-    const session = new ShellSession(makeOpts([confirmationFrame('s'), stdoutFrame('x'), exitFrame(0)]))
+    const session = new ShellSession(makeOpts([stdoutFrame('x'), exitFrame(0)]))
     await session.connect()
     let midLoopCode: number | null | undefined
     for await (const f of session) {
@@ -313,7 +255,7 @@ describe('ShellSession: exitCode', () => {
   })
 
   it('exitCode=0 for clean exit (status=Success)', async () => {
-    const session = new ShellSession(makeOpts([confirmationFrame('s'), exitFrame(0)]))
+    const session = new ShellSession(makeOpts([exitFrame(0)]))
     await session.connect()
     for await (const _ of session) {
       /* drain */
@@ -322,7 +264,7 @@ describe('ShellSession: exitCode', () => {
   })
 
   it('exitCode reflects non-zero exit', async () => {
-    const session = new ShellSession(makeOpts([confirmationFrame('s'), exitFrame(42)]))
+    const session = new ShellSession(makeOpts([exitFrame(42)]))
     await session.connect()
     for await (const _ of session) {
       /* drain */
@@ -339,70 +281,32 @@ describe('ShellSession: exitCode', () => {
       reason: 'InternalError',
       code: 500,
     })
-    const session = new ShellSession(makeOpts([confirmationFrame('s'), errFrame]))
+    const session = new ShellSession(makeOpts([errFrame]))
     await session.connect()
     for await (const _ of session) {
       /* drain */
     }
     expect(session.exitCode).toBeNull()
   })
-
-  it('exitCode set via pending-frames drain path', async () => {
-    // STDOUT arrives before STATUS confirmation → gets stashed; exitCode set when STATUS drained
-    const session = new ShellSession(makeOpts([stdoutFrame('stashed'), confirmationFrame('s'), exitFrame(5)]))
-    await session.connect()
-    const channels: ShellChannel[] = []
-    for await (const f of session) channels.push(f.channel)
-    expect(session.exitCode).toBe(5)
-    expect(channels[0]).toBe(ShellChannel.STDOUT) // pending frame drained first
-  })
-})
-
-describe('ShellSession: bytesDropped', () => {
-  it('set from second confirmation frame with bytesDropped field', async () => {
-    const secondConf = statusFrame({
-      kind: 'Status',
-      apiVersion: 'v1',
-      metadata: { shellId: 's', reconnected: true, bytesDropped: 512 },
-      status: 'Success',
-    })
-    const session = new ShellSession(
-      makeOpts([confirmationFrame('s'), stdoutFrame('output'), secondConf, closeFrame()])
-    )
-    await session.connect()
-    const channels: ShellChannel[] = []
-    for await (const f of session) channels.push(f.channel)
-    expect(session.bytesDropped).toBe(512)
-    expect(channels).toEqual([ShellChannel.STDOUT]) // second confirmation swallowed
-  })
-
-  it('stays 0 when no ring-buffer overflow', async () => {
-    const session = new ShellSession(makeOpts([confirmationFrame('s'), closeFrame()]))
-    await session.connect()
-    for await (const _ of session) {
-      /* drain */
-    }
-    expect(session.bytesDropped).toBe(0)
-  })
 })
 
 describe('ShellSession: close()', () => {
   it('transitions to closed state after close()', async () => {
-    const session = new ShellSession(makeOpts([confirmationFrame('s')]))
+    const session = new ShellSession(makeOpts([]))
     await session.connect()
     await session.close()
     expect((session as unknown as { _state: { status: string } })._state.status).toBe('closed')
   })
 
   it('is idempotent — calling twice does not throw', async () => {
-    const session = new ShellSession(makeOpts([confirmationFrame('s')]))
+    const session = new ShellSession(makeOpts([]))
     await session.connect()
     await session.close()
     await expect(session.close()).resolves.toBeUndefined()
   })
 
   it('send() throws after close()', async () => {
-    const session = new ShellSession(makeOpts([confirmationFrame('s')]))
+    const session = new ShellSession(makeOpts([]))
     await session.connect()
     await session.close()
     await expect(session.send('hello\n')).rejects.toThrow()
@@ -413,7 +317,7 @@ describe('ShellSession: disconnect handling', () => {
   // Build a session whose socket we can drive frame-by-frame, with full control over
   // when frames/close arrive — so we can drop the connection while NOT iterating.
   function manualOpts(
-    opts: { reconnect?: boolean; onReconnect?: (reconnected: boolean) => void | Promise<void> } = {}
+    opts: { reconnect?: boolean; onReconnect?: () => void | Promise<void> } = {}
   ): ShellSessionOptions & {
     sockets: MockWs[]
     confirm: () => void
@@ -425,13 +329,10 @@ describe('ShellSession: disconnect handling', () => {
       return ws as unknown as WebSocket
     }
     const connectFn: ConnectFn = vi.fn(async () => {
-      // Read the socket lazily inside nextTick — wsFactory runs AFTER connectFn returns.
       process.nextTick(() => {
         const ws = sockets[sockets.length - 1]!
-        const isReconnect = sockets.length > 1
         ws.emit('upgrade', { headers: {} })
         ws.emit('open')
-        process.nextTick(() => ws.emit('message', confirmationFrame('s', isReconnect)))
       })
       return { url: 'wss://test.local/runtimes/x/ws/shells', headers: {} }
     })
@@ -676,7 +577,7 @@ describe('ShellSession: disconnect handling', () => {
 describe('ShellSession: keepalive', () => {
   it('calls ws.ping() on the interval and stops after close()', async () => {
     vi.useFakeTimers()
-    const opts = makeOpts([confirmationFrame('s')])
+    const opts = makeOpts([])
     const session = new ShellSession({ ...opts, keepaliveIntervalMs: 1000 })
     await session.connect()
 
@@ -701,7 +602,7 @@ describe('ShellSession: keepalive', () => {
 
   it('keepalive disabled when keepaliveIntervalMs=0', async () => {
     vi.useFakeTimers()
-    const opts = makeOpts([confirmationFrame('s')])
+    const opts = makeOpts([])
     const session = new ShellSession({ ...opts, keepaliveIntervalMs: 0 })
     await session.connect()
 
@@ -714,7 +615,7 @@ describe('ShellSession: keepalive', () => {
 
   it('keepalive timer is stopped when iterator finishes naturally', async () => {
     vi.useFakeTimers()
-    const opts = makeOpts([confirmationFrame('s')], { closeCode: 1000 })
+    const opts = makeOpts([], { closeCode: 1000 })
     const session = new ShellSession({ ...opts, keepaliveIntervalMs: 500 })
     await session.connect()
 
@@ -733,14 +634,14 @@ describe('ShellSession: keepalive', () => {
 
 describe('ShellSession: connect() state guards', () => {
   it('throws when called on an already-closed session', async () => {
-    const session = new ShellSession(makeOpts([confirmationFrame('s')]))
+    const session = new ShellSession(makeOpts([]))
     await session.connect()
     await session.close()
     await expect(session.connect()).rejects.toThrow('closed')
   })
 
   it('throws when called while already connecting/open', async () => {
-    const session = new ShellSession(makeOpts([confirmationFrame('s')]))
+    const session = new ShellSession(makeOpts([]))
     await session.connect()
     await expect(session.connect()).rejects.toThrow('idle')
   })
@@ -762,21 +663,6 @@ describe('ShellSession: connect() state guards', () => {
   })
 })
 
-describe('ShellSession: HEARTBEAT in pendingFrames', () => {
-  it('does not yield a HEARTBEAT that arrived before STATUS confirmation', async () => {
-    // HEARTBEAT arrives before the confirmation STATUS — it ends up in pendingFrames.
-    // The pendingFrames drain must filter it out just like the main loop does.
-    const session = new ShellSession(
-      makeOpts([heartbeatFrame(), confirmationFrame('s'), stdoutFrame('hi'), closeFrame()])
-    )
-    await session.connect()
-    const channels: ShellChannel[] = []
-    for await (const f of session) channels.push(f.channel)
-    expect(channels).not.toContain(ShellChannel.HEARTBEAT)
-    expect(channels).toContain(ShellChannel.STDOUT)
-  })
-})
-
 describe('ShellSession: reconnectWindow null = unlimited', () => {
   it('does not expire and reconnects when reconnectWindow is null', async () => {
     let callCount = 0
@@ -795,14 +681,11 @@ describe('ShellSession: reconnectWindow null = unlimited', () => {
         ws.emit('upgrade', { headers: {} })
         ws.emit('open')
         process.nextTick(() => {
-          ws.emit('message', confirmationFrame('s'))
-          process.nextTick(() => {
-            if (thisCallCount === 1) {
-              ws.emit('close', 1006, Buffer.from('')) // abnormal → triggers reconnect
-            } else {
-              ws.emit('message', closeFrame()) // clean close on second call
-            }
-          })
+          if (thisCallCount === 1) {
+            ws.emit('close', 1006, Buffer.from('')) // abnormal → triggers reconnect
+          } else {
+            ws.emit('message', closeFrame()) // clean close on second call
+          }
         })
       })
       return { url: 'wss://test.local/runtimes/x/ws/shells', headers: {} }
@@ -819,5 +702,119 @@ describe('ShellSession: reconnectWindow null = unlimited', () => {
       /* drain */
     }
     expect(callCount).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('ShellSession: confirmation frame swallowed during iteration', () => {
+  it('swallows a confirmation STATUS frame and does not yield it to caller', async () => {
+    const session = new ShellSession(makeOpts([confirmationFrame('s'), stdoutFrame('after-conf'), closeFrame()]))
+    await session.connect()
+    const channels: ShellChannel[] = []
+    for await (const f of session) channels.push(f.channel)
+    // Only STDOUT should be yielded — confirmation frame is swallowed
+    expect(channels).toEqual([ShellChannel.STDOUT])
+  })
+})
+
+describe('ShellSession: connect ready immediately', () => {
+  it('connect resolves without waiting for any inbound frames', async () => {
+    // No frames at all — connect should still succeed immediately
+    let capturedWs: MockWs | null = null
+    const wsFactory = (_url: string): WebSocket => {
+      const ws = makeMockWs()
+      capturedWs = ws
+      return ws as unknown as WebSocket
+    }
+    const connectFn: ConnectFn = vi.fn(async () => {
+      process.nextTick(() => {
+        capturedWs!.emit('upgrade', {
+          headers: { 'x-amzn-bedrock-agentcore-shell-id': 'instant-shell' },
+        })
+        capturedWs!.emit('open')
+        // No frames emitted at all — connect should still complete
+      })
+      return { url: 'wss://test.local/runtimes/x/ws/shells', headers: {} }
+    })
+
+    const session = new ShellSession({ connectFn, _wsFactory: wsFactory })
+    await session.connect()
+    expect(session.shellId).toBe('instant-shell')
+  })
+})
+
+describe('ShellSession: socket closes between the open event and state promotion', () => {
+  // 'open' and 'close' land in the same tick, so the socket is dead before the awaited open
+  // race resumes _connectWithUpgrade. The close listener ignores closes while the session is
+  // still 'connecting', so the promotion step must re-check the socket itself.
+  function makeRaceOpts(closeCode: number) {
+    const sockets: MockWs[] = []
+    const wsFactory = (): WebSocket => {
+      const ws = makeMockWs()
+      sockets.push(ws)
+      return ws as unknown as WebSocket
+    }
+    const connectFn: ConnectFn = vi.fn(async () => {
+      process.nextTick(() => {
+        const ws = sockets[sockets.length - 1]!
+        ws.emit('upgrade', { headers: {} })
+        ws.emit('open')
+        ws.readyState = 3 // CLOSED
+        ws.emit('close', closeCode, Buffer.from(''))
+      })
+      return { url: 'wss://test.local/runtimes/x/ws/shells', headers: {} }
+    })
+    return { connectFn, _wsFactory: wsFactory, sockets }
+  }
+
+  it('connect() rejects with the close code instead of resolving with a dead socket', async () => {
+    const opts = makeRaceOpts(1006)
+    const session = new ShellSession(opts)
+    await expect(session.connect()).rejects.toThrow(/1006/)
+    expect(opts.sockets[0]!.terminate).toHaveBeenCalled()
+  })
+
+  it('leaves the session idle so send() reports not-connected, not a raw readyState error', async () => {
+    const session = new ShellSession(makeRaceOpts(1006))
+    await expect(session.connect()).rejects.toThrow()
+    await expect(session.send('x')).rejects.toThrow(/not connected/)
+  })
+
+  it('a reconnect attempt that dies at open is retried by the reconnect loop', async () => {
+    const sockets: MockWs[] = []
+    const wsFactory = (): WebSocket => {
+      const ws = makeMockWs()
+      sockets.push(ws)
+      return ws as unknown as WebSocket
+    }
+    let callCount = 0
+    const connectFn: ConnectFn = vi.fn(async () => {
+      const n = ++callCount
+      process.nextTick(() => {
+        const ws = sockets[sockets.length - 1]!
+        ws.emit('upgrade', { headers: {} })
+        ws.emit('open')
+        if (n === 1) {
+          process.nextTick(() => ws.emit('close', 1006, Buffer.from(''))) // drop → reconnect engages
+        } else if (n === 2) {
+          ws.readyState = 3 // CLOSED
+          ws.emit('close', 1006, Buffer.from('')) // dies in the open→promotion gap
+        } else {
+          process.nextTick(() => ws.emit('message', closeFrame())) // healthy reattach, then clean close
+        }
+      })
+      return { url: 'wss://test.local/runtimes/x/ws/shells', headers: {} }
+    })
+
+    const session = new ShellSession({
+      connectFn,
+      _wsFactory: wsFactory,
+      reconnectConfig: { maxRetries: 3, baseDelay: 0, reconnectWindow: null },
+    })
+    await session.connect()
+    for await (const _ of session) {
+      /* drain */
+    }
+    expect(callCount).toBe(3)
+    expect(session.kicked).toBe(false)
   })
 })
