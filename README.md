@@ -109,6 +109,7 @@ const agent = new Agent({
 - **Web Search** — Search the web through a Gateway connector target → [Guide](docs/WEB_SEARCH.md)
 - **Identity** — Manage API keys and OAuth tokens → [Examples](https://github.com/awslabs/bedrock-agentcore-samples-typescript/tree/main/primitives/identity)
 - **Memory** — Persistent knowledge across sessions → [Guide](docs/MEMORY.md)
+- **Harness** — Invoke a deployed Harness as a Strands agent (experimental) → [Guide](src/harness/integrations/strands/README.md)
 - **Gateway** — Transform APIs into MCP tools (coming soon)
 - **Observability** — OpenTelemetry tracing (coming soon)
 
