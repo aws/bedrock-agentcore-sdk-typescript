@@ -1,6 +1,6 @@
 {
   "name": "bedrock-agentcore",
-  "version": "0.4.1",
+  "version": "0.4.4",
   "description": "TypeScript SDK for AWS Bedrock AgentCore",
   "main": "dist/src/index.js",
   "module": "dist/src/index.js",
@@ -46,6 +46,10 @@
       "import": "./dist/src/tools/code-interpreter/integrations/strands/index.js",
       "types": "./dist/src/tools/code-interpreter/integrations/strands/index.d.ts"
     },
+    "./web-search": {
+      "import": "./dist/src/tools/web-search/index.js",
+      "types": "./dist/src/tools/web-search/index.d.ts"
+    },
     "./memory/strands": {
       "import": "./dist/src/memory/integrations/strands/index.js",
       "types": "./dist/src/memory/integrations/strands/index.d.ts"
@@ -74,14 +78,15 @@
     "clean": "rm -rf node_modules dist package-lock.json",
     "test": "vitest run --project unit-node",
     "test:all": "vitest run --project unit-node && vitest run --project integ",
+    "test:docs": "node --test scripts/*.test.mjs && python3 -m unittest scripts/test_render_adoc.py",
     "ci": "npm run lint && npm run format:check && npm run type-check:all && npm run build && npm run test:all",
     "test:watch": "vitest --project unit-node",
     "test:coverage": "vitest run --coverage --project unit-node",
     "test:integ": "vitest run --project integ",
     "lint": "eslint src tests_integ",
     "lint:fix": "eslint src tests_integ --fix",
-    "format": "prettier --write src tests_integ",
-    "format:check": "prettier --check src tests_integ",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "type-check": "tsc --noEmit",
     "type-check:tests": "tsc --noEmit -p tsconfig.test.json",
     "type-check:all": "npm run type-check && npm run type-check:tests",
@@ -126,6 +131,7 @@
     "express": "^5.2.1",
     "husky": "^9.1.7",
     "jsdom": "^29.0.0",
+    "lint-staged": "^15.5.2",
     "playwright": "^1.56.1",
     "prettier": "^3.0.0",
     "react": "^19.2.4",
@@ -134,6 +140,17 @@
     "tsx": "^4.19.4",
     "typescript": "^5.5.0",
     "vitest": "^4.0.8"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "tests_integ/**/*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": "prettier --write"
   },
   "engines": {
     "node": ">=20.0.0"

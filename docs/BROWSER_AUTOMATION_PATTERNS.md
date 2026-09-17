@@ -164,6 +164,7 @@ describe('PlaywrightBrowser Integration', () => {
 ```
 
 **Key principles**:
+
 - Use `beforeAll`/`afterAll` for session management (not `beforeEach`/`afterEach`)
 - When each test needs different session config (proxy, extensions, profile), use `afterEach` for cleanup instead
 - Set generous timeouts for real website interactions (60s+)
@@ -254,7 +255,14 @@ await browser.startSession({
   sessionName: 'full-config',
   timeout: 7200,
   viewport: { width: 1920, height: 1080 },
-  proxyConfiguration: { proxies: [/* ... */] },
-  extensions: [/* ... */],
+  proxyConfiguration: {
+    proxies: [
+      /* ... */
+    ],
+  },
+  extensions: [
+    /* ... */
+  ],
   profileConfiguration: { profileIdentifier: 'my-profile' },
 })
+```

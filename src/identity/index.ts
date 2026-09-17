@@ -19,7 +19,10 @@
  */
 
 // Higher-order functions for wrapping tools
-export { withAccessToken, withApiKey } from './wrappers.js'
+export { withAccessToken, withApiKey, withWAT } from './wrappers.js'
+
+// Middleware for automatic WAT propagation on AWS SDK clients
+export { withWatPropagation } from './middleware.js'
 
 // All type definitions
 export * from './types.js'

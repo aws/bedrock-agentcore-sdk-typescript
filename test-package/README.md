@@ -12,12 +12,14 @@ This package verifies that the `@bedrock-agentcore/sdk` can be imported and used
 ## Usage
 
 1. **Build the SDK first:**
+
    ```bash
    cd ..
    npm run build
    ```
 
 2. **Install dependencies:**
+
    ```bash
    cd test-package
    npm install
@@ -57,6 +59,7 @@ This package verifies that the `@bedrock-agentcore/sdk` can be imported and used
 ## When to Use
 
 Run this test after making changes to:
+
 - Package exports in `package.json`
 - Build configuration in `tsconfig.json`
 - Module structure or entry points

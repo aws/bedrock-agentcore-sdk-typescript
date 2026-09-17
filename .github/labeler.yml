@@ -4,57 +4,57 @@
 # Runtime-related changes
 'area: runtime':
   - changed-files:
-    - any-glob-to-any-file: 'src/runtime/**/*'
+      - any-glob-to-any-file: 'src/runtime/**/*'
   - changed-files:
-    - any-glob-to-any-file: 'tests_integ/runtime.test.ts'
+      - any-glob-to-any-file: 'tests_integ/runtime.test.ts'
 
 # Browser tool changes
 'area: browser':
   - changed-files:
-    - any-glob-to-any-file: 'src/tools/browser/**/*'
+      - any-glob-to-any-file: 'src/tools/browser/**/*'
   - changed-files:
-    - any-glob-to-any-file: 'tests_integ/browser.test.ts'
+      - any-glob-to-any-file: 'tests_integ/browser.test.ts'
 
 # Code interpreter changes
 'area: code-interpreter':
   - changed-files:
-    - any-glob-to-any-file: 'src/tools/code-interpreter/**/*'
+      - any-glob-to-any-file: 'src/tools/code-interpreter/**/*'
   - changed-files:
-    - any-glob-to-any-file: 'tests_integ/code-interpreter.test.ts'
+      - any-glob-to-any-file: 'tests_integ/code-interpreter.test.ts'
 
 # Documentation changes
 'type: docs':
   - changed-files:
-    - any-glob-to-any-file: '**/*.md'
+      - any-glob-to-any-file: '**/*.md'
   - changed-files:
-    - any-glob-to-any-file: 'docs/**/*'
+      - any-glob-to-any-file: 'docs/**/*'
 
 # Test changes
 'type: test':
   - changed-files:
-    - any-glob-to-any-file: '**/*.test.ts'
+      - any-glob-to-any-file: '**/*.test.ts'
   - changed-files:
-    - any-glob-to-any-file: 'tests_integ/**/*'
+      - any-glob-to-any-file: 'tests_integ/**/*'
 
 # Build/CI changes
 'type: build':
   - changed-files:
-    - any-glob-to-any-file:
-      - 'package.json'
-      - 'package-lock.json'
-      - 'tsconfig.json'
-      - 'vite.config.ts'
-      - 'vitest.config.ts'
-      - '.github/**/*'
+      - any-glob-to-any-file:
+          - 'package.json'
+          - 'package-lock.json'
+          - 'tsconfig.json'
+          - 'vite.config.ts'
+          - 'vitest.config.ts'
+          - '.github/**/*'
 
 # Example changes
 'type: examples':
   - changed-files:
-    - any-glob-to-any-file: 'examples/**/*'
+      - any-glob-to-any-file: 'examples/**/*'
 
 # Dependencies
 'dependencies':
   - changed-files:
-    - any-glob-to-any-file:
-      - 'package.json'
-      - 'package-lock.json'
+      - any-glob-to-any-file:
+          - 'package.json'
+          - 'package-lock.json'

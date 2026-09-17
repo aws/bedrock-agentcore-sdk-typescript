@@ -27,6 +27,7 @@ import type {
   HealthStatus,
 } from './types.js'
 import { runWithContext } from './context.js'
+import { IDENTITY_WAT_HEADER } from './constants.js'
 
 const require = createRequire(import.meta.url)
 const fastifySse = require('@fastify/sse')
@@ -575,23 +576,27 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
     // Filter headers to include only Authorization and Custom-* headers
     const filteredHeaders: Record<string, string> = {}
     for (const [key, value] of Object.entries(request.headers)) {
-      const lowerKey = key.toLowerCase()
-      const stringValue = typeof value === 'string' ? value : Array.isArray(value) ? value.join(', ') : undefined
+      const lowerCaseHeaderName = key.toLowerCase()
+      const headerValue = typeof value === 'string' ? value : Array.isArray(value) ? value.join(', ') : undefined
 
-      if (stringValue) {
+      if (headerValue) {
         // Include Authorization header
-        if (lowerKey === 'authorization') {
-          filteredHeaders[key] = stringValue
+        if (lowerCaseHeaderName === 'authorization') {
+          filteredHeaders[key] = headerValue
         }
         // Include Custom-* headers
-        else if (lowerKey.startsWith('x-amzn-bedrock-agentcore-runtime-custom-')) {
-          filteredHeaders[key] = stringValue
+        else if (lowerCaseHeaderName.startsWith('x-amzn-bedrock-agentcore-runtime-custom-')) {
+          filteredHeaders[key] = headerValue
+        } else if (lowerCaseHeaderName === IDENTITY_WAT_HEADER) {
+          filteredHeaders[key] = headerValue
         }
       }
     }
 
     // Extract workload token from header (if present)
-    const workloadAccessToken = request.headers['workloadaccesstoken'] as string | undefined
+    const workloadAccessToken = (request.headers[IDENTITY_WAT_HEADER] || request.headers['workloadaccesstoken']) as
+      | string
+      | undefined
 
     return {
       sessionId,
