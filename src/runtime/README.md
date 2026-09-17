@@ -342,7 +342,9 @@ A2A support requires the optional peer dependencies:
 npm install bedrock-agentcore @a2a-js/sdk express
 ```
 
-Defaults mirror the Python SDK's `serve_a2a`: port comes from the `PORT` env var or 9000 (the AgentCore A2A protocol port), the host binds `0.0.0.0` inside containers (detected via `/.dockerenv` or `DOCKER_CONTAINER`) and loopback otherwise, and the agent card is auto-built when omitted. When `AGENTCORE_RUNTIME_URL` is set (deployed on AgentCore), the card's JSONRPC interface URLs are rewritten to the runtime URL so a deployed agent never advertises a stale local address.
+Defaults mirror the Python SDK's `serve_a2a`: port comes from the `A2A_PORT` env var or 9000 (the AgentCore A2A contract port), the host binds `0.0.0.0` inside containers (detected via `/.dockerenv` or `DOCKER_CONTAINER`) and loopback otherwise, and the agent card is auto-built when omitted. When `AGENTCORE_RUNTIME_URL` is set (deployed on AgentCore), the card's JSONRPC interface URLs are rewritten to the runtime URL so a deployed agent never advertises a stale local address.
+
+The generic `PORT` variable is deliberately ignored: images reused across protocols set it to another protocol's port (8080 for HTTP, 8000 for MCP), which would bind the A2A server where the platform never proxies. Serving on anything other than 9000 logs a warning, since deployed invocations then fail with HTTP 424 (`RuntimeClientError`).
 
 ### Deploying to AgentCore Runtime
 

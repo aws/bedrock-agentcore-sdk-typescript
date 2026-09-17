@@ -32,6 +32,15 @@ import { getContext, runWithContext } from '../context.js'
 import type { HealthStatus, RequestContext } from '../types.js'
 
 /**
+ * Port the AgentCore Runtime A2A contract requires the container to listen on.
+ * HTTP uses 8080 and MCP uses 8000, so the generic `PORT` variable is not
+ * interchangeable between protocols.
+ */
+const A2A_CONTRACT_PORT = 9000
+
+const A2A_PORT_ENV = 'A2A_PORT'
+
+/**
  * Options for {@link serveA2A} and {@link buildA2AApp}.
  */
 export interface ServeA2AOptions {
@@ -46,7 +55,7 @@ export interface ServeA2AOptions {
   agentCard?: AgentCard
 
   /**
-   * Port to serve on; defaults to the PORT env var, or 9000 (the AgentCore A2A protocol port) when unset.
+   * Port to serve on; defaults to the `A2A_PORT` env var, or 9000 (the AgentCore A2A contract port) when unset. Anything other than 9000 warns, because deployed invocations only reach the contract port.
    */
   port?: number
 
@@ -94,6 +103,12 @@ export type BuildA2AAppOptions = Omit<ServeA2AOptions, 'host'>
  */
 export async function serveA2A(options: ServeA2AOptions): Promise<Server> {
   const port = resolvePort(options.port)
+  if (port !== A2A_CONTRACT_PORT) {
+    console.warn(
+      `port=<${port}>, contract_port=<${A2A_CONTRACT_PORT}> | a2a port differs from the runtime contract port | ` +
+        'deployed invocations will fail with http 424 because the runtime proxies to the contract port only'
+    )
+  }
   // Bind all interfaces only where the container contract needs it; on a
   // developer machine an A2A agent has no business listening externally.
   const inContainer = existsSync('/.dockerenv') || Boolean(process.env.DOCKER_CONTAINER)
@@ -249,7 +264,7 @@ function resolveAgentCard(provided: AgentCard | undefined, port: number): AgentC
 }
 
 function resolvePort(port: number | undefined): number {
-  return port ?? Number(process.env.PORT ?? 9000)
+  return port ?? Number(process.env[A2A_PORT_ENV] ?? A2A_CONTRACT_PORT)
 }
 
 function noop(): void {}

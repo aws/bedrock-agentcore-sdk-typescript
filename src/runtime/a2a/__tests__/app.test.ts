@@ -123,14 +123,51 @@ describe('serveA2A', () => {
   })
 
   describe('port and host resolution', () => {
-    it('uses the PORT env var when no port option is given', async () => {
-      vi.stubEnv('PORT', '0')
+    it('uses the A2A_PORT env var when no port option is given', async () => {
+      vi.stubEnv('A2A_PORT', '0')
       const server = await serveA2A({ executor: new RecordingExecutor() })
       servers.push(server)
 
-      // PORT=0 binds an ephemeral port — anything but 9000 proves the env var was used
+      // A2A_PORT=0 binds an ephemeral port — anything but 9000 proves the env var was used
       expect(listenPort(server)).toBeGreaterThan(0)
       expect(listenPort(server)).not.toBe(9000)
+    })
+
+    // Images reused across protocols set PORT to 8080 (HTTP) or 8000 (MCP), so
+    // honouring it would bind the A2A server off its contract port.
+    it('ignores the generic PORT env var and falls back to the contract port', async () => {
+      vi.stubEnv('PORT', '8080')
+
+      // buildA2AApp resolves the same way but advertises the port instead of
+      // binding it, so the assertion does not need port 9000 to be free.
+      const app = buildA2AApp({ executor: new RecordingExecutor() })
+      const server = app.listen(0, '127.0.0.1')
+      await new Promise((resolve) => server.once('listening', resolve))
+      try {
+        const port = (server.address() as { port: number }).port
+        const response = await fetch(`http://127.0.0.1:${port}/.well-known/agent-card.json`, {
+          headers: { 'A2A-Version': '1.0' },
+        })
+        const card = (await response.json()) as { supportedInterfaces: { url: string }[] }
+
+        expect(card.supportedInterfaces.map((i) => i.url)).toContain('http://localhost:9000/')
+      } finally {
+        server.close()
+      }
+    })
+
+    it('warns when the resolved port is not the contract port', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        await serve({ port: 3006 })
+        const message = warn.mock.calls.map((call) => String(call[0])).join('\n')
+
+        expect(message).toContain('port=<3006>')
+        expect(message).toContain('contract_port=<9000>')
+        expect(message).toContain('424')
+      } finally {
+        warn.mockRestore()
+      }
     })
 
     it('binds to loopback outside containers and 0.0.0.0 inside', async () => {
