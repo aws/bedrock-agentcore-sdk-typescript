@@ -103,13 +103,14 @@ export async function serveA2A(options: ServeA2AOptions): Promise<Server> {
   const app = buildA2AApp({ ...options, agentCard, port })
 
   return new Promise((resolve, reject) => {
-    // Express 5 invokes the listen callback with the error on bind failure
-    // (e.g. EADDRINUSE) instead of emitting an unhandled 'error' event.
-    const server = app.listen(port, host, (error?: Error) => {
-      if (error) {
-        reject(error)
-        return
-      }
+    // Bind failures (e.g. EADDRINUSE) reach the listen callback on Express 5
+    // but are emitted as an 'error' event on Express 4, so listen without a
+    // callback and use the server events both majors agree on.
+    const server = app.listen(port, host)
+
+    server.once('error', reject)
+    server.once('listening', () => {
+      server.removeListener('error', reject)
       console.log(`agent=<${agentCard.name}>, host=<${host}>, port=<${port}> | a2a server listening`)
       resolve(server)
     })
