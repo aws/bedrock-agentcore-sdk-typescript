@@ -219,6 +219,26 @@ describe('serveA2A', () => {
       expect(executor.observed?.oauth2CallbackUrl).toBe('https://callback.example.com')
     })
 
+    // withWatPropagation sends the token under this header on outbound Invoke*
+    // calls, so it is the shape an A2A agent sees when another agent invokes it.
+    it('exposes a workload access token sent as the identity WAT header', async () => {
+      const executor = new RecordingExecutor()
+      const server = await serve({ executor })
+
+      const response = await fetch(`http://127.0.0.1:${listenPort(server)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-amz-bedrock-agentcore-identity-wat': 'wat-chained',
+        },
+        body: sendMessageBody('msg-wat'),
+      })
+
+      expect(response.status).toBe(200)
+      expect(executor.observed?.workloadAccessToken).toBe('wat-chained')
+      expect(executor.observedState?.get('workloadAccessToken')).toBe('wat-chained')
+    })
+
     it('mirrors the runtime fields into ServerCallContext.state', async () => {
       const executor = new RecordingExecutor()
       const server = await serve({ executor })

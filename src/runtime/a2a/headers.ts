@@ -9,6 +9,8 @@
 
 import { randomUUID } from 'crypto'
 
+import { IDENTITY_WAT_HEADER } from '../constants.js'
+
 /**
  * Request context extracted from AgentCore-injected A2A headers.
  */
@@ -24,7 +26,7 @@ export interface A2ARequestContext {
   requestId: string
 
   /**
-   * Workload access token for AgentCore Identity, from the `WorkloadAccessToken` header.
+   * Workload access token for AgentCore Identity, from the `x-amz-bedrock-agentcore-identity-wat` header, falling back to `WorkloadAccessToken`.
    */
   workloadAccessToken?: string | undefined
 
@@ -34,7 +36,7 @@ export interface A2ARequestContext {
   oauth2CallbackUrl?: string | undefined
 
   /**
-   * Forwardable caller headers: `Authorization` plus everything that passes the runtime header allowlist.
+   * Forwardable caller headers: `Authorization`, the identity WAT header, plus everything that passes the runtime header allowlist.
    */
   headers: Record<string, string>
 }
@@ -197,6 +199,10 @@ const RESTRICTED_HEADERS: ReadonlySet<string> = new Set(
  *
  * Trace propagation headers (`traceparent`, `baggage`) pass these rules.
  *
+ * The identity WAT header is `x-amz-` prefixed and so rejected here;
+ * {@link extractA2AContext} forwards it as a named exception, as the HTTP
+ * protocol path does.
+ *
  * @param headerName - Header name in any casing
  * @returns True when the header may be forwarded to agent code
  */
@@ -219,7 +225,8 @@ export function isForwardableHeader(headerName: string): boolean {
  *
  * The context-bearing headers (session id, request id, workload access
  * token, OAuth2 callback URL) land in typed fields; the `headers` map keeps
- * `Authorization` plus every header that passes {@link isForwardableHeader}.
+ * `Authorization` and the identity WAT header plus every header that passes
+ * {@link isForwardableHeader}.
  *
  * @param headers - Raw incoming request headers
  * @returns The extracted request context
@@ -232,7 +239,7 @@ export function extractA2AContext(headers: IncomingHeaders): A2ARequestContext {
       continue
     }
     const lower = key.toLowerCase()
-    if (lower === AUTHORIZATION_HEADER || isForwardableHeader(lower)) {
+    if (lower === AUTHORIZATION_HEADER || lower === IDENTITY_WAT_HEADER || isForwardableHeader(lower)) {
       forwardable[key] = value
     }
   }
@@ -240,7 +247,10 @@ export function extractA2AContext(headers: IncomingHeaders): A2ARequestContext {
   return {
     sessionId: headerValue(headers[SESSION_HEADER]) ?? '',
     requestId: headerValue(headers[REQUEST_ID_HEADER]) ?? randomUUID(),
-    workloadAccessToken: headerValue(headers[WORKLOAD_TOKEN_HEADER]),
+    // AgentCore injects the token as WorkloadAccessToken, but an agent invoked
+    // by another agent receives it under the identity header that
+    // withWatPropagation sets. Same precedence as the HTTP protocol path.
+    workloadAccessToken: headerValue(headers[IDENTITY_WAT_HEADER]) || headerValue(headers[WORKLOAD_TOKEN_HEADER]),
     oauth2CallbackUrl: headerValue(headers[OAUTH2_CALLBACK_HEADER]),
     headers: forwardable,
   }

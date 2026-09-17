@@ -58,4 +58,29 @@ describe('extractA2AContext', () => {
     const context = extractA2AContext({ 'x-custom-multi': ['a', 'b'] })
     expect(context.headers['x-custom-multi']).toBe('a, b')
   })
+
+  it('reads the workload access token from the identity WAT header', () => {
+    const context = extractA2AContext({ 'x-amz-bedrock-agentcore-identity-wat': 'wat-1' })
+
+    expect(context.workloadAccessToken).toBe('wat-1')
+  })
+
+  it('prefers the identity WAT header over WorkloadAccessToken when both are present', () => {
+    const context = extractA2AContext({
+      'x-amz-bedrock-agentcore-identity-wat': 'wat-identity',
+      workloadaccesstoken: 'wat-legacy',
+    })
+
+    expect(context.workloadAccessToken).toBe('wat-identity')
+  })
+
+  it('forwards the identity WAT header while still stripping other x-amz-* headers', () => {
+    const context = extractA2AContext({
+      'x-amz-bedrock-agentcore-identity-wat': 'wat-1',
+      'x-amz-date': '20260917T000000Z',
+      'x-amz-security-token': 'sigv4-token',
+    })
+
+    expect(context.headers).toEqual({ 'x-amz-bedrock-agentcore-identity-wat': 'wat-1' })
+  })
 })
