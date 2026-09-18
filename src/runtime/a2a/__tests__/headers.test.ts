@@ -1,23 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isForwardableHeader, extractA2AContext } from '../headers.js'
-
-describe('isForwardableHeader', () => {
-  it('allows application headers including trace propagation', () => {
-    expect(isForwardableHeader('traceparent')).toBe(true)
-    expect(isForwardableHeader('baggage')).toBe(true)
-    expect(isForwardableHeader('x-request-source')).toBe(true)
-    expect(isForwardableHeader('x-amzn-bedrock-agentcore-runtime-custom-tenant')).toBe(true)
-  })
-
-  it('rejects restricted, x-amz-*, and non-custom x-amzn-* headers', () => {
-    expect(isForwardableHeader('Content-Type')).toBe(false)
-    expect(isForwardableHeader('host')).toBe(false)
-    expect(isForwardableHeader('Cookie')).toBe(false)
-    expect(isForwardableHeader('x-amz-date')).toBe(false)
-    expect(isForwardableHeader('X-Amzn-Trace-Id')).toBe(false)
-    expect(isForwardableHeader('x-amzn-bedrock-agentcore-runtime-session-id')).toBe(false)
-  })
-})
+import { extractA2AContext } from '../headers.js'
 
 describe('extractA2AContext', () => {
   it('extracts the AgentCore runtime headers into typed context fields', () => {

@@ -6,6 +6,7 @@ import type { ExecutionEventBus, RequestContext, ServerCallContext, TaskStore } 
 import type { Task } from '@a2a-js/sdk'
 
 import { buildA2AApp, serveA2A } from '../app.js'
+import type { A2ALogger } from '../app.js'
 import { buildAgentCard } from '../agent-card.js'
 import { getContext } from '../../context.js'
 import type { RequestContext as BedrockRequestContext } from '../../types.js'
@@ -323,6 +324,54 @@ describe('serveA2A', () => {
       expect(response.status).toBe(200)
       expect(executor.observedState?.get('custom')).toBe('yes')
       expect(executor.observedState?.has('requestId')).toBe(false)
+    })
+  })
+
+  describe('logger injection', () => {
+    function recordingLogger(): { lines: string[]; logger: A2ALogger } {
+      const lines: string[] = []
+      const record =
+        (level: string) =>
+        (...args: unknown[]): void => {
+          lines.push(`${level}:${args.map(String).join(' ')}`)
+        }
+      const logger = {
+        level: 'debug',
+        fatal: record('fatal'),
+        error: record('error'),
+        warn: record('warn'),
+        info: record('info'),
+        debug: record('debug'),
+        trace: record('trace'),
+        silent: record('silent'),
+        child: (): A2ALogger => logger,
+      } as A2ALogger
+      return { lines, logger }
+    }
+
+    it('routes startup and off-contract warnings through an injected logger', async () => {
+      const { lines, logger } = recordingLogger()
+
+      await serve({ port: 3007, logger })
+
+      expect(lines.some((line) => line.startsWith('warn:') && line.includes('port=<3007>'))).toBe(true)
+      expect(lines.some((line) => line.startsWith('info:') && line.includes('a2a server listening'))).toBe(true)
+    })
+
+    it('exposes the injected logger to executors and does not drop debug', async () => {
+      const { lines, logger } = recordingLogger()
+      const executor = new RecordingExecutor()
+      const server = await serve({ executor, logger })
+
+      const response = await fetch(`http://127.0.0.1:${listenPort(server)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: sendMessageBody('msg-logger'),
+      })
+      expect(response.status).toBe(200)
+
+      executor.observed?.log.debug('executor debug line')
+      expect(lines).toContain('debug:executor debug line')
     })
   })
 

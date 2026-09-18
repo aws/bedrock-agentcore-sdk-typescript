@@ -45,10 +45,11 @@ bedrock-agentcore-sdk-typescript/
 │   │   │   ├── __tests__/        # Unit tests for A2A support
 │   │   │   ├── agent-card.ts     # Agent card construction and URL rewriting
 │   │   │   ├── app.ts            # serveA2A / buildA2AApp implementation
-│   │   │   ├── headers.ts        # AgentCore header extraction and allowlist
+│   │   │   ├── headers.ts        # AgentCore A2A header extraction
 │   │   │   ├── index.ts          # A2A exports
 │   │   │   └── runtime-url.ts    # InvokeAgentRuntime URL construction
 │   │   ├── app.ts                # BedrockAgentCoreApp implementation
+│   │   ├── headers.ts            # Runtime header allowlist, shared by both protocol paths
 │   │   ├── index.ts              # Runtime exports
 │   │   └── types.ts              # Runtime type definitions
 │   └── tools/                    # Tool definitions and types

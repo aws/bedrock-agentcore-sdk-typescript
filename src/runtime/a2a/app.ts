@@ -41,6 +41,51 @@ const A2A_CONTRACT_PORT = 9000
 const A2A_PORT_ENV = 'A2A_PORT'
 
 /**
+ * Minimal structural logger the A2A path writes through.
+ *
+ * Deliberately not Fastify's logger type: the A2A path is served by Express,
+ * so requiring a Fastify type in its public API would be misleading. A pino
+ * instance, a Fastify logger, and the default console-backed logger all
+ * satisfy this shape.
+ */
+export interface A2ALogger {
+  /**
+   * Logs a fatal condition.
+   */
+  fatal(...args: unknown[]): void
+
+  /**
+   * Logs an error.
+   */
+  error(...args: unknown[]): void
+
+  /**
+   * Logs a warning.
+   */
+  warn(...args: unknown[]): void
+
+  /**
+   * Logs an informational message.
+   */
+  info(...args: unknown[]): void
+
+  /**
+   * Logs a debug message.
+   */
+  debug(...args: unknown[]): void
+
+  /**
+   * Logs a trace message.
+   */
+  trace(...args: unknown[]): void
+
+  /**
+   * Returns a child logger carrying the given bindings.
+   */
+  child(bindings: Record<string, unknown>): A2ALogger
+}
+
+/**
  * Options for {@link serveA2A} and {@link buildA2AApp}.
  */
 export interface ServeA2AOptions {
@@ -78,6 +123,11 @@ export interface ServeA2AOptions {
    * ServerCallContext factory for the JSON-RPC handler; defaults to {@link bedrockCallContextBuilder}.
    */
   contextBuilder?: ServerCallContextBuilder
+
+  /**
+   * Logger for server lifecycle messages and `RequestContext.log`; defaults to a console-backed logger.
+   */
+  logger?: A2ALogger
 }
 
 /**
@@ -103,8 +153,9 @@ export type BuildA2AAppOptions = Omit<ServeA2AOptions, 'host'>
  */
 export async function serveA2A(options: ServeA2AOptions): Promise<Server> {
   const port = resolvePort(options.port)
+  const logger = options.logger ?? consoleLogger()
   if (port !== A2A_CONTRACT_PORT) {
-    console.warn(
+    logger.warn(
       `port=<${port}>, contract_port=<${A2A_CONTRACT_PORT}> | a2a port differs from the runtime contract port | ` +
         'deployed invocations will fail with http 424 because the runtime proxies to the contract port only'
     )
@@ -126,7 +177,7 @@ export async function serveA2A(options: ServeA2AOptions): Promise<Server> {
     server.once('error', reject)
     server.once('listening', () => {
       server.removeListener('error', reject)
-      console.log(`agent=<${agentCard.name}>, host=<${host}>, port=<${port}> | a2a server listening`)
+      logger.info(`agent=<${agentCard.name}>, host=<${host}>, port=<${port}> | a2a server listening`)
       resolve(server)
     })
   })
@@ -144,6 +195,7 @@ export async function serveA2A(options: ServeA2AOptions): Promise<Server> {
  */
 export function buildA2AApp(options: BuildA2AAppOptions): Express {
   const agentCard = resolveAgentCard(options.agentCard, resolvePort(options.port))
+  const logger = options.logger ?? consoleLogger()
 
   const requestHandler = new DefaultRequestHandler(
     agentCard,
@@ -163,9 +215,7 @@ export function buildA2AApp(options: BuildA2AAppOptions): Express {
       status = (await options.pingHandler?.()) ?? 'Healthy'
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      console.warn(
-        `agent=<${agentCard.name}>, error=<${message}> | custom ping handler failed, falling back to Healthy`
-      )
+      logger.warn(`agent=<${agentCard.name}>, error=<${message}> | custom ping handler failed, falling back to Healthy`)
       status = 'Healthy'
     }
     res.json({ status })
@@ -189,7 +239,7 @@ export function buildA2AApp(options: BuildA2AAppOptions): Express {
       next()
       return
     }
-    const context: RequestContext = { ...extractA2AContext(req.headers), log: consoleLogger() }
+    const context: RequestContext = { ...extractA2AContext(req.headers), log: asFastifyLogger(logger) }
     runWithContext(context, next)
   })
 
@@ -222,7 +272,7 @@ export function buildA2AApp(options: BuildA2AAppOptions): Express {
 export const bedrockCallContextBuilder: ServerCallContextBuilder = (options) => {
   // Reuse the ambient context established by the middleware when present,
   // keeping generated request ids consistent across both surfaces.
-  const bedrock = getContext() ?? { ...extractA2AContext(options.headers), log: consoleLogger() }
+  const bedrock = getContext() ?? { ...extractA2AContext(options.headers), log: asFastifyLogger(consoleLogger()) }
 
   const state = new Map<string, unknown>()
   state.set(STATE_HEADERS_KEY, options.headers)
@@ -267,26 +317,31 @@ function resolvePort(port: number | undefined): number {
   return port ?? Number(process.env[A2A_PORT_ENV] ?? A2A_CONTRACT_PORT)
 }
 
-function noop(): void {}
+/**
+ * RequestContext.log is typed as Fastify's logger because the HTTP path hands
+ * over Fastify's request logger. The A2A path is served by Express, so widen
+ * here — the shared shape both satisfy is {@link A2ALogger}.
+ */
+function asFastifyLogger(logger: A2ALogger): FastifyBaseLogger {
+  return logger as unknown as FastifyBaseLogger
+}
 
-// Console-backed logger satisfying the RequestContext.log contract. The A2A
-// path has no Fastify request logger, so debug/trace are silent and
-// warn/error go to the console — enough for executors that log through the
-// context, without pulling a logging dependency into the A2A path.
-const consoleLog = {
-  level: 'info',
-  fatal: console.error.bind(console),
-  error: console.error.bind(console),
-  warn: console.warn.bind(console),
-  info: console.info.bind(console),
-  debug: noop,
-  trace: noop,
-  silent: noop,
-  child(): FastifyBaseLogger {
+// Console-backed default. Unlike the Fastify path there is no request-scoped
+// logger to inherit, so every level writes straight to the console. Methods
+// delegate rather than bind, so replacing a console method (log capture in
+// tests, or a reporting library) still takes effect.
+const consoleLog: A2ALogger = {
+  fatal: (...args: unknown[]): void => console.error(...args),
+  error: (...args: unknown[]): void => console.error(...args),
+  warn: (...args: unknown[]): void => console.warn(...args),
+  info: (...args: unknown[]): void => console.info(...args),
+  debug: (...args: unknown[]): void => console.debug(...args),
+  trace: (...args: unknown[]): void => console.debug(...args),
+  child(): A2ALogger {
     return consoleLog
   },
-} as unknown as FastifyBaseLogger
+}
 
-function consoleLogger(): FastifyBaseLogger {
+function consoleLogger(): A2ALogger {
   return consoleLog
 }

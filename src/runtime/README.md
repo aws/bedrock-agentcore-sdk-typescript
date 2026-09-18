@@ -381,7 +381,17 @@ The same fields are also mirrored into `ServerCallContext.state` (keys: `headers
 - `buildA2AApp(options)` returns the Express app without binding a port, for embedding or socket-less testing.
 - `pingHandler` customizes the health status (`'Healthy' | 'HealthyBusy'`); a throwing handler degrades to `Healthy`.
 - `taskStore` injects task persistence (defaults to `InMemoryTaskStore`); `contextBuilder` overrides the `ServerCallContext` factory.
-- `buildRuntimeUrl(runtimeArn)` constructs the SigV4-signed `InvokeAgentRuntime` URL an A2A client needs to call a deployed agent.
+- `logger` receives the server lifecycle messages and becomes `context.log` inside executors, defaulting to a console-backed logger. Any pino instance satisfies the `A2ALogger` shape:
+
+  ```typescript
+  import pino from 'pino'
+
+  await serveA2A({ executor: myExecutor, logger: pino({ level: 'debug' }) })
+  ```
+
+  `A2ALogger` is deliberately a minimal structural type rather than Fastify's logger, since this path is served by Express.
+
+- `buildRuntimeUrl(runtimeArn)` constructs the SigV4-signed `InvokeAgentRuntime` URL an A2A client needs to call a deployed agent. It resolves the host through the shared endpoint helper, so `BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT` applies.
 
 ## Client Disconnect Handling
 
