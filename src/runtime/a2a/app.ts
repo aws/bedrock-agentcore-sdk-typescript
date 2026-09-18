@@ -39,36 +39,12 @@ const A2A_PORT_ENV = 'A2A_PORT'
  * satisfy this shape.
  */
 export interface A2ALogger {
-  /**
-   * Logs a fatal condition.
-   */
   fatal(...args: unknown[]): void
-
-  /**
-   * Logs an error.
-   */
   error(...args: unknown[]): void
-
-  /**
-   * Logs a warning.
-   */
   warn(...args: unknown[]): void
-
-  /**
-   * Logs an informational message.
-   */
   info(...args: unknown[]): void
-
-  /**
-   * Logs a debug message.
-   */
   debug(...args: unknown[]): void
-
-  /**
-   * Logs a trace message.
-   */
   trace(...args: unknown[]): void
-
   /**
    * Returns a child logger carrying the given bindings.
    */
@@ -289,9 +265,8 @@ export const bedrockCallContextBuilder: ServerCallContextBuilder = (options) => 
 function resolveAgentCard(provided: AgentCard | undefined, port: number): AgentCard {
   const runtimeUrl = agentCoreRuntimeUrl()
   if (!provided) {
-    // The generic fallback card advertises the actual listen port;
-    // AGENTCORE_RUNTIME_URL takes precedence inside buildAgentCard. Name,
-    // description, version, and skill match the Python SDK's auto-built card.
+    // Name, description, version, and skill match the Python SDK's auto-built
+    // card. AGENTCORE_RUNTIME_URL still takes precedence inside buildAgentCard.
     return buildAgentCard({
       name: 'agent',
       description: 'A Bedrock AgentCore agent',

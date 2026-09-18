@@ -34,9 +34,6 @@ export function buildRuntimeUrl(runtimeArn: string, region?: string): string {
   // An overridden endpoint may or may not carry a trailing slash.
   const endpoint = getDataPlaneEndpoint(resolved).replace(/\/$/, '')
 
-  // The trailing slash is load-bearing: A2A clients resolve the well-known
-  // agent-card path relative to this URL, and WHATWG URL resolution drops
-  // the final segment of a slashless base (…/invocations + ./.well-known/…
-  // → …/.well-known/…, a 404).
+  // The trailing slash is load-bearing for card discovery — see agentCoreRuntimeUrl.
   return `${endpoint}/runtimes/${encodeURIComponent(runtimeArn)}/invocations/`
 }

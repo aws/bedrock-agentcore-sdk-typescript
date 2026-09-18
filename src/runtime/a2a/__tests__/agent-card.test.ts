@@ -26,9 +26,7 @@ describe('buildAgentCard', () => {
   })
 
   it('appends a trailing slash to a slashless AGENTCORE_RUNTIME_URL', () => {
-    // The platform injects the env value without a trailing slash; clients
-    // resolving the well-known card path relative to a slashless URL lose
-    // the final path segment.
+    // The platform injects the env value without a trailing slash.
     vi.stubEnv('AGENTCORE_RUNTIME_URL', 'https://runtime.example.com/invocations')
     const card = buildAgentCard({ name: 'deployed', description: 'x' })
     expect(card.supportedInterfaces[0]!.url).toBe('https://runtime.example.com/invocations/')
@@ -69,7 +67,6 @@ describe('withJsonRpcUrl', () => {
       'https://fresh.example.com/',
       'https://fresh.example.com/',
     ])
-    // Original card is not mutated
     expect(card.supportedInterfaces[0]!.url).toBe('http://stale:9000/')
   })
 

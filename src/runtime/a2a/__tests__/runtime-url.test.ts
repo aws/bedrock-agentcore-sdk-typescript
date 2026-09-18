@@ -11,9 +11,7 @@ describe('buildRuntimeUrl', () => {
 
   describe('when region is extracted from the ARN', () => {
     it('returns the invocation URL with the ARN percent-encoded', () => {
-      // Trailing slash matters: A2A clients resolve the well-known agent
-      // card path relative to this URL, and without the slash the final
-      // path segment is dropped (yielding a 404 on the card endpoint).
+      // Trailing slash is load-bearing for card discovery — see agentCoreRuntimeUrl.
       expect(buildRuntimeUrl(RUNTIME_ARN)).toBe(
         'https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/' +
           'arn%3Aaws%3Abedrock-agentcore%3Aus-east-1%3A123456789012%3Aruntime%2Fmy-agent-abc123/invocations/'
