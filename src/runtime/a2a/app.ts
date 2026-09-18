@@ -1,17 +1,7 @@
 /**
- * A2A protocol server for AWS Bedrock AgentCore Runtime.
- *
- * Implements the AgentCore Runtime A2A container contract around the
- * `@a2a-js/sdk` Express handlers:
- *
- * - JSON-RPC 2.0 endpoint at `POST /`
- * - Agent card at `GET /.well-known/agent-card.json`
- * - Health check at `GET /ping`
- *
  * AgentCore Runtime's A2A path is a transparent proxy: `InvokeAgentRuntime`
  * payloads pass through to `POST /` unmodified, so there is no envelope to
- * unwrap. The AgentCore-injected headers (session id, request id, workload
- * access token, OAuth2 callback URL) are propagated into the same request
+ * unwrap. The AgentCore-injected headers are propagated into the same request
  * context used by the HTTP protocol path, so identity wrappers such as
  * `withApiKey` work unchanged inside A2A executors.
  */

@@ -1,7 +1,3 @@
-/**
- * A2A agent card construction with AgentCore Runtime URL resolution.
- */
-
 import { duplicateInterfacesForLegacy } from '@a2a-js/sdk/compat/v0_3'
 import type { AgentCard, AgentSkill } from '@a2a-js/sdk'
 
@@ -63,13 +59,10 @@ export interface AgentCardParams {
 /**
  * Builds an A2A v1.0 AgentCard with a legacy v0.3 interface mirror.
  *
- * The service URL resolution order is: explicit `url` param, the
- * `AGENTCORE_RUNTIME_URL` environment variable (set when deployed on
- * AgentCore Runtime), then `http://localhost:{port}/`. Both a v1.0 and a
- * v0.3 JSONRPC interface are declared because AgentCore's documented A2A
- * shape and the Python A2A ecosystem still speak v0.3, while `@a2a-js/sdk`
- * v1 clients use the v1.0 methods — the server's legacy compat layer
- * routes both.
+ * Both a v1.0 and a v0.3 JSONRPC interface are declared because AgentCore's
+ * documented A2A shape and the Python A2A ecosystem still speak v0.3, while
+ * `@a2a-js/sdk` v1 clients use the v1.0 methods — the server's legacy compat
+ * layer routes both.
  *
  * @param params - Name, description, and optional skills/url/port
  * @returns A complete AgentCard
@@ -115,10 +108,10 @@ export function buildAgentCard(params: AgentCardParams): AgentCard {
  * Returns a copy of `card` with every JSONRPC interface pointing at `url`,
  * appending one if the card has none.
  *
- * Used by {@link serveA2A} so a caller-provided card never advertises a
- * stale URL when `AGENTCORE_RUNTIME_URL` is set. The runtime invocation URL
- * serves both protocol versions, so all JSONRPC interfaces (v1.0 and the
- * v0.3 legacy mirror) get the same value.
+ * A card built for local use otherwise keeps advertising a localhost URL once
+ * deployed, which breaks client discovery. The runtime invocation URL serves
+ * both protocol versions, so all JSONRPC interfaces (v1.0 and the v0.3 legacy
+ * mirror) get the same value.
  *
  * @param card - The agent card to rewrite
  * @param url - The URL to set on all JSONRPC interfaces

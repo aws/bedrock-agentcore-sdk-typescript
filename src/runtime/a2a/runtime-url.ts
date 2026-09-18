@@ -1,7 +1,3 @@
-/**
- * Runtime invocation URL construction for the A2A protocol path.
- */
-
 import { getDataPlaneEndpoint } from '../../_utils/endpoints.js'
 
 const VALID_REGION_PATTERN = /^[a-z]{2}(-[a-z]+)+-\d+$/

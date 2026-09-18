@@ -1,10 +1,6 @@
 /**
- * AgentCore runtime header extraction for the A2A protocol path.
- *
  * AgentCore Runtime injects per-request headers (session id, request id,
  * workload access token, OAuth2 callback URL) into every proxied A2A call.
- * This module extracts them into a typed context and applies the runtime
- * header allowlist to decide which caller headers reach agent code.
  */
 
 import { randomUUID } from 'crypto'
