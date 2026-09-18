@@ -383,22 +383,39 @@ export interface ReadFilesResult {
 }
 
 /**
+ * A single file to write to the sandbox.
+ * Either text content or a binary blob, never both.
+ */
+type WriteFileEntry =
+  | {
+      /**
+       * File path.
+       */
+      path: string
+      /**
+       * File content as UTF-8 text.
+       */
+      content: string
+    }
+  | {
+      /**
+       * File path.
+       */
+      path: string
+      /**
+       * File content as raw binary.
+       */
+      blob: Uint8Array
+    }
+
+/**
  * Parameters for writing files to sandbox.
  */
 export interface WriteFilesParams {
   /**
    * Array of files to write.
    */
-  files: Array<{
-    /**
-     * File path.
-     */
-    path: string
-    /**
-     * File content.
-     */
-    content: string
-  }>
+  files: WriteFileEntry[]
 }
 
 /**
@@ -526,15 +543,19 @@ export const ReadFilesParamsSchema = z.object({
   paths: z.array(z.string()).min(1, 'At least one path required'),
 })
 
+const writeFileEntrySchema = z.union([
+  z.strictObject({
+    path: z.string().min(1, 'File path cannot be empty'),
+    content: z.string(),
+  }),
+  z.strictObject({
+    path: z.string().min(1, 'File path cannot be empty'),
+    blob: z.instanceof(Uint8Array),
+  }),
+])
+
 export const WriteFilesParamsSchema = z.object({
-  files: z
-    .array(
-      z.object({
-        path: z.string().min(1, 'File path cannot be empty'),
-        content: z.string(),
-      })
-    )
-    .min(1, 'At least one file required'),
+  files: z.array(writeFileEntrySchema).min(1, 'At least one file required'),
 })
 
 export const ListFilesParamsSchema = z.object({

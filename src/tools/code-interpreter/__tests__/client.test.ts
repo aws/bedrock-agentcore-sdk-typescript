@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { InvokeCodeInterpreterCommand } from '@aws-sdk/client-bedrock-agentcore'
 import { CodeInterpreter } from '../client.js'
+import { WriteFilesParamsSchema } from '../types.js'
 
 // Mock AWS SDK
 const mockSessionIds = new Map<string, string>()
@@ -425,7 +427,19 @@ describe('CodeInterpreter', () => {
   describe('writeFiles', () => {
     let interpreter: CodeInterpreter
 
+    const lastWriteContent = (): any[] => {
+      const calls = vi.mocked(InvokeCodeInterpreterCommand).mock.calls
+      for (let i = calls.length - 1; i >= 0; i--) {
+        const input = calls[i]![0] as any
+        if (input.name === 'writeFiles') {
+          return input.arguments.content
+        }
+      }
+      throw new Error('No writeFiles command was sent')
+    }
+
     beforeEach(() => {
+      vi.mocked(InvokeCodeInterpreterCommand).mockClear()
       interpreter = new CodeInterpreter({ region: 'us-east-1' })
     })
 
@@ -450,6 +464,67 @@ describe('CodeInterpreter', () => {
 
       expect(result).toBeDefined()
       expect(result).toContain('Files written successfully')
+    })
+
+    it('maps text entries to the text field', async () => {
+      await interpreter.writeFiles({
+        files: [{ path: 'test.txt', content: 'Hello' }],
+      })
+
+      const content = lastWriteContent()
+      expect(content[0]).toEqual({ path: 'test.txt', text: 'Hello' })
+      expect(content[0].blob).toBeUndefined()
+    })
+
+    it('maps binary entries to the blob field', async () => {
+      const blob = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
+
+      await interpreter.writeFiles({
+        files: [{ path: 'image.png', blob }],
+      })
+
+      const content = lastWriteContent()
+      expect(content[0].path).toBe('image.png')
+      expect(content[0].blob).toEqual(blob)
+      expect(content[0].text).toBeUndefined()
+    })
+
+    it('maps a mixed batch of text and binary entries in order', async () => {
+      const blob = new Uint8Array([1, 2, 3])
+
+      await interpreter.writeFiles({
+        files: [
+          { path: 'script.py', content: 'print(1)' },
+          { path: 'data.bin', blob },
+        ],
+      })
+
+      const content = lastWriteContent()
+      expect(content[0]).toEqual({ path: 'script.py', text: 'print(1)' })
+      expect(content[1].path).toBe('data.bin')
+      expect(content[1].blob).toEqual(blob)
+      expect(content[1].text).toBeUndefined()
+    })
+
+    it('rejects an entry with both content and blob', () => {
+      const result = WriteFilesParamsSchema.safeParse({
+        files: [{ path: 'file.txt', content: 'Hello', blob: new Uint8Array([1]) }],
+      })
+      expect(result.success).toBe(false)
+    })
+
+    it('rejects an entry with neither content nor blob', () => {
+      const result = WriteFilesParamsSchema.safeParse({
+        files: [{ path: 'file.txt' }],
+      })
+      expect(result.success).toBe(false)
+    })
+
+    it('accepts a Buffer as blob', () => {
+      const result = WriteFilesParamsSchema.safeParse({
+        files: [{ path: 'data.bin', blob: Buffer.from('Hello') }],
+      })
+      expect(result.success).toBe(true)
     })
   })
 
