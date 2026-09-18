@@ -58,11 +58,11 @@ function listenHost(server: Server): string {
   return address.address
 }
 
-function sendMessageBody(messageId: string) {
+function sendMessageBody(messageId: string, method = 'message/send') {
   return JSON.stringify({
     jsonrpc: '2.0',
     id: 1,
-    method: 'message/send',
+    method,
     params: {
       message: { kind: 'message', messageId, role: 'user', parts: [{ kind: 'text', text: 'hello' }] },
     },
@@ -372,6 +372,89 @@ describe('serveA2A', () => {
 
       executor.observed?.log.debug('executor debug line')
       expect(lines).toContain('debug:executor debug line')
+    })
+  })
+
+  describe('protocol versions', () => {
+    async function rpc(server: Server, body: string): Promise<{ result?: Record<string, unknown> }> {
+      const response = await fetch(`http://127.0.0.1:${listenPort(server)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      })
+      expect(response.status).toBe(200)
+      return (await response.json()) as { result?: Record<string, unknown> }
+    }
+
+    // The v0.3 method names only resolve through the legacy compat layer —
+    // disabling it makes these calls fail with -32601 Invalid method.
+    it('serves v0.3 method names in the v0.3 result shape', async () => {
+      const server = await serve()
+
+      const { result } = await rpc(server, sendMessageBody('msg-v03', 'message/send'))
+
+      expect(result).toMatchObject({ kind: 'task', status: { state: 'completed' } })
+    })
+
+    it('serves v1.0 method names in the v1.0 result shape', async () => {
+      const server = await serve()
+
+      const { result } = await rpc(server, sendMessageBody('msg-v10', 'SendMessage'))
+
+      // v1.0 wraps the task and reports the enum name rather than 'completed'
+      expect(result).toMatchObject({ task: { status: { state: 'TASK_STATE_COMPLETED' } } })
+      expect(result).not.toHaveProperty('kind')
+    })
+
+    it('streams message/stream as server-sent events', async () => {
+      const server = await serve()
+
+      const response = await fetch(`http://127.0.0.1:${listenPort(server)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body: sendMessageBody('msg-stream', 'message/stream'),
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-type')).toContain('text/event-stream')
+
+      const frames = (await response.text())
+        .split('\n\n')
+        .filter((frame) => frame.startsWith('data:'))
+        .map((frame) => JSON.parse(frame.slice('data:'.length)) as { result: Record<string, unknown> })
+
+      // Streaming, not a single blob: the submitted task then a terminal update
+      expect(frames.length).toBeGreaterThanOrEqual(2)
+      expect(frames[0]!.result).toMatchObject({ kind: 'task', status: { state: 'submitted' } })
+      expect(frames[frames.length - 1]!.result).toMatchObject({ status: { state: 'completed' }, final: true })
+    })
+  })
+
+  describe('header filtering', () => {
+    it('withholds restricted caller headers from executors', async () => {
+      const executor = new RecordingExecutor()
+      const server = await serve({ executor })
+
+      const response = await fetch(`http://127.0.0.1:${listenPort(server)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: 'session=secret',
+          'User-Agent': 'probe/1.0',
+          'X-Amz-Date': '20260918T000000Z',
+          'x-amzn-bedrock-agentcore-runtime-custom-tenant': 'acme',
+        },
+        body: sendMessageBody('msg-filtered'),
+      })
+      expect(response.status).toBe(200)
+
+      const forwarded = Object.keys(executor.observed!.headers).map((key) => key.toLowerCase())
+
+      expect(forwarded).not.toContain('cookie')
+      expect(forwarded).not.toContain('user-agent')
+      expect(forwarded).not.toContain('x-amz-date')
+      // Positive control, so an empty map cannot satisfy the assertions above
+      expect(forwarded).toContain('x-amzn-bedrock-agentcore-runtime-custom-tenant')
     })
   })
 
