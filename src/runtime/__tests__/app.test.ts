@@ -605,6 +605,7 @@ describe('BedrockAgentCoreApp', () => {
       const mockReply = {
         raw: { headersSent: false },
         status: vi.fn().mockReturnThis(),
+        type: vi.fn().mockReturnThis(),
         send: vi.fn(),
       }
 
