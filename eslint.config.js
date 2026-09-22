@@ -5,7 +5,15 @@ import tsdoc from 'eslint-plugin-tsdoc'
 
 export default [
   {
-    ignores: ['**/.next/**', '**/node_modules/**', '**/dist/**', '**/next-env.d.ts', '**/nice-dcv-web-client-sdk/**', 'src/tools/browser/live-view/types/**', 'src/tools/browser/live-view/integration/**'],
+    ignores: [
+      '**/.next/**',
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/next-env.d.ts',
+      '**/nice-dcv-web-client-sdk/**',
+      'src/tools/browser/live-view/types/**',
+      'src/tools/browser/live-view/integration/**',
+    ],
   },
   eslint.configs.recommended,
   {
@@ -23,6 +31,10 @@ export default [
         process: 'readonly',
         URL: 'readonly',
         URLSearchParams: 'readonly',
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
+        Response: 'readonly',
+        RequestInit: 'readonly',
       },
     },
     plugins: {
@@ -53,6 +65,8 @@ export default [
         setTimeout: 'readonly',
         Buffer: 'readonly',
         URL: 'readonly',
+        Response: 'readonly',
+        AbortSignal: 'readonly',
       },
     },
     plugins: {
@@ -63,7 +77,7 @@ export default [
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       '@typescript-eslint/explicit-function-return-type': 'off',
-      'quotes': ['error', 'single', { avoidEscape: true }],
+      quotes: ['error', 'single', { avoidEscape: true }],
     },
   },
 ]

@@ -1,6 +1,16 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { getContext, runWithContext } from '../context.js'
 import type { RequestContext } from '../types.js'
+
+const mockLog = {
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+  fatal: vi.fn(),
+  trace: vi.fn(),
+  child: vi.fn(),
+} as any
 
 describe('Context Storage', () => {
   const mockContext: RequestContext = {
@@ -12,6 +22,7 @@ describe('Context Storage', () => {
       authorization: 'Bearer test',
       'x-custom-header': 'value',
     },
+    log: mockLog,
   }
 
   describe('getContext', () => {
@@ -130,11 +141,13 @@ describe('Context Storage', () => {
       const outerContext: RequestContext = {
         sessionId: 'outer-session',
         headers: {},
+        log: mockLog,
       }
 
       const innerContext: RequestContext = {
         sessionId: 'inner-session',
         headers: {},
+        log: mockLog,
       }
 
       runWithContext(outerContext, () => {
@@ -153,12 +166,14 @@ describe('Context Storage', () => {
         sessionId: 'outer',
         workloadAccessToken: 'outer-token',
         headers: {},
+        log: mockLog,
       }
 
       const innerContext: RequestContext = {
         sessionId: 'inner',
         workloadAccessToken: 'inner-token',
         headers: {},
+        log: mockLog,
       }
 
       runWithContext(outerContext, () => {
@@ -182,12 +197,14 @@ describe('Context Storage', () => {
         sessionId: 'session-1',
         workloadAccessToken: 'token-1',
         headers: {},
+        log: mockLog,
       }
 
       const context2: RequestContext = {
         sessionId: 'session-2',
         workloadAccessToken: 'token-2',
         headers: {},
+        log: mockLog,
       }
 
       const promise1 = runWithContext(context1, async () => {
@@ -213,9 +230,9 @@ describe('Context Storage', () => {
 
     it('isolates contexts in Promise.all', async () => {
       const contexts = [
-        { sessionId: 'req-1', headers: {} },
-        { sessionId: 'req-2', headers: {} },
-        { sessionId: 'req-3', headers: {} },
+        { sessionId: 'req-1', headers: {}, log: mockLog },
+        { sessionId: 'req-2', headers: {}, log: mockLog },
+        { sessionId: 'req-3', headers: {}, log: mockLog },
       ] as RequestContext[]
 
       const results = await Promise.all(
@@ -238,6 +255,7 @@ describe('Context Storage', () => {
       const minimalContext: RequestContext = {
         sessionId: 'minimal-session',
         headers: {},
+        log: mockLog,
       }
 
       runWithContext(minimalContext, () => {
@@ -260,6 +278,7 @@ describe('Context Storage', () => {
           authorization: 'Bearer token',
           'x-custom': 'value',
         },
+        log: mockLog,
       }
 
       runWithContext(fullContext, () => {
@@ -274,6 +293,7 @@ describe('Context Storage', () => {
       const context: RequestContext = {
         sessionId: 'mutable-session',
         headers: {},
+        log: mockLog,
       }
 
       runWithContext(context, () => {
@@ -294,6 +314,7 @@ describe('Context Storage', () => {
       const context: RequestContext = {
         sessionId: 'async-mutable',
         headers: {},
+        log: mockLog,
       }
 
       await runWithContext(context, async () => {

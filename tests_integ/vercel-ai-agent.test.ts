@@ -25,7 +25,7 @@ describe('ToolLoopAgent with CodeInterpreter', () => {
 
   it('executes code via generate()', async () => {
     const agent = new ToolLoopAgent({
-      model: bedrock('us.anthropic.claude-sonnet-4-20250514-v1:0'),
+      model: bedrock(process.env.MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0'),
       instructions: 'You are a helpful assistant. Execute code when asked.',
       tools: { executeCode: codeInterpreter.executeCode },
     })
@@ -41,7 +41,7 @@ describe('ToolLoopAgent with CodeInterpreter', () => {
 
   it('handles file operations', async () => {
     const agent = new ToolLoopAgent({
-      model: bedrock('us.anthropic.claude-sonnet-4-20250514-v1:0'),
+      model: bedrock(process.env.MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0'),
       instructions: 'You can work with files and execute code.',
       tools: codeInterpreter.tools,
     })
@@ -68,7 +68,7 @@ describe('ToolLoopAgent with Browser', () => {
 
   it('navigates and extracts content', async () => {
     const agent = new ToolLoopAgent({
-      model: bedrock('us.anthropic.claude-sonnet-4-20250514-v1:0'),
+      model: bedrock(process.env.MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0'),
       instructions: 'Navigate to websites and extract content.',
       tools: browser.tools,
     })
@@ -97,7 +97,7 @@ describe('ToolLoopAgent with Combined Tools', () => {
 
   it('uses both tools together', async () => {
     const agent = new ToolLoopAgent({
-      model: bedrock('us.anthropic.claude-sonnet-4-20250514-v1:0'),
+      model: bedrock(process.env.MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0'),
       instructions: 'You can browse the web and execute code.',
       tools: {
         ...browser.tools,

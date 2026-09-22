@@ -4,6 +4,16 @@ import { IdentityClient } from '../client.js'
 import { runWithContext } from '../../runtime/context.js'
 import type { RequestContext } from '../../runtime/types.js'
 
+const mockLog = {
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+  fatal: vi.fn(),
+  trace: vi.fn(),
+  child: vi.fn(),
+} as any
+
 vi.mock('../client.js')
 
 describe('withAccessToken', () => {
@@ -381,6 +391,7 @@ describe('withAccessToken context integration', () => {
       sessionId: 'test-session',
       workloadAccessToken: 'context-token-value',
       headers: {},
+      log: mockLog,
     }
 
     await runWithContext(context, async () => {
@@ -423,6 +434,7 @@ describe('withAccessToken context integration', () => {
       sessionId: 'test-session',
       workloadAccessToken: 'context-token',
       headers: {},
+      log: mockLog,
     }
 
     await runWithContext(context, async () => {
@@ -462,6 +474,7 @@ describe('withAccessToken context integration', () => {
       sessionId: 'test-session',
       // NO workloadAccessToken
       headers: {},
+      log: mockLog,
     }
 
     await runWithContext(context, async () => {
@@ -489,6 +502,7 @@ describe('withAccessToken context integration', () => {
       workloadAccessToken: 'test-token',
       oauth2CallbackUrl: 'http://localhost:3000/callback',
       headers: {},
+      log: mockLog,
     }
 
     await runWithContext(context, async () => {
@@ -529,6 +543,7 @@ describe('withAccessToken context integration', () => {
       workloadAccessToken: 'test-token',
       oauth2CallbackUrl: 'http://context-callback.com',
       headers: {},
+      log: mockLog,
     }
 
     await runWithContext(context, async () => {
@@ -619,6 +634,7 @@ describe('withAccessToken context integration', () => {
       sessionId: 'session-1',
       workloadAccessToken: 'token-1',
       headers: {},
+      log: mockLog,
     }
 
     const context2: RequestContext = {
@@ -626,6 +642,7 @@ describe('withAccessToken context integration', () => {
       sessionId: 'session-2',
       workloadAccessToken: 'token-2',
       headers: {},
+      log: mockLog,
     }
 
     // Run concurrently
@@ -669,6 +686,7 @@ describe('withApiKey context integration', () => {
       sessionId: 'test-session',
       workloadAccessToken: 'context-token',
       headers: {},
+      log: mockLog,
     }
 
     await runWithContext(context, async () => {
@@ -700,6 +718,7 @@ describe('withApiKey context integration', () => {
       sessionId: 'test-session',
       workloadAccessToken: 'context-token',
       headers: {},
+      log: mockLog,
     }
 
     await runWithContext(context, async () => {
@@ -728,6 +747,7 @@ describe('withApiKey context integration', () => {
       sessionId: 'test-session',
       // NO workloadAccessToken
       headers: {},
+      log: mockLog,
     }
 
     await runWithContext(context, async () => {

@@ -74,7 +74,12 @@ const app = new BedrockAgentCoreApp({
 app.run()
 ```
 
+Use `requestSchema` to validate agent entrypoint input. Keep user prompts typed as strings and pass only prompt text
+to the agent framework.
+
 `BedrockAgentCoreApp` creates an AgentCore Runtime-compliant server—handling request parsing, streaming responses, and session management for seamless deployment.
+
+Building multi-agent systems? Host agents on AgentCore's [A2A protocol](https://a2a-protocol.org/) path with `serveA2A` — see the [runtime guide](src/runtime/README.md#a2a-protocol-support).
 
 ---
 
@@ -101,10 +106,12 @@ const agent = new Agent({
 ## Features
 
 - **Runtime** — Secure, session-isolated compute → [Examples](https://github.com/awslabs/bedrock-agentcore-samples-typescript/tree/main/primitives/runtime)
+- **A2A** — Agent-to-agent communication on the A2A protocol path → [Guide](src/runtime/README.md#a2a-protocol-support)
 - **Code Interpreter** — Execute Python/JS/TS in a sandbox → [Examples](https://github.com/awslabs/bedrock-agentcore-samples-typescript/tree/main/primitives/tools/code-interpreter)
 - **Browser** — Cloud-based web automation → [Examples](https://github.com/awslabs/bedrock-agentcore-samples-typescript/tree/main/primitives/tools/browser)
+- **Web Search** — Search the web through a Gateway connector target → [Guide](docs/WEB_SEARCH.md)
 - **Identity** — Manage API keys and OAuth tokens → [Examples](https://github.com/awslabs/bedrock-agentcore-samples-typescript/tree/main/primitives/identity)
-- **Memory** — Persistent knowledge across sessions (coming soon)
+- **Memory** — Persistent knowledge across sessions → [Guide](docs/MEMORY.md)
 - **Gateway** — Transform APIs into MCP tools (coming soon)
 - **Observability** — OpenTelemetry tracing (coming soon)
 
@@ -115,7 +122,6 @@ const agent = new Agent({
 ```bash
 npm install bedrock-agentcore
 ```
-
 
 **Prerequisites:** Node.js 20+, [AWS credentials](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html), [AgentCore access](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html)
 
