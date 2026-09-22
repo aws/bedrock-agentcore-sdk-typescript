@@ -13,6 +13,7 @@ import { SignatureV4 } from '@smithy/signature-v4'
 import { Sha256 } from '@aws-crypto/sha256-js'
 
 import { getGatewayMcpEndpoint, validateEndpointUrl } from '../../_utils/endpoints.js'
+import { buildUserAgentSuffix } from '../../_utils/user-agent.js'
 import { SDK_VERSION } from '../../_utils/version.js'
 import type {
   SearchOptions,
@@ -72,6 +73,11 @@ export interface GatewayMcpBackendConfig {
   timeout?: number | undefined
   /** Fetch implementation to use. Defaults to the global fetch. */
   fetchImpl?: FetchLike | undefined
+  /**
+   * Framework calling this SDK, reported in the User-Agent, for example `langchain`.
+   * Set it when wrapping this client in an integration.
+   */
+  integrationSource?: string | undefined
 }
 
 /**
@@ -101,6 +107,11 @@ export interface WebSearchClientConfig {
   timeout?: number | undefined
   /** Fetch implementation to use. Defaults to the global fetch. */
   fetchImpl?: FetchLike | undefined
+  /**
+   * Framework calling this SDK, reported in the User-Agent, for example `langchain`.
+   * Set it when wrapping this client in an integration.
+   */
+  integrationSource?: string | undefined
 }
 
 /**
@@ -123,6 +134,7 @@ export class GatewayMcpBackend implements WebSearchBackend {
   private readonly timeout: number
   private readonly fetchImpl: FetchLike
   private readonly targetName: string | undefined
+  private readonly userAgent: string
 
   private toolName: string | undefined
   private mcpSessionId: string | undefined
@@ -142,6 +154,9 @@ export class GatewayMcpBackend implements WebSearchBackend {
     this.fetchImpl = config.fetchImpl ?? ((url, init): Promise<Response> => globalThis.fetch(url, init))
     this.toolName = config.toolName
     this.targetName = config.targetName
+    // Runtime first, then this SDK, matching how the Python client reports itself.
+    const runtime = typeof process !== 'undefined' && process.versions?.node ? `node/${process.versions.node} ` : ''
+    this.userAgent = `${runtime}${buildUserAgentSuffix(config.integrationSource)}`
   }
 
   private nextId(): number {
@@ -173,6 +188,9 @@ export class GatewayMcpBackend implements WebSearchBackend {
         host: url.host,
         'content-type': 'application/json',
         accept: 'application/json, text/event-stream',
+        // SigV4 treats user-agent as unsignable, so this identifies the caller
+        // without becoming part of the signature.
+        'user-agent': this.userAgent,
         ...extra,
       },
     })
@@ -556,6 +574,7 @@ export class WebSearchClient {
       targetName: config.targetName,
       timeout: config.timeout,
       fetchImpl: config.fetchImpl,
+      integrationSource: config.integrationSource,
     })
   }
 
