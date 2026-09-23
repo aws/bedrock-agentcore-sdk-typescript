@@ -1,5 +1,5 @@
 import { Buffer } from 'buffer'
-import { defaultProvider } from '@aws-sdk/credential-provider-node'
+import { fromNodeProviderChain } from '@aws-sdk/credential-providers'
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types'
 import { HttpRequest } from '@aws-sdk/protocol-http'
 import { SignatureV4 } from '@aws-sdk/signature-v4'
@@ -68,7 +68,7 @@ export class RuntimeClient {
       throw new Error('Region must be provided via config.region or AWS_REGION environment variable')
     }
     this.region = region
-    this.credentialsProvider = config.credentialsProvider ?? defaultProvider()
+    this.credentialsProvider = config.credentialsProvider ?? fromNodeProviderChain()
   }
 
   /**
