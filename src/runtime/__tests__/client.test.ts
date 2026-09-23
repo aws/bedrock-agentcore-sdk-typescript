@@ -25,8 +25,8 @@ vi.mock('../shell/session.js', () => {
 })
 
 // Mock the credential provider
-vi.mock('@aws-sdk/credential-provider-node', () => ({
-  defaultProvider: vi.fn(() => vi.fn(async () => mockCredentials)),
+vi.mock('@aws-sdk/credential-providers', () => ({
+  fromNodeProviderChain: vi.fn(() => vi.fn(async () => mockCredentials)),
 }))
 
 // Mock crypto.randomUUID and randomBytes to return predictable values
