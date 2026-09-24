@@ -417,7 +417,8 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
           this._app.log.error(error, 'Error after response headers sent')
         }
       } else {
-        await reply.status(500).send({
+        // The SSE plugin may stage its content type before any headers are sent.
+        await reply.status(500).type('application/json').send({
           error: errorMessage,
         })
       }
