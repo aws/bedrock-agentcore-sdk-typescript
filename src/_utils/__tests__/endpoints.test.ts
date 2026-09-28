@@ -138,9 +138,14 @@ describe('getDataPlaneEndpoint', () => {
       expect(endpoint).toBe('https://bedrock-agentcore.us-gov-west-1.amazonaws.com')
     })
 
-    it('handles region with numbers correctly', () => {
+    it('uses the China partition DNS suffix for cn-north-1', () => {
       const endpoint = getDataPlaneEndpoint('cn-north-1')
-      expect(endpoint).toBe('https://bedrock-agentcore.cn-north-1.amazonaws.com')
+      expect(endpoint).toBe('https://bedrock-agentcore.cn-north-1.amazonaws.com.cn')
+    })
+
+    it('uses the China partition DNS suffix for cn-northwest-1', () => {
+      const endpoint = getDataPlaneEndpoint('cn-northwest-1')
+      expect(endpoint).toBe('https://bedrock-agentcore.cn-northwest-1.amazonaws.com.cn')
     })
 
     it('preserves region case in endpoint', () => {
@@ -171,6 +176,12 @@ describe('getGatewayMcpEndpoint', () => {
     it('builds the streamable HTTP MCP URL', () => {
       expect(getGatewayMcpEndpoint('my-gateway-abc123', 'us-east-1')).toBe(
         'https://my-gateway-abc123.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp'
+      )
+    })
+
+    it('uses the China partition DNS suffix', () => {
+      expect(getGatewayMcpEndpoint('gw', 'cn-north-1')).toBe(
+        'https://gw.gateway.bedrock-agentcore.cn-north-1.amazonaws.com.cn/mcp'
       )
     })
 

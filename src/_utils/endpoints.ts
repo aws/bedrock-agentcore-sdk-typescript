@@ -1,6 +1,22 @@
 /**
  * Utility functions for constructing AWS service endpoints.
  */
+import { partition } from '@aws-sdk/util-endpoints'
+
+/**
+ * Resolves the partition DNS suffix for an AWS region.
+ *
+ * Derived from the AWS SDK's static partition data rather than a hardcoded table,
+ * so `amazonaws.com` (aws), `amazonaws.com.cn` (aws-cn), and GovCloud/other
+ * partitions are all handled without further changes. Unknown regions fall back to
+ * the commercial `amazonaws.com` suffix.
+ *
+ * @param region - AWS region (e.g. 'us-west-2', 'cn-north-1')
+ * @returns The partition DNS suffix (e.g. 'amazonaws.com', 'amazonaws.com.cn')
+ */
+function getDnsSuffix(region: string): string {
+  return partition(region).dnsSuffix
+}
 
 /**
  * Environment variable for overriding the data plane endpoint.
@@ -99,8 +115,8 @@ export function getDataPlaneEndpoint(region: string): string {
     return override
   }
 
-  // Return standard AWS endpoint pattern
-  return `https://bedrock-agentcore.${region}.amazonaws.com`
+  // Return standard AWS endpoint pattern with a partition-correct DNS suffix
+  return `https://bedrock-agentcore.${region}.${getDnsSuffix(region)}`
 }
 
 /**
@@ -147,5 +163,5 @@ export function getGatewayMcpEndpoint(gatewayId: string, region: string): string
     return override
   }
 
-  return validateEndpointUrl(`https://${gatewayId}.gateway.bedrock-agentcore.${region}.amazonaws.com/mcp`)
+  return validateEndpointUrl(`https://${gatewayId}.gateway.bedrock-agentcore.${region}.${getDnsSuffix(region)}/mcp`)
 }
