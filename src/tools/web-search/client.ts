@@ -825,7 +825,7 @@ function parseGatewayArn(arn: string): { gatewayId: string; region: string } {
     !resource.startsWith('gateway/')
   ) {
     throw new Error(
-      `Not a gateway ARN: '${arn}'. Expected 'arn:aws:bedrock-agentcore:<region>:<account>:gateway/<id>'.`
+      `Not a gateway ARN: '${arn}'. Expected 'arn:<partition>:bedrock-agentcore:<region>:<account>:gateway/<id>'.`
     )
   }
   const gatewayId = resource.slice('gateway/'.length)
