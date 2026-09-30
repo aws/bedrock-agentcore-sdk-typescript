@@ -117,9 +117,4 @@ export class ShellFramer {
   encodeHeartbeat(): Buffer {
     return Buffer.from([ShellChannel.HEARTBEAT])
   }
-
-  /** Encode a graceful-shutdown CLOSE frame (empty payload). */
-  encodeClose(): Buffer {
-    return Buffer.from([ShellChannel.CLOSE])
-  }
 }

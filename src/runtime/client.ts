@@ -390,7 +390,7 @@ export class RuntimeClient {
    * const shell = await client.openShell({
    *   runtimeArn,
    *   shellId: 'debug',
-   *   reconnectConfig: { maxRetries: 5, onReconnect: (r) => console.log('reconnected:', r) }
+   *   reconnectConfig: { maxRetries: 5, onReconnect: () => console.log('reconnected') }
    * })
    * ```
    */
