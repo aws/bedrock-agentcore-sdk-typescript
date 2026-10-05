@@ -232,6 +232,35 @@ print(json.dumps(data))
   })
 
   describe('File Operations', () => {
+    it('writes a binary file byte-exact', async () => {
+      const testInterpreter = new CodeInterpreter({ region: testRegion })
+      await testInterpreter.startSession({ sessionName: 'binary-write-test' })
+
+      const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
+
+      await testInterpreter.writeFiles({
+        files: [{ path: 'signature.png', blob: bytes }],
+      })
+
+      const sizeResult = await testInterpreter.executeCommand({
+        command: 'wc -c < signature.png',
+      })
+
+      expect(sizeResult).toBeDefined()
+      expect(sizeResult.trim()).toBe(String(bytes.length))
+
+      const hexResult = await testInterpreter.executeCommand({
+        command: 'od -An -tx1 signature.png',
+      })
+
+      const expectedHex = Array.from(bytes)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join(' ')
+      expect(hexResult).toContain(expectedHex)
+
+      await testInterpreter.stopSession()
+    }, 30000)
+
     it('writes, lists, reads, and removes files', async () => {
       const testInterpreter = new CodeInterpreter({ region: testRegion })
       await testInterpreter.startSession({ sessionName: 'file-test' })

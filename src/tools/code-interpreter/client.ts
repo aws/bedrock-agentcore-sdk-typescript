@@ -394,7 +394,8 @@ export class CodeInterpreter {
    * await interpreter.writeFiles({
    *   files: [
    *     { path: 'script.py', content: 'print("Hello")' },
-   *     { path: 'data.json', content: '{"key": "value"}' }
+   *     { path: 'data.json', content: '{"key": "value"}' },
+   *     { path: 'data.xlsx', blob: xlsxBytes } // Uint8Array | Buffer
    *   ]
    * })
    * ```
@@ -410,10 +411,9 @@ export class CodeInterpreter {
         sessionId: this._session!.sessionId,
         name: 'writeFiles',
         arguments: {
-          content: params.files.map((f) => ({
-            path: f.path,
-            text: f.content,
-          })),
+          content: params.files.map((f) =>
+            'blob' in f ? { path: f.path, blob: f.blob } : { path: f.path, text: f.content }
+          ),
         },
       })
 
