@@ -20,6 +20,9 @@ consumed directly from `@strands-agents/sdk` (>= 1.5.0).
   see [Reducing write API calls](#reducing-write-api-calls).
 - **Topology** — `createAgentCoreMemoryStores(...)` returns the stores ready to spread into
   `MemoryManagerConfig.stores`.
+- **Session persistence** — `createAgentCoreMemorySessionStorage(...)` is a Strands `SessionStorage`
+  for `SessionManager`: the agent's full session snapshot lives in AgentCore short-term memory and
+  survives runtime cold starts. See [Session persistence](#session-persistence-sessionmanager).
 
 ## Usage
 
@@ -88,6 +91,116 @@ const store = new AgentCoreMemoryStore({
 `namespace` (exact prefix) and `namespacePath` (subtree) are the two arms of the read-target union —
 exactly the `retrieveMemoryRecords` API shape. There is no `readMode` flag: the field you set _is_ the
 read mode.
+
+## Session persistence (`SessionManager`)
+
+`AgentCoreMemorySnapshotStorage` implements the Strands `SnapshotStorage` interface, so the Strands
+`SessionManager` can keep an agent's session (messages, state, interrupts — whatever the `'session'`
+snapshot preset captures) in AgentCore Memory short-term events. A restarted runtime picks up the
+conversation where it left off; nothing is kept on the local filesystem.
+
+```typescript
+import { Agent, SessionManager } from '@strands-agents/sdk'
+import { createAgentCoreMemorySessionStorage } from 'bedrock-agentcore/memory/strands'
+
+const agent = new Agent({
+  model,
+  sessionManager: new SessionManager({
+    sessionId, // becomes the AgentCore sessionId
+    storage: createAgentCoreMemorySessionStorage({
+      memoryId: 'mem-abc',
+      region: 'us-west-2',
+      actorId: 'user-123', // optional; defaults to 'strands-agent'
+    }),
+  }),
+})
+```
+
+`createAgentCoreMemorySessionStorage(config)` returns `{ snapshot: new AgentCoreMemorySnapshotStorage(config) }`;
+construct the class directly when you assemble the `SessionStorage` yourself. It accepts `memoryId`,
+`actorId`, `maxChunkBytes`, and the usual `region` / `credentialsProvider` / `client`. Any memory
+resource works, with or without strategies: snapshots are plain short-term events.
+
+### Id mapping
+
+| Strands                   | AgentCore Memory                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------- |
+| —                         | `actorId` from the config (default `strands-agent`); owns every event                       |
+| `sessionId`               | `sessionId`, unchanged                                                                      |
+| `scope` + `scopeId`       | event metadata `strands.location` = `<scope>/<scopeId>`, e.g. `agent/default`               |
+| `snapshotId` / `isLatest` | event metadata `strands.snapshotId` (`latest` for the latest snapshot) / `strands.isLatest` |
+
+Ids are validated, never rewritten: a lossy rewrite could merge two Strands sessions into one AgentCore
+session. The `sessionId` must satisfy both the Strands identifier rule and AgentCore's session pattern:
+1–100 lowercase letters, digits, `-` or `_`, starting with a letter or digit (a UUID-based runtime
+session id qualifies). `scopeId` and `snapshotId` follow the Strands identifier rule, and `actorId`
+follows AgentCore's actor pattern (letters, digits, `-`, `_`, `/`, single `:`; up to 255 characters).
+In a multi-user server, set `actorId` per user so each user's sessions sit under their own actor.
+
+### Event layout and chunking
+
+Each save is one **write**: the snapshot (or manifest) is serialized to JSON, split into chunks, and
+stored as `blob` payload items of one or more `CreateEvent` calls. Every event carries metadata
+`strands.layout`, `strands.kind` (`snapshot` | `manifest`), `strands.location`, `strands.snapshotId`
+and `strands.isLatest` (snapshots only), `strands.writeId`, `strands.part`, and `strands.partCount`.
+Reads select events with `ListEvents` metadata filters and reassemble only complete writes.
+
+- **Chunk size.** AgentCore caps a payload item at 100 KB, a `CreateEvent` at 100 items and 10 MB. A
+  chunk holds at most `maxChunkBytes` (default 64 KiB, maximum 100,000) measured as the UTF-8 size of
+  its JSON-escaped text, so quotes, newlines and multi-byte characters can't push an item over the
+  limit. Up to 100 chunks go in one event (fewer for chunks above 80,000 bytes, keeping each event
+  under 8 MB), so any snapshot below about 6.4 MB is a single `CreateEvent`.
+- **Latest replaces latest.** Events are append-only, so after writing a new latest snapshot (or
+  manifest) the storage deletes the events of the writes it supersedes (those older than the new
+  one). Reads pick the newest complete write by `eventTimestamp`, which the storage keeps strictly
+  increasing per instance at the service's millisecond resolution. Immutable snapshots
+  (`snapshotTrigger`) are never pruned.
+- **Partial writes.** If a later part of a multi-event write fails, the parts already written are
+  deleted and the error is thrown; an incomplete write is never returned by a read.
+- **Expiry.** Events expire after the memory's event expiry (7–365 days, set at `CreateMemory`). The
+  latest snapshot is rewritten on every save, but a session idle for longer than the expiry, and
+  immutable snapshots older than it, are gone.
+
+### API calls and limits
+
+| Operation                       | AgentCore calls                                                                |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| save latest snapshot / manifest | 1 `CreateEvent` per part, 1 `ListEvents`, 1 `DeleteEvent` per superseded event |
+| save immutable snapshot         | 1 `CreateEvent` per part                                                       |
+| load snapshot / manifest        | 1 `ListEvents` per 100 matching events (normally 1)                            |
+| `listSnapshotIds`               | 1 `ListEvents` per 100 history events                                          |
+| `deleteSession`                 | `ListEvents` pages, then one `DeleteEvent` per event, sequentially             |
+
+With `SessionManager`'s default `saveLatestOn: 'invocation'`, a turn costs one `CreateEvent`, one
+`ListEvents`, and one `DeleteEvent`. Mind the per-actor, per-session quotas: 10 `CreateEvent`/s for
+non-conversational events, 20 `ListEvents`/s, and 5 `DeleteEvent`/s; `saveLatestOn: 'message'` on a
+fast tool loop is the setting most likely to approach them. `listSnapshotIds` reads every history event
+of the location because `ListEvents` has no ordering or range filter; `limit` and `startAfter` are
+applied after the scan.
+
+### Errors
+
+AWS failures surface as `AgentCoreMemorySessionStorageError` with the AWS SDK error as `cause`.
+`ResourceNotFoundException` on a read is treated as "nothing stored" (`null`, `[]`, or a default
+manifest), matching how the Strands S3 storage treats a missing object. A failure to prune superseded
+events is logged as a warning and does not fail the save, since the new snapshot is already stored and
+reads still pick the newest one. Invalid ids throw a plain `Error` before any call is made.
+
+### Required IAM actions
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["bedrock-agentcore:CreateEvent", "bedrock-agentcore:ListEvents", "bedrock-agentcore:DeleteEvent"],
+  "Resource": "arn:aws:bedrock-agentcore:<region>:<account-id>:memory/<memory-id>"
+}
+```
+
+### With `AgentCoreMemoryStore`
+
+The two compose: point both at the same `memoryId`, `actorId`, and `sessionId`. `AgentCoreMemoryStore`
+writes conversational events that long-term strategies extract from; the session storage writes only
+`blob` events tagged `strands.*`, and its reads and `deleteSession` touch only those events.
 
 ## Design notes
 
@@ -224,4 +337,5 @@ A deliberate v1 gap with a clear upgrade path; it does not block use.
 ## Requirements
 
 - `@aws-sdk/client-bedrock-agentcore` >= 3.1065.0 (typed `namespacePath`).
-- `@strands-agents/sdk` >= 1.5.0 (the memory `MemoryManager` / `MemoryStore` / extraction surface).
+- `@strands-agents/sdk` >= 1.5.0 (the memory `MemoryManager` / `MemoryStore` / extraction surface, and the
+  `SessionManager` / `SnapshotStorage` session surface).
