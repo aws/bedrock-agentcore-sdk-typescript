@@ -317,7 +317,12 @@ describe('ShellSession: disconnect handling', () => {
   // Build a session whose socket we can drive frame-by-frame, with full control over
   // when frames/close arrive — so we can drop the connection while NOT iterating.
   function manualOpts(
-    opts: { reconnect?: boolean; onReconnect?: () => void | Promise<void> } = {}
+    opts: {
+      reconnect?: boolean
+      onReconnect?: () => void | Promise<void>
+      onSocketOpen?: (ws: MockWs, index: number) => void
+      reconnectConfig?: ShellSessionOptions['reconnectConfig']
+    } = {}
   ): ShellSessionOptions & {
     sockets: MockWs[]
     confirm: () => void
@@ -333,6 +338,12 @@ describe('ShellSession: disconnect handling', () => {
         const ws = sockets[sockets.length - 1]!
         ws.emit('upgrade', { headers: {} })
         ws.emit('open')
+        if (sockets.length > 1) {
+          process.nextTick(() => {
+            if (opts.onSocketOpen) opts.onSocketOpen(ws, sockets.indexOf(ws))
+            else ws.emit('message', confirmationFrame(), true)
+          })
+        }
       })
       return { url: 'wss://test.local/runtimes/x/ws/shells', headers: {} }
     })
@@ -345,6 +356,7 @@ describe('ShellSession: disconnect handling', () => {
             baseDelay: 0,
             reconnectWindow: null,
             ...(opts.onReconnect && { onReconnect: opts.onReconnect }),
+            ...opts.reconnectConfig,
           }
         : undefined,
       sockets,
@@ -593,18 +605,17 @@ describe('ShellSession: disconnect handling', () => {
         reconnect: true,
         onReconnect: () => {
           reconnects++
-          const ws = opts.sockets[reconnects]!
-          if (reconnects === 1) {
+        },
+        onSocketOpen: (ws, index) => {
+          if (index === 1) {
             ws.terminate = vi.fn(() => {
               ws.readyState = 3
               ws.emit('close', 1006, Buffer.from(''))
             })
-            process.nextTick(() => ws.emit('message', statusFrame({ kind: 'Status', status: 'Failure', ...metadata })))
+            ws.emit('message', statusFrame({ kind: 'Status', status: 'Failure', ...metadata }), true)
           } else {
-            process.nextTick(() => {
-              ws.emit('message', confirmationFrame())
-              ws.emit('message', stdoutFrame('recovered'))
-            })
+            ws.emit('message', confirmationFrame(), true)
+            ws.emit('message', stdoutFrame('recovered'))
           }
         },
       })
@@ -620,18 +631,82 @@ describe('ShellSession: disconnect handling', () => {
         const frame = await output
         expect(frame.done).toBe(false)
         expect(frame.value?.text).toBe('recovered')
-        expect(reconnects).toBe(2)
+        expect(reconnects).toBe(1)
+        expect(opts.sockets).toHaveLength(3)
       } finally {
         await session.close()
       }
     }
   )
 
-  it('preserves a nonzero shell exit before reconnect confirmation', async () => {
-    let opts: ReturnType<typeof manualOpts>
-    opts = manualOpts({
+  it('keeps repeated initialization failures within the reconnect window and retry budget', async () => {
+    let callbacks = 0
+    const opts = manualOpts({
       reconnect: true,
-      onReconnect: () => process.nextTick(() => opts.sockets[1]!.emit('message', exitFrame(42))),
+      reconnectConfig: { maxRetries: 1, baseDelay: 1000, outerLoopDelay: 1000, reconnectWindow: 25 },
+      onReconnect: () => {
+        callbacks++
+      },
+      onSocketOpen: (ws) => {
+        ws.terminate = vi.fn(() => {
+          ws.readyState = 3
+          ws.emit('close', 1006, Buffer.from(''))
+        })
+        ws.emit('message', statusFrame({ kind: 'Status', status: 'Failure' }), true)
+      },
+    })
+    const session = new ShellSession(opts)
+    await session.connect()
+    const output = session[Symbol.asyncIterator]().next()
+    const first = opts.sockets[0]!
+    first.readyState = 3
+    first.emit('close', 1006, Buffer.from(''))
+
+    try {
+      expect((await output).done).toBe(true)
+      expect(opts.sockets).toHaveLength(2)
+      expect(callbacks).toBe(0)
+    } finally {
+      await session.close()
+    }
+  })
+
+  it('notifies reconnect only after confirmation without an active iterator', async () => {
+    let callbacks = 0
+    let socketOpened = false
+    const opts = manualOpts({
+      reconnect: true,
+      onReconnect: () => {
+        callbacks++
+      },
+      onSocketOpen: () => {
+        socketOpened = true
+      },
+    })
+    const session = new ShellSession(opts)
+    await session.connect()
+    const first = opts.sockets[0]!
+    first.readyState = 3
+    first.emit('close', 1006, Buffer.from(''))
+
+    try {
+      await vi.waitFor(() => expect(socketOpened).toBe(true))
+      expect(callbacks).toBe(0)
+      opts.sockets[1]!.emit('message', confirmationFrame(), true)
+      await vi.waitFor(() => expect(callbacks).toBe(1))
+    } finally {
+      await session.close()
+    }
+  })
+
+  it('preserves a nonzero shell exit before reconnect confirmation', async () => {
+    let reconnects = 0
+    const opts = manualOpts({
+      reconnect: true,
+      onReconnect: () => {
+        reconnects++
+      },
+      onSocketOpen: (ws) => ws.emit('message', exitFrame(42), true),
     })
     const session = new ShellSession(opts)
     await session.connect()
@@ -646,6 +721,7 @@ describe('ShellSession: disconnect handling', () => {
       expect(frame.value?.channel).toBe(ShellChannel.STATUS)
       expect(session.exitCode).toBe(42)
       expect(opts.sockets).toHaveLength(2)
+      expect(reconnects).toBe(0)
     } finally {
       await session.close()
     }
@@ -787,7 +863,7 @@ describe('ShellSession: reconnectWindow null = unlimited', () => {
           if (thisCallCount === 1) {
             ws.emit('close', 1006, Buffer.from('')) // abnormal → triggers reconnect
           } else {
-            ws.emit('message', closeFrame()) // clean close on second call
+            ws.emit('message', closeFrame(), true) // clean close on second call
           }
         })
       })
@@ -902,7 +978,7 @@ describe('ShellSession: socket closes between the open event and state promotion
           ws.readyState = 3 // CLOSED
           ws.emit('close', 1006, Buffer.from('')) // dies in the open→promotion gap
         } else {
-          process.nextTick(() => ws.emit('message', closeFrame())) // healthy reattach, then clean close
+          process.nextTick(() => ws.emit('message', closeFrame(), true)) // healthy reattach, then clean close
         }
       })
       return { url: 'wss://test.local/runtimes/x/ws/shells', headers: {} }

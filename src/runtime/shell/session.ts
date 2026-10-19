@@ -98,7 +98,7 @@ export interface ShellSessionOptions {
 //
 // Transitions:
 //   idle → connecting              connect() called
-//   connecting → open              upgrade succeeded
+//   connecting → open              initial upgrade or reconnect confirmation succeeded
 //   connecting → closed            close() called during upgrade
 //   connecting → (throws)          upgrade failed; caller retries or surfaces error
 //   open → reconnecting            WS dropped; _iterate catches the error
@@ -111,6 +111,11 @@ export interface ShellSessionOptions {
 // partway through _connectWithUpgrade() before the open state is established.
 // _sessionController is session-lifetime and never goes into the union.
 
+type ReconnectConfirmationOutcome =
+  | { kind: 'confirmed' }
+  | { kind: 'retry' }
+  | { kind: 'terminal'; closeCode?: number; exitCode?: number | null; frame?: ShellFrame }
+
 type SessionState =
   | { status: 'idle' }
   | { status: 'connecting'; ws: WebSocket | null }
@@ -119,7 +124,6 @@ type SessionState =
       ws: WebSocket
       messageIterator: AsyncIterableIterator<unknown[]>
       keepaliveTimer: ReturnType<typeof globalThis.setInterval> | null
-      awaitingReconnectConfirmation: boolean
     }
   | { status: 'reconnecting' }
   | { status: 'closed' }
@@ -184,6 +188,7 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
    * replayed output still requires an active iterator (see the class docstring).
    */
   private _reconnectPromise: Promise<boolean> | null = null
+  private _pendingReconnectTerminalFrame: ShellFrame | null = null
 
   constructor(opts: ShellSessionOptions) {
     this.connectFn = opts.connectFn
@@ -371,11 +376,11 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
     })
   }
 
-  /** Open the WebSocket, capture 101 upgrade headers, and promote the session to 'open'. */
-  private async _connectWithUpgrade(isReconnect = false): Promise<void> {
+  /** Open the WebSocket, capture 101 upgrade headers, and confirm reconnects before promotion to 'open'. */
+  private async _connectWithUpgrade(isReconnect = false, confirmationTimeoutMs?: number): Promise<boolean> {
     // Guard must be the very first check — any state mutation below would violate the
     // closed invariant if close() has already fired.
-    if (this._isClosed()) return
+    if (this._isClosed()) return false
     // Abort any previous per-connection iterator before creating a new one.
     this._abortController?.abort()
 
@@ -396,14 +401,14 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
     }
     // close() may have fired while connectFn was suspended — bail out before
     // creating a new WebSocket so the session doesn't revive after an explicit close.
-    if (this._isClosed()) return
+    if (this._isClosed()) return false
 
     const ws = this._wsFactory(connectResult.url, connectResult.protocols, { headers: connectResult.headers })
     // close() may have fired in the gap between wsFactory() and this state update —
     // terminate the socket and bail out instead of re-registering in 'connecting'.
     if (this._isClosed()) {
       ws.terminate()
-      return
+      return false
     }
     // Register ws in the connecting state so close() can terminate the socket
     // during the TLS handshake, before the open race resolves.
@@ -415,6 +420,7 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
     const controller = this._abortController
     // Single iterator for all frame reads after the WebSocket opens.
     const messageIterator = on(ws, 'message', { signal: controller.signal }) as AsyncIterableIterator<unknown[]>
+    const confirmation = isReconnect ? this._waitForReconnectConfirmation(ws, confirmationTimeoutMs) : null
 
     ws.on('close', (code: number, reason: Buffer) => {
       const err = Object.assign(new Error(`WebSocket closed: ${code} ${reason?.toString() ?? ''}`), { closeCode: code })
@@ -469,6 +475,7 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
         }),
       ])
     } catch (err) {
+      confirmation?.cancel()
       ws.terminate()
       if (!this._isClosed()) this._state = { status: 'idle' }
       this.log.debug(`ShellSession: WebSocket upgrade failed (shellId=${this.shellId}): ${String(err)}`)
@@ -480,8 +487,9 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
     // close() may have fired while the open race was pending — bail out rather than
     // reviving a session the caller has already closed.
     if (this._isClosed()) {
+      confirmation?.cancel()
       ws.terminate()
-      return
+      return false
     }
 
     // The socket can die between the 'open' event and this continuation (e.g. a receiver
@@ -491,6 +499,7 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
     // as 'open', start a keepalive on it, and bypass the close-driven reconnect path. Fail
     // the attempt instead: connect() surfaces the error and the reconnect loop retries it.
     if (ws.readyState !== WebSocket.OPEN) {
+      confirmation?.cancel()
       const err = this._closeError ?? new Error(`WebSocket not open after upgrade (readyState ${ws.readyState})`)
       ws.terminate()
       this._state = { status: 'idle' }
@@ -499,9 +508,91 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
     }
 
     const keepaliveTimer = this._startKeepalive(ws, controller.signal)
-    // Connection is ready immediately after WebSocket opens — shellId comes from 101 header.
-    // No longer blocking on the 0x03 confirmation frame.
-    this._state = { status: 'open', ws, messageIterator, keepaliveTimer, awaitingReconnectConfirmation: isReconnect }
+    if (confirmation) {
+      // Keep the attempt in 'connecting' until the server accepts the shell. This
+      // lets failed initialization use the current retry budget and backoff.
+      const outcome = await confirmation.promise
+      if (this._isClosed()) {
+        this._stopKeepalive(keepaliveTimer)
+        return false
+      }
+      if (outcome.kind !== 'confirmed' || ws.readyState !== WebSocket.OPEN) {
+        this._stopKeepalive(keepaliveTimer)
+        controller.abort()
+        if (outcome.kind === 'terminal') {
+          if (outcome.closeCode === 4000) this._kicked = true
+          if (outcome.exitCode !== undefined) this._exitCode = outcome.exitCode
+          this._pendingReconnectTerminalFrame = outcome.frame ?? null
+          ws.close()
+          this._state = { status: 'idle' }
+          return false
+        }
+        ws.terminate()
+        this._state = { status: 'idle' }
+        throw new Error(`Shell reconnect initialization failed (shellId=${this.shellId})`)
+      }
+    }
+    // Initial connect is ready at WebSocket open; reconnect is ready at confirmation.
+    this._state = { status: 'open', ws, messageIterator, keepaliveTimer }
+    return true
+  }
+
+  private _waitForReconnectConfirmation(
+    ws: WebSocket,
+    timeoutMs?: number
+  ): {
+    promise: Promise<ReconnectConfirmationOutcome>
+    cancel: () => void
+  } {
+    let settle!: (outcome: ReconnectConfirmationOutcome) => void
+    const promise = new Promise<ReconnectConfirmationOutcome>((resolve) => {
+      settle = (outcome): void => {
+        ws.off('message', onMessage)
+        ws.off('close', onClose)
+        this._sessionController.signal.removeEventListener('abort', onAbort)
+        if (timer !== undefined) globalThis.clearTimeout(timer)
+        resolve(outcome)
+      }
+    })
+    const onMessage = (data: RawData, binary: boolean): void => {
+      if (!binary) return
+      try {
+        const bytes = Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data)
+        const frame = this.framer.decode(bytes)
+        if (frame.channel === ShellChannel.CLOSE) {
+          settle({ kind: 'terminal' })
+          return
+        }
+        if (frame.channel !== ShellChannel.STATUS) return
+        const status = frame.json()
+        if (this._isConfirmationStatus(status)) {
+          settle({ kind: 'confirmed' })
+        } else if (this._isTerminationStatus(status)) {
+          const exitCode = this._parseExitCode(status)
+          if (status['status'] === 'Failure' && exitCode === null) settle({ kind: 'retry' })
+          else settle({ kind: 'terminal', exitCode, frame })
+        }
+      } catch (err) {
+        this.log.debug(`ShellSession: malformed reconnect frame (shellId=${this.shellId}): ${String(err)}`)
+      }
+    }
+    const onClose = (code: number): void => {
+      settle(
+        code === 4000 || code === 1003 || code === 1000 ? { kind: 'terminal', closeCode: code } : { kind: 'retry' }
+      )
+    }
+    const onAbort = (): void => settle({ kind: 'terminal' })
+    const timer =
+      timeoutMs === undefined
+        ? undefined
+        : globalThis.setTimeout(() => {
+            settle({ kind: 'retry' })
+            ws.terminate()
+          }, timeoutMs)
+    ws.on('message', onMessage)
+    ws.once('close', onClose)
+    this._sessionController.signal.addEventListener('abort', onAbort, { once: true })
+    return { promise, cancel: onAbort }
   }
 
   /** Receive one raw binary message from the WebSocket. */
@@ -550,7 +641,13 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
     try {
       while (true) {
         if (this._state.status !== 'open') {
-          if (this._isClosed() || !this._reconnectPromise) return
+          if (this._isClosed()) return
+          if (!this._reconnectPromise) {
+            const terminalFrame = this._pendingReconnectTerminalFrame
+            this._pendingReconnectTerminalFrame = null
+            if (terminalFrame) yield terminalFrame
+            return
+          }
           await this._reconnectPromise
           continue
         }
@@ -586,10 +683,16 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
           const closeCode = this._extractCloseCode(this._closeError ?? err)
           const didReconnect = await this._ensureReconnect(closeCode)
           if (this._isClosed()) return
-          if (!didReconnect) return // terminal close, no config, or budget exhausted
+          if (!didReconnect) {
+            const terminalFrame = this._pendingReconnectTerminalFrame
+            this._pendingReconnectTerminalFrame = null
+            if (terminalFrame) yield terminalFrame
+            return
+          }
           continue
         }
 
+        if (this._state.status !== 'open' || this._state.ws !== state.ws) continue
         const frame = this.framer.decode(raw)
 
         if (frame.channel === ShellChannel.CLOSE) {
@@ -605,17 +708,11 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
           try {
             const s = frame.json()
             if (this._isConfirmationStatus(s)) {
-              state.awaitingReconnectConfirmation = false
               // Confirmation frame — silently swallow (not application output).
               continue
             }
             if (this._isTerminationStatus(s)) {
-              const exitCode = this._parseExitCode(s)
-              if (state.awaitingReconnectConfirmation && s['status'] === 'Failure' && exitCode === null) {
-                state.ws.terminate()
-                continue
-              }
-              this._exitCode = exitCode
+              this._exitCode = this._parseExitCode(s)
               this._state = { status: 'idle' }
               yield frame
               return
@@ -765,8 +862,9 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
         }
       }
 
-      const success = await this._runInnerRetryLoop(cfg, startTime, window)
-      if (success) return true
+      const result = await this._runInnerRetryLoop(cfg, startTime, window)
+      if (result === 'connected') return true
+      if (result === 'terminal') return false
 
       let outerDelay = cfg.outerLoopDelay ?? DEFAULT_OUTER_LOOP_DELAY
       // Cap outer sleep to remaining window so we don't overshoot a short window
@@ -785,7 +883,11 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
     }
   }
 
-  private async _runInnerRetryLoop(cfg: ReconnectConfig, startTime: number, window: number | null): Promise<boolean> {
+  private async _runInnerRetryLoop(
+    cfg: ReconnectConfig,
+    startTime: number,
+    window: number | null
+  ): Promise<'connected' | 'exhausted' | 'terminal'> {
     const maxRetries = cfg.maxRetries ?? DEFAULT_MAX_RETRIES
     const baseDelay = cfg.baseDelay ?? DEFAULT_BASE_DELAY
     const maxDelay = cfg.maxDelay ?? DEFAULT_MAX_DELAY
@@ -794,16 +896,16 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
     while (attempt < maxRetries) {
       attempt++
 
-      if (window !== null && Date.now() - startTime >= window) return false
+      if (window !== null && Date.now() - startTime >= window) return 'exhausted'
 
       // Attempt first — no pre-attempt sleep. Sleep only after failure so that
       // transient disconnects reconnect immediately on the first try.
       this.log.info(`ShellSession: Reconnect attempt ${attempt}/${maxRetries} (shellId=${this.shellId})`)
       try {
-        await this._connectWithUpgrade(true)
-        // close() may have fired while connectFn was awaiting — _connectWithUpgrade returns void
-        // rather than throwing in that case, so guard here before claiming a successful reconnect.
-        if (this._isClosed()) return false
+        const remaining = window === null ? undefined : Math.max(0, window - (Date.now() - startTime))
+        const connected = await this._connectWithUpgrade(true, remaining)
+        // A shell exit or terminal close before confirmation ends the reconnect.
+        if (this._isClosed() || !connected) return 'terminal'
         this.log.info(`ShellSession: Reconnected (shellId=${this.shellId})`)
         if (cfg.onReconnect) {
           try {
@@ -812,15 +914,15 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
             this.log.warn(`ShellSession: onReconnect callback threw (shellId=${this.shellId}): ${String(err)}`)
           }
         }
-        return true
+        return 'connected'
       } catch (err: unknown) {
         this.log.warn(`ShellSession: Reconnect attempt ${attempt} failed: ${String(err)} (shellId=${this.shellId})`)
       }
 
-      if (this._isClosed()) return false
+      if (this._isClosed()) return 'terminal'
       // Re-check window after a slow _connectWithUpgrade so the backoff sleep
       // doesn't fire after the window has already expired mid-attempt.
-      if (window !== null && Date.now() - startTime >= window) return false
+      if (window !== null && Date.now() - startTime >= window) return 'exhausted'
 
       // Exponential backoff with ±25% jitter to avoid thundering herd on
       // simultaneous reconnects from multiple clients.
@@ -828,12 +930,13 @@ export class ShellSession implements AsyncIterable<ShellFrame> {
       // _abortController, which is already aborted by the WS close event.
       const base = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay)
       const jitter = base * 0.25 * (Math.random() * 2 - 1)
-      const delay = base + jitter
+      const delay =
+        window === null ? base + jitter : Math.min(base + jitter, Math.max(0, window - (Date.now() - startTime)))
       this.log.info(`ShellSession: Waiting ${Math.round(delay)}ms before next attempt (shellId=${this.shellId})`)
       await _sleep(delay, this._sessionController.signal)
-      if (this._isClosed()) return false
+      if (this._isClosed()) return 'terminal'
     }
-    return false
+    return 'exhausted'
   }
 }
 
