@@ -548,6 +548,109 @@ describe('ShellSession: disconnect handling', () => {
     await loop
   })
 
+  it('keeps an active iterator reading through back-to-back reconnects', async () => {
+    let opts: ReturnType<typeof manualOpts>
+    let reconnects = 0
+    opts = manualOpts({
+      reconnect: true,
+      onReconnect: () => {
+        reconnects++
+        if (reconnects === 1) {
+          const ws = opts.sockets[1]!
+          ws.readyState = 3
+          ws.emit('close', 1006, Buffer.from(''))
+        } else {
+          process.nextTick(() => opts.sockets[2]!.emit('message', stdoutFrame('recovered')))
+        }
+      },
+    })
+    const session = new ShellSession(opts)
+    await session.connect()
+    const output = session[Symbol.asyncIterator]().next()
+
+    const first = opts.sockets[0]!
+    first.readyState = 3
+    first.emit('close', 1006, Buffer.from(''))
+
+    try {
+      const frame = await output
+      expect(frame.done).toBe(false)
+      expect(frame.value?.channel).toBe(ShellChannel.STDOUT)
+      expect(frame.value?.text).toBe('recovered')
+      expect(reconnects).toBe(2)
+      expect(opts.sockets).toHaveLength(3)
+    } finally {
+      await session.close()
+    }
+  })
+
+  it.each([{}, { metadata: { shellId: 'server-shell' } }])(
+    'retries a reconnect initialization failure with metadata %j',
+    async (metadata) => {
+      let opts: ReturnType<typeof manualOpts>
+      let reconnects = 0
+      opts = manualOpts({
+        reconnect: true,
+        onReconnect: () => {
+          reconnects++
+          const ws = opts.sockets[reconnects]!
+          if (reconnects === 1) {
+            ws.terminate = vi.fn(() => {
+              ws.readyState = 3
+              ws.emit('close', 1006, Buffer.from(''))
+            })
+            process.nextTick(() => ws.emit('message', statusFrame({ kind: 'Status', status: 'Failure', ...metadata })))
+          } else {
+            process.nextTick(() => {
+              ws.emit('message', confirmationFrame())
+              ws.emit('message', stdoutFrame('recovered'))
+            })
+          }
+        },
+      })
+      const session = new ShellSession(opts)
+      await session.connect()
+      const output = session[Symbol.asyncIterator]().next()
+
+      const first = opts.sockets[0]!
+      first.readyState = 3
+      first.emit('close', 1006, Buffer.from(''))
+
+      try {
+        const frame = await output
+        expect(frame.done).toBe(false)
+        expect(frame.value?.text).toBe('recovered')
+        expect(reconnects).toBe(2)
+      } finally {
+        await session.close()
+      }
+    }
+  )
+
+  it('preserves a nonzero shell exit before reconnect confirmation', async () => {
+    let opts: ReturnType<typeof manualOpts>
+    opts = manualOpts({
+      reconnect: true,
+      onReconnect: () => process.nextTick(() => opts.sockets[1]!.emit('message', exitFrame(42))),
+    })
+    const session = new ShellSession(opts)
+    await session.connect()
+    const output = session[Symbol.asyncIterator]().next()
+
+    const first = opts.sockets[0]!
+    first.readyState = 3
+    first.emit('close', 1006, Buffer.from(''))
+
+    try {
+      const frame = await output
+      expect(frame.value?.channel).toBe(ShellChannel.STATUS)
+      expect(session.exitCode).toBe(42)
+      expect(opts.sockets).toHaveLength(2)
+    } finally {
+      await session.close()
+    }
+  })
+
   // an onReconnect callback that calls send() must NOT deadlock.
   it('onReconnect calling send() does not deadlock', async () => {
     let sessionRef: ShellSession
