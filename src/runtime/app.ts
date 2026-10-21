@@ -2,7 +2,7 @@ import { Buffer } from 'buffer'
 import { createRequire } from 'module'
 import { randomUUID } from 'crypto'
 import { Readable } from 'stream'
-import Fastify from 'fastify'
+import Fastify, { LogController } from 'fastify'
 import { z } from 'zod'
 import type {
   FastifyInstance,
@@ -94,7 +94,9 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
 
     this._app = Fastify({
       logger: loggerConfig,
-      disableRequestLogging: this._config.logging?.disableRequestLogging ?? ((req): boolean => req.url === '/ping'),
+      logController: new LogController({
+        disableRequestLogging: this._config.logging?.disableRequestLogging ?? ((req): boolean => req.url === '/ping'),
+      }),
     })
   }
 
