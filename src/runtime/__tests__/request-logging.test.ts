@@ -21,6 +21,7 @@ async function createApp(lines: string[], disableRequestLogging?: DisableRequest
       },
     },
   })
+  // Same setup as run(), without listening on a port, so that tests can use inject()
   await app['_registerPlugins']()
   app['_setupContentTypeParsers']()
   app['_setupRoutes']()
@@ -44,22 +45,24 @@ async function loggedUrls(disableRequestLogging?: DisableRequestLogging): Promis
     .map((entry) => entry.req.url)
 }
 
-describe('Request logging', () => {
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
+describe('BedrockAgentCoreApp', () => {
+  describe('request logging', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
 
-  it('does not log /ping requests by default', async () => {
-    expect(await loggedUrls()).toEqual(['/invocations'])
-  })
+    it('does not log /ping requests by default', async () => {
+      expect(await loggedUrls()).toEqual(['/invocations'])
+    })
 
-  it('uses config.logging.disableRequestLogging instead of the default', async () => {
-    expect(await loggedUrls((request) => request.url === '/invocations')).toEqual(['/ping'])
-  })
+    it('uses config.logging.disableRequestLogging instead of the default', async () => {
+      expect(await loggedUrls((request) => request.url === '/invocations')).toEqual(['/ping'])
+    })
 
-  it('does not emit the Fastify FSTDEP023 deprecation warning', async () => {
-    const emitWarning = vi.spyOn(process, 'emitWarning').mockImplementation(() => {})
-    await createApp([])
-    expect(emitWarning).not.toHaveBeenCalledWith(expect.any(String), 'FastifyDeprecation', 'FSTDEP023')
+    it('does not emit the Fastify FSTDEP023 deprecation warning', async () => {
+      const emitWarning = vi.spyOn(process, 'emitWarning').mockImplementation(() => {})
+      await createApp([])
+      expect(emitWarning).not.toHaveBeenCalledWith(expect.any(String), 'FastifyDeprecation', 'FSTDEP023')
+    })
   })
 })
