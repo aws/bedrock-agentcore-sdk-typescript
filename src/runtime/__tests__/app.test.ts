@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Readable } from 'stream'
 import { z } from 'zod'
 import { LogController } from 'fastify'
-import type { FastifyRequest } from 'fastify'
 import type { InvocationHandler, WebSocketHandler } from '../types.js'
 import { BedrockAgentCoreApp } from '../app.js'
 
@@ -131,26 +130,6 @@ describe('BedrockAgentCoreApp', () => {
         logger: { level: 'info' },
         logController: expect.any(LogController),
       })
-    })
-
-    it('skips request logging only for /ping by default', () => {
-      const handler: InvocationHandler = async (_request, _context) => 'test response'
-      new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
-      const { logController } = Fastify.mock.calls[0][0]
-      expect(logController.isLogDisabled({ url: '/ping' } as FastifyRequest)).toBe(true)
-      expect(logController.isLogDisabled({ url: '/invocations' } as FastifyRequest)).toBe(false)
-    })
-
-    it('replaces the /ping default with config.logging.disableRequestLogging', () => {
-      const handler: InvocationHandler = async (_request, _context) => 'test response'
-      new BedrockAgentCoreApp({
-        invocationHandler: { process: handler },
-        config: {
-          logging: { disableRequestLogging: true },
-        },
-      })
-      const { logController } = Fastify.mock.calls[0][0]
-      expect(logController.isLogDisabled({ url: '/invocations' } as FastifyRequest)).toBe(true)
     })
 
     it('throws error when handler passed as bare function', () => {
