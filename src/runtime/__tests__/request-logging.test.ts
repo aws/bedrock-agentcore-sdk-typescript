@@ -1,16 +1,21 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { BedrockAgentCoreApp } from '../app.js'
 import type { BedrockAgentCoreAppConfig } from '../types.js'
 
-type DisableRequestLogging = NonNullable<BedrockAgentCoreAppConfig['logging']>['disableRequestLogging']
-type LogEntry = { msg: string; req: { url: string } }
+interface LogEntry {
+  msg: string
+  req: { url: string }
+}
 
-async function createApp(lines: string[], disableRequestLogging?: DisableRequestLogging): Promise<BedrockAgentCoreApp> {
+async function createApp(
+  lines: string[],
+  logging?: BedrockAgentCoreAppConfig['logging']
+): Promise<BedrockAgentCoreApp> {
   const app = new BedrockAgentCoreApp({
     invocationHandler: { process: async () => 'ok' },
     config: {
       logging: {
-        ...(disableRequestLogging !== undefined && { disableRequestLogging }),
+        ...logging,
         options: {
           stream: {
             write: (line: string): void => {
@@ -29,9 +34,9 @@ async function createApp(lines: string[], disableRequestLogging?: DisableRequest
   return app
 }
 
-async function loggedUrls(disableRequestLogging?: DisableRequestLogging): Promise<string[]> {
+async function loggedUrls(logging?: BedrockAgentCoreAppConfig['logging']): Promise<string[]> {
   const lines: string[] = []
-  const app = await createApp(lines, disableRequestLogging)
+  const app = await createApp(lines, logging)
   await app['_app'].inject({ method: 'GET', url: '/ping' })
   await app['_app'].inject({
     method: 'POST',
@@ -47,22 +52,20 @@ async function loggedUrls(disableRequestLogging?: DisableRequestLogging): Promis
 
 describe('BedrockAgentCoreApp', () => {
   describe('request logging', () => {
-    afterEach(() => {
-      vi.restoreAllMocks()
-    })
-
     it('does not log /ping requests by default', async () => {
       expect(await loggedUrls()).toEqual(['/invocations'])
     })
 
     it('uses config.logging.disableRequestLogging instead of the default', async () => {
-      expect(await loggedUrls((request) => request.url === '/invocations')).toEqual(['/ping'])
+      const urls = await loggedUrls({ disableRequestLogging: (request) => request.url === '/invocations' })
+      expect(urls).toEqual(['/ping'])
     })
 
     it('does not emit the Fastify FSTDEP023 deprecation warning', async () => {
       const emitWarning = vi.spyOn(process, 'emitWarning').mockImplementation(() => {})
       await createApp([])
       expect(emitWarning).not.toHaveBeenCalledWith(expect.any(String), 'FastifyDeprecation', 'FSTDEP023')
+      emitWarning.mockRestore()
     })
   })
 })
