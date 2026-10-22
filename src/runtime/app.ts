@@ -15,6 +15,7 @@ import type {
 // Import SSE types to ensure module augmentation is applied
 import type { SSESource } from '@fastify/sse'
 import type { WebSocket } from '@fastify/websocket'
+import type { AddressInfo } from 'net'
 import type {
   BedrockAgentCoreAppParams,
   BedrockAgentCoreAppConfig,
@@ -99,28 +100,37 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
   }
 
   /**
-   * Starts the Fastify server.
+   * Starts the Fastify server, and exits the process if it fails to start.
    *
    * @param options - Optional server options. Supports `port` (defaults to 8080) and `host` (defaults to '0.0.0.0').
    */
   run(options?: { port?: number; host?: string }): void {
-    const PORT = options?.port ?? 8080
-    const HOST = options?.host ?? '0.0.0.0'
+    this._listen(options).catch((error: Error) => {
+      this._app.log.error(error)
+      process.exit(1)
+    })
+  }
 
-    // Wait for Fastify to be ready (all plugins registered), setup routes, and start the server
-    Promise.resolve(this._registerPlugins())
-      .then(() => {
-        this._setupContentTypeParsers()
-        this._setupRoutes()
-        return this._app.listen({ port: PORT, host: HOST })
-      })
-      .then(() => {
-        this._app.log.info(`Server listening on port ${PORT}`)
-      })
-      .catch((error: Error) => {
-        this._app.log.error(error)
-        process.exit(1)
-      })
+  /**
+   * Starts the Fastify server and resolves once it listens.
+   *
+   * Unlike {@link BedrockAgentCoreApp.run}, a failure to start rejects instead of exiting the process.
+   * An instance starts once; to start again, for example on another port, create a new instance.
+   *
+   * @param options - Optional server options. Supports `port` (defaults to 8080; `0` picks a free port) and `host` (defaults to '0.0.0.0').
+   * @returns The address the server listens on
+   */
+  async listen(options?: { port?: number; host?: string }): Promise<AddressInfo> {
+    return this._listen(options)
+  }
+
+  /**
+   * Stops the server started by {@link BedrockAgentCoreApp.listen} or {@link BedrockAgentCoreApp.run}.
+   *
+   * @returns Resolves once the server has closed
+   */
+  async close(): Promise<void> {
+    await this._app.close()
   }
 
   /**
@@ -232,6 +242,29 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
       activeCount: this._activeTasksMap.size,
       runningJobs,
     }
+  }
+
+  /**
+   * Starts the server for both {@link BedrockAgentCoreApp.run} and {@link BedrockAgentCoreApp.listen}, so a subclass
+   * that defines its own `listen()` does not change what `run()` does.
+   *
+   * @param options - Server options, as for {@link BedrockAgentCoreApp.listen}
+   * @returns The address the server listens on
+   */
+  private async _listen(options?: { port?: number; host?: string }): Promise<AddressInfo> {
+    const port = options?.port ?? 8080
+    const host = options?.host ?? '0.0.0.0'
+
+    // Wait for Fastify to be ready (all plugins registered), setup routes, and start the server
+    await this._registerPlugins()
+    this._setupContentTypeParsers()
+    this._setupRoutes()
+    await this._app.listen({ port, host })
+
+    // A TCP listen always yields an AddressInfo; only a pipe or socket path yields a string
+    const address = this._app.server.address() as AddressInfo
+    this._app.log.info(`Server listening on port ${address.port}`)
+    return address
   }
 
   /**
