@@ -1,3 +1,4 @@
+import type { AddressInfo } from 'net'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BedrockAgentCoreApp } from '../app.js'
 
@@ -58,6 +59,28 @@ describe('BedrockAgentCoreApp lifecycle', () => {
       createApp().run({ port, host: HOST })
 
       await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1))
+    })
+
+    it('does not call a listen() that a subclass defines', async () => {
+      const { port } = await createApp().listen({ port: 0, host: HOST })
+      const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+      let listenCalls = 0
+      class ExtendedApp extends BedrockAgentCoreApp {
+        override async listen(options?: { port?: number; host?: string }): Promise<AddressInfo> {
+          listenCalls++
+          return super.listen(options)
+        }
+      }
+      const app = new ExtendedApp({
+        invocationHandler: { process: async () => 'ok' },
+        config: { logging: { enabled: false } },
+      })
+      apps.push(app)
+
+      app.run({ port, host: HOST })
+
+      await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1))
+      expect(listenCalls).toBe(0)
     })
   })
 })
