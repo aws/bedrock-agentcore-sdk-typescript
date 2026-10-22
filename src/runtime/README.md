@@ -152,6 +152,22 @@ const app = new BedrockAgentCoreApp({
 
 - `logging`: Logging configuration (Note: logging is not yet implemented, but the configuration is reserved for future use)
 
+## Starting and Stopping the Server
+
+`run()` starts the server and exits the process if it cannot start. To handle a failed start yourself, or to stop the server again, use `listen()` and `close()`:
+
+```typescript
+const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
+
+// Port 0 lets the OS pick a free port, for example in tests
+const { port } = await app.listen({ port: 0, host: '127.0.0.1' })
+const response = await fetch(`http://127.0.0.1:${port}/ping`)
+
+await app.close()
+```
+
+`listen()` resolves with the bound address once the server listens, and rejects if it cannot start, for example when the port is in use. `close()` stops the server.
+
 ## Protocol Details
 
 ### Health Check Endpoint
