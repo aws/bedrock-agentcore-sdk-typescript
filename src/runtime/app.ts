@@ -115,6 +115,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
    * Starts the Fastify server and resolves once it listens.
    *
    * Unlike {@link BedrockAgentCoreApp.run}, a failure to start rejects instead of exiting the process.
+   * An instance starts once; to start again, for example on another port, create a new instance.
    *
    * @param options - Optional server options. Supports `port` (defaults to 8080; `0` picks a free port) and `host` (defaults to '0.0.0.0').
    * @returns The address the server listens on
@@ -251,14 +252,14 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
    * @returns The address the server listens on
    */
   private async _listen(options?: { port?: number; host?: string }): Promise<AddressInfo> {
-    const PORT = options?.port ?? 8080
-    const HOST = options?.host ?? '0.0.0.0'
+    const port = options?.port ?? 8080
+    const host = options?.host ?? '0.0.0.0'
 
     // Wait for Fastify to be ready (all plugins registered), setup routes, and start the server
     await this._registerPlugins()
     this._setupContentTypeParsers()
     this._setupRoutes()
-    await this._app.listen({ port: PORT, host: HOST })
+    await this._app.listen({ port, host })
 
     // A TCP listen always yields an AddressInfo; only a pipe or socket path yields a string
     const address = this._app.server.address() as AddressInfo

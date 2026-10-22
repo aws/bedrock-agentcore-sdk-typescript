@@ -1,19 +1,31 @@
 import type { AddressInfo } from 'net'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BedrockAgentCoreApp } from '../app.js'
+import type { BedrockAgentCoreAppParams } from '../types.js'
 
 const HOST = '127.0.0.1'
 
-describe('BedrockAgentCoreApp lifecycle', () => {
+describe('BedrockAgentCoreApp', () => {
   let apps: BedrockAgentCoreApp[] = []
 
-  function createApp(): BedrockAgentCoreApp {
-    const app = new BedrockAgentCoreApp({
+  function createApp(
+    App: new (params: BedrockAgentCoreAppParams) => BedrockAgentCoreApp = BedrockAgentCoreApp
+  ): BedrockAgentCoreApp {
+    const app = new App({
       invocationHandler: { process: async () => 'ok' },
       config: { logging: { enabled: false } },
     })
     apps.push(app)
     return app
+  }
+
+  async function occupyPort(): Promise<number> {
+    const { port } = await createApp().listen({ port: 0, host: HOST })
+    return port
+  }
+
+  function stubExit(): ReturnType<typeof vi.spyOn> {
+    return vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
   }
 
   afterEach(async () => {
@@ -32,8 +44,8 @@ describe('BedrockAgentCoreApp lifecycle', () => {
     })
 
     it('rejects without exiting the process when the port is in use', async () => {
-      const { port } = await createApp().listen({ port: 0, host: HOST })
-      const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+      const port = await occupyPort()
+      const exit = stubExit()
 
       await expect(createApp().listen({ port, host: HOST })).rejects.toThrow('EADDRINUSE')
       expect(exit).not.toHaveBeenCalled()
@@ -53,8 +65,8 @@ describe('BedrockAgentCoreApp lifecycle', () => {
 
   describe('run', () => {
     it('exits the process when the port is in use', async () => {
-      const { port } = await createApp().listen({ port: 0, host: HOST })
-      const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+      const port = await occupyPort()
+      const exit = stubExit()
 
       createApp().run({ port, host: HOST })
 
@@ -62,8 +74,8 @@ describe('BedrockAgentCoreApp lifecycle', () => {
     })
 
     it('does not call a listen() that a subclass defines', async () => {
-      const { port } = await createApp().listen({ port: 0, host: HOST })
-      const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+      const port = await occupyPort()
+      const exit = stubExit()
       let listenCalls = 0
       class ExtendedApp extends BedrockAgentCoreApp {
         override async listen(options?: { port?: number; host?: string }): Promise<AddressInfo> {
@@ -71,13 +83,8 @@ describe('BedrockAgentCoreApp lifecycle', () => {
           return super.listen(options)
         }
       }
-      const app = new ExtendedApp({
-        invocationHandler: { process: async () => 'ok' },
-        config: { logging: { enabled: false } },
-      })
-      apps.push(app)
 
-      app.run({ port, host: HOST })
+      createApp(ExtendedApp).run({ port, host: HOST })
 
       await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1))
       expect(listenCalls).toBe(0)
