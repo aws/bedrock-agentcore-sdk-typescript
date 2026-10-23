@@ -55,7 +55,7 @@ jobs:
   call:
     uses: aws/agentcore-devx-devtools/.github/workflows/reusable-agent-restricted.yml@458c0a684af0f9e3a013ec05cd23851def4f9cab
     with:
-      runner: ubuntu
+      runner: codebuild
       prompt: ${{ inputs.prompt || 'What are my active pull requests?' }}
       system_prompt: ${{ inputs.system_prompt || '' }}
       provider: ${{ inputs.provider || 'bedrock' }}

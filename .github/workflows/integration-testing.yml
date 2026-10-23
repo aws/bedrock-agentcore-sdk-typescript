@@ -16,7 +16,9 @@ permissions:
 jobs:
   authorization-check:
     permissions: read-all
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+      - integration-authorization
     outputs:
       approval-env: ${{ steps.collab-check.outputs.result }}
       should-run: ${{ steps.safety-check.outputs.result }}
@@ -90,7 +92,9 @@ jobs:
 
   run-integration-tests:
     name: Integration Tests
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+      - integration-tests
     needs: authorization-check
     if: needs.authorization-check.outputs.should-run == 'true'
     environment: ${{ needs.authorization-check.outputs.approval-env }}
@@ -147,7 +151,9 @@ jobs:
 
   safety-gate:
     name: Security Block
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+      - integration-safety-gate
     needs: authorization-check
     if: needs.authorization-check.outputs.should-run == 'false'
     permissions: {}

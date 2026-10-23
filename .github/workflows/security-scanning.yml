@@ -17,7 +17,9 @@ permissions:
 jobs:
   secret-scan:
     name: Secret Scanning
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+      - security-secret-scan
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -32,7 +34,9 @@ jobs:
 
   npm-audit:
     name: npm Audit
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+      - security-npm-audit
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -59,7 +63,9 @@ jobs:
 
   dependency-review:
     name: Dependency Review
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+      - security-dependency-review
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout code
@@ -74,7 +80,9 @@ jobs:
 
   eslint-security:
     name: ESLint Security Rules
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+      - security-eslint
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -102,7 +110,9 @@ jobs:
 
   license-check:
     name: License Compatibility Check
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+      - security-license-check
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
