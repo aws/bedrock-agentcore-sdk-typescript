@@ -75,9 +75,9 @@ const ACTOR_ID_CHARS = /^[a-zA-Z0-9][a-zA-Z0-9_/:-]*$/
 const MAX_ACTOR_ID_LENGTH = 255
 
 /**
- * Configuration for {@link AgentCoreMemorySnapshotStorage}.
+ * Configuration for {@link AgentCoreSnapshotStorage}.
  */
-export interface AgentCoreMemorySessionStorageConfig {
+export interface AgentCoreSessionStorageConfig {
   /** AgentCore Memory resource id. */
   readonly memoryId: string
   /** AgentCore actor that owns the session events, e.g. the end user. Defaults to {@link DEFAULT_SESSION_ACTOR_ID}. */
@@ -96,10 +96,10 @@ export interface AgentCoreMemorySessionStorageConfig {
  * Raised when a session storage call to AgentCore Memory fails or returns data it cannot read. The
  * underlying AWS SDK error, when there is one, is the `cause`.
  */
-export class AgentCoreMemorySessionStorageError extends Error {
+export class AgentCoreSessionStorageError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options)
-    this.name = 'AgentCoreMemorySessionStorageError'
+    this.name = 'AgentCoreSessionStorageError'
   }
 }
 
@@ -131,15 +131,15 @@ interface StoredWrite {
  * @example
  * ```typescript
  * import { Agent, SessionManager } from '@strands-agents/sdk'
- * import { AgentCoreMemorySnapshotStorage } from 'bedrock-agentcore/memory/strands'
+ * import { AgentCoreSnapshotStorage } from 'bedrock-agentcore/memory/strands'
  *
- * const snapshot = new AgentCoreMemorySnapshotStorage({ memoryId: 'mem-abc', actorId: 'user-123' })
+ * const snapshot = new AgentCoreSnapshotStorage({ memoryId: 'mem-abc', actorId: 'user-123' })
  * const agent = new Agent({
  *   sessionManager: new SessionManager({ sessionId: 'session-1', storage: { snapshot } }),
  * })
  * ```
  */
-export class AgentCoreMemorySnapshotStorage implements SnapshotStorage {
+export class AgentCoreSnapshotStorage implements SnapshotStorage {
   private readonly _client: BedrockAgentCoreClient
   private readonly _memoryId: string
   private readonly _actorId: string
@@ -147,13 +147,13 @@ export class AgentCoreMemorySnapshotStorage implements SnapshotStorage {
   private readonly _itemsPerEvent: number
   private _lastTimestamp = 0
 
-  constructor(config: AgentCoreMemorySessionStorageConfig) {
-    this._memoryId = assertNonEmpty(config.memoryId, 'memoryId', 'AgentCoreMemorySnapshotStorage')
+  constructor(config: AgentCoreSessionStorageConfig) {
+    this._memoryId = assertNonEmpty(config.memoryId, 'memoryId', 'AgentCoreSnapshotStorage')
     this._actorId = assertActorId(config.actorId ?? DEFAULT_SESSION_ACTOR_ID)
     const maxChunkBytes = config.maxChunkBytes ?? DEFAULT_MAX_CHUNK_BYTES
     if (!Number.isInteger(maxChunkBytes) || maxChunkBytes < MIN_CHUNK_BYTES || maxChunkBytes > MAX_CHUNK_BYTES) {
       throw new Error(
-        `AgentCoreMemorySnapshotStorage: maxChunkBytes must be an integer between ${MIN_CHUNK_BYTES} and ` +
+        `AgentCoreSnapshotStorage: maxChunkBytes must be an integer between ${MIN_CHUNK_BYTES} and ` +
           `${MAX_CHUNK_BYTES}, got ${maxChunkBytes}`
       )
     }
@@ -444,10 +444,10 @@ export class AgentCoreMemorySnapshotStorage implements SnapshotStorage {
  * Build a Strands `SessionStorage` backed by AgentCore Memory, ready for `new SessionManager({ storage })`.
  *
  * @param config - AgentCore Memory connection and actor settings
- * @returns A session storage whose snapshot backend is an {@link AgentCoreMemorySnapshotStorage}
+ * @returns A session storage whose snapshot backend is an {@link AgentCoreSnapshotStorage}
  */
-export function createAgentCoreMemorySessionStorage(config: AgentCoreMemorySessionStorageConfig): SessionStorage {
-  return { snapshot: new AgentCoreMemorySnapshotStorage(config) }
+export function createAgentCoreSessionStorage(config: AgentCoreSessionStorageConfig): SessionStorage {
+  return { snapshot: new AgentCoreSnapshotStorage(config) }
 }
 
 /**
@@ -521,8 +521,8 @@ function decodeWrite(write: StoredWrite, action: string): unknown {
   for (let part = 0; part < write.partCount; part++) {
     for (const item of write.parts.get(part)!.payload ?? []) {
       if (typeof item.blob !== 'string') {
-        throw new AgentCoreMemorySessionStorageError(
-          `AgentCoreMemorySnapshotStorage: failed to ${action}: stored payload is not a text chunk ` +
+        throw new AgentCoreSessionStorageError(
+          `AgentCoreSnapshotStorage: failed to ${action}: stored payload is not a text chunk ` +
             `(write_id=${write.writeId}, part=${part})`
         )
       }
@@ -532,8 +532,8 @@ function decodeWrite(write: StoredWrite, action: string): unknown {
   try {
     return JSON.parse(text)
   } catch (error) {
-    throw new AgentCoreMemorySessionStorageError(
-      `AgentCoreMemorySnapshotStorage: failed to ${action}: stored snapshot is not valid JSON (write_id=${write.writeId})`,
+    throw new AgentCoreSessionStorageError(
+      `AgentCoreSnapshotStorage: failed to ${action}: stored snapshot is not valid JSON (write_id=${write.writeId})`,
       { cause: error }
     )
   }
@@ -550,13 +550,11 @@ function manifestTags(location: SnapshotLocation): Tags {
 /** `<scope>/<scopeId>`, validated so it is a legal AgentCore metadata value. */
 function toLocationValue(location: SnapshotLocation): string {
   if (!SCOPES.includes(location.scope)) {
-    throw new Error(
-      `AgentCoreMemorySnapshotStorage: scope must be one of ${SCOPES.join(', ')}, got '${location.scope}'`
-    )
+    throw new Error(`AgentCoreSnapshotStorage: scope must be one of ${SCOPES.join(', ')}, got '${location.scope}'`)
   }
   const scopeId = assertIdentifier(location.scopeId, 'scopeId')
   if (scopeId.length > MAX_SCOPE_ID_LENGTH) {
-    throw new Error(`AgentCoreMemorySnapshotStorage: scopeId must be at most ${MAX_SCOPE_ID_LENGTH} characters`)
+    throw new Error(`AgentCoreSnapshotStorage: scopeId must be at most ${MAX_SCOPE_ID_LENGTH} characters`)
   }
   return `${location.scope}/${scopeId}`
 }
@@ -569,7 +567,7 @@ function toLocationValue(location: SnapshotLocation): string {
 function toAgentCoreSessionId(sessionId: string): string {
   if (!SESSION_ID_PATTERN.test(sessionId) || sessionId.length > MAX_SESSION_ID_LENGTH) {
     throw new Error(
-      `AgentCoreMemorySnapshotStorage: sessionId '${sessionId}' must be 1-${MAX_SESSION_ID_LENGTH} lowercase ` +
+      `AgentCoreSnapshotStorage: sessionId '${sessionId}' must be 1-${MAX_SESSION_ID_LENGTH} lowercase ` +
         'letters, digits, hyphens or underscores, starting with a letter or digit (the AgentCore Memory ' +
         'sessionId pattern within the Strands identifier rule)'
     )
@@ -580,7 +578,7 @@ function toAgentCoreSessionId(sessionId: string): string {
 function assertIdentifier(value: string, field: string): string {
   if (!IDENTIFIER_PATTERN.test(value) || value.length > MAX_METADATA_VALUE_LENGTH) {
     throw new Error(
-      `AgentCoreMemorySnapshotStorage: ${field} '${value}' can only contain lowercase letters, numbers, ` +
+      `AgentCoreSnapshotStorage: ${field} '${value}' can only contain lowercase letters, numbers, ` +
         `hyphens, and underscores (at most ${MAX_METADATA_VALUE_LENGTH} characters)`
     )
   }
@@ -600,7 +598,7 @@ function assertActorId(actorId: string): string {
     actorId.endsWith(':')
   ) {
     throw new Error(
-      `AgentCoreMemorySnapshotStorage: actorId '${actorId}' does not match the AgentCore actorId pattern ` +
+      `AgentCoreSnapshotStorage: actorId '${actorId}' does not match the AgentCore actorId pattern ` +
         '(1-255 characters: letters, digits, -, _, / and single colons, starting with a letter or digit)'
     )
   }
@@ -642,12 +640,9 @@ function errorText(error: unknown): string {
   return error instanceof Error ? `${error.name}: ${error.message}` : String(error)
 }
 
-function wrapError(action: string, error: unknown): AgentCoreMemorySessionStorageError {
-  if (error instanceof AgentCoreMemorySessionStorageError) return error
-  return new AgentCoreMemorySessionStorageError(
-    `AgentCoreMemorySnapshotStorage: failed to ${action}: ${errorText(error)}`,
-    {
-      cause: error,
-    }
-  )
+function wrapError(action: string, error: unknown): AgentCoreSessionStorageError {
+  if (error instanceof AgentCoreSessionStorageError) return error
+  return new AgentCoreSessionStorageError(`AgentCoreSnapshotStorage: failed to ${action}: ${errorText(error)}`, {
+    cause: error,
+  })
 }

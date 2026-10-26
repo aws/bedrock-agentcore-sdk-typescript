@@ -20,7 +20,7 @@ consumed directly from `@strands-agents/sdk` (>= 1.5.0).
   see [Reducing write API calls](#reducing-write-api-calls).
 - **Topology** — `createAgentCoreMemoryStores(...)` returns the stores ready to spread into
   `MemoryManagerConfig.stores`.
-- **Session persistence** — `createAgentCoreMemorySessionStorage(...)` is a Strands `SessionStorage`
+- **Session persistence** — `createAgentCoreSessionStorage(...)` is a Strands `SessionStorage`
   for `SessionManager`: the agent's full session snapshot lives in AgentCore short-term memory and
   survives runtime cold starts. See [Session persistence](#session-persistence-sessionmanager).
 
@@ -94,20 +94,20 @@ read mode.
 
 ## Session persistence (`SessionManager`)
 
-`AgentCoreMemorySnapshotStorage` implements the Strands `SnapshotStorage` interface, so the Strands
+`AgentCoreSnapshotStorage` implements the Strands `SnapshotStorage` interface, so the Strands
 `SessionManager` can keep an agent's session (messages, state, interrupts — whatever the `'session'`
 snapshot preset captures) in AgentCore Memory short-term events. A restarted runtime picks up the
 conversation where it left off; nothing is kept on the local filesystem.
 
 ```typescript
 import { Agent, SessionManager } from '@strands-agents/sdk'
-import { createAgentCoreMemorySessionStorage } from 'bedrock-agentcore/memory/strands'
+import { createAgentCoreSessionStorage } from 'bedrock-agentcore/memory/strands'
 
 const agent = new Agent({
   model,
   sessionManager: new SessionManager({
     sessionId, // becomes the AgentCore sessionId
-    storage: createAgentCoreMemorySessionStorage({
+    storage: createAgentCoreSessionStorage({
       memoryId: 'mem-abc',
       region: 'us-west-2',
       actorId: 'user-123', // optional; defaults to 'strands-agent'
@@ -116,7 +116,7 @@ const agent = new Agent({
 })
 ```
 
-`createAgentCoreMemorySessionStorage(config)` returns `{ snapshot: new AgentCoreMemorySnapshotStorage(config) }`;
+`createAgentCoreSessionStorage(config)` returns `{ snapshot: new AgentCoreSnapshotStorage(config) }`;
 construct the class directly when you assemble the `SessionStorage` yourself. It accepts `memoryId`,
 `actorId`, `maxChunkBytes`, and the usual `region` / `credentialsProvider` / `client`. Any memory
 resource works, with or without strategies: snapshots are plain short-term events.
@@ -180,7 +180,7 @@ applied after the scan.
 
 ### Errors
 
-AWS failures surface as `AgentCoreMemorySessionStorageError` with the AWS SDK error as `cause`.
+AWS failures surface as `AgentCoreSessionStorageError` with the AWS SDK error as `cause`.
 `ResourceNotFoundException` on a read is treated as "nothing stored" (`null`, `[]`, or a default
 manifest), matching how the Strands S3 storage treats a missing object. A failure to prune superseded
 events is logged as a warning and does not fail the save, since the new snapshot is already stored and

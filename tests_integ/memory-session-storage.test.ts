@@ -2,10 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore'
 import { Agent, SessionManager } from '@strands-agents/sdk'
 import type { Snapshot, SnapshotLocation } from '@strands-agents/sdk'
-import {
-  AgentCoreMemorySnapshotStorage,
-  createAgentCoreMemorySessionStorage,
-} from '../src/memory/integrations/strands/index.js'
+import { AgentCoreSnapshotStorage, createAgentCoreSessionStorage } from '../src/memory/integrations/strands/index.js'
 
 /**
  * Integration tests for the AgentCore Memory-backed Strands session storage against the live data plane.
@@ -24,15 +21,15 @@ const REGION = process.env.AWS_REGION || 'us-west-2'
 
 const describeWithMemory = memoryId ? describe : describe.skip
 
-describeWithMemory('AgentCoreMemorySnapshotStorage (live data plane)', () => {
+describeWithMemory('AgentCoreSnapshotStorage (live data plane)', () => {
   const client = new BedrockAgentCoreClient({ region: REGION })
   const sessionId = `session-storage-integ-${Date.now().toString(36)}`
   const actorId = 'session-storage-integ'
   const location: SnapshotLocation = { sessionId, scope: 'agent', scopeId: 'default' }
-  let storage: AgentCoreMemorySnapshotStorage
+  let storage: AgentCoreSnapshotStorage
 
   beforeAll(() => {
-    storage = new AgentCoreMemorySnapshotStorage({ memoryId: memoryId!, actorId, client })
+    storage = new AgentCoreSnapshotStorage({ memoryId: memoryId!, actorId, client })
   })
 
   const snapshot = (text: string): Snapshot => ({
@@ -81,7 +78,7 @@ describeWithMemory('AgentCoreMemorySnapshotStorage (live data plane)', () => {
     const make = (): SessionManager =>
       new SessionManager({
         sessionId: agentSession,
-        storage: createAgentCoreMemorySessionStorage({ memoryId: memoryId!, actorId, client }),
+        storage: createAgentCoreSessionStorage({ memoryId: memoryId!, actorId, client }),
       })
     const first = new Agent({
       id: 'assistant',

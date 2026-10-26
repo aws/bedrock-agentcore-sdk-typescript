@@ -3,12 +3,12 @@ import { CreateEventCommand } from '@aws-sdk/client-bedrock-agentcore'
 import { Agent, SessionManager } from '@strands-agents/sdk'
 import type { Snapshot, SnapshotLocation } from '@strands-agents/sdk'
 import {
-  AgentCoreMemorySessionStorageError,
-  AgentCoreMemorySnapshotStorage,
-  createAgentCoreMemorySessionStorage,
+  AgentCoreSessionStorageError,
+  AgentCoreSnapshotStorage,
+  createAgentCoreSessionStorage,
   DEFAULT_MAX_CHUNK_BYTES,
   DEFAULT_SESSION_ACTOR_ID,
-  type AgentCoreMemorySessionStorageConfig,
+  type AgentCoreSessionStorageConfig,
 } from '../session-storage.js'
 import { logger } from '../logger.js'
 import { awsError, FakeAgentCoreMemory } from './fake-agentcore-memory.js'
@@ -37,11 +37,11 @@ function metadataOf(event: { metadata: Record<string, { stringValue: string }> }
   return Object.fromEntries(Object.entries(event.metadata).map(([k, v]) => [k, v.stringValue]))
 }
 
-describe('AgentCoreMemorySnapshotStorage', () => {
+describe('AgentCoreSnapshotStorage', () => {
   let fake: FakeAgentCoreMemory
 
-  const makeStorage = (overrides: Partial<AgentCoreMemorySessionStorageConfig> = {}): AgentCoreMemorySnapshotStorage =>
-    new AgentCoreMemorySnapshotStorage({ memoryId: MEMORY_ID, client: fake.client(), ...overrides })
+  const makeStorage = (overrides: Partial<AgentCoreSessionStorageConfig> = {}): AgentCoreSnapshotStorage =>
+    new AgentCoreSnapshotStorage({ memoryId: MEMORY_ID, client: fake.client(), ...overrides })
 
   beforeEach(() => {
     fake = new FakeAgentCoreMemory()
@@ -54,8 +54,8 @@ describe('AgentCoreMemorySnapshotStorage', () => {
 
   describe('construction', () => {
     it('rejects an empty memoryId', () => {
-      expect(() => new AgentCoreMemorySnapshotStorage({ memoryId: ' ', client: fake.client() })).toThrow(
-        'AgentCoreMemorySnapshotStorage: memoryId must be a non-empty string'
+      expect(() => new AgentCoreSnapshotStorage({ memoryId: ' ', client: fake.client() })).toThrow(
+        'AgentCoreSnapshotStorage: memoryId must be a non-empty string'
       )
     })
 
@@ -86,12 +86,12 @@ describe('AgentCoreMemorySnapshotStorage', () => {
     })
 
     it('builds its own client when none is supplied', () => {
-      expect(() => new AgentCoreMemorySnapshotStorage({ memoryId: MEMORY_ID, region: 'eu-west-1' })).not.toThrow()
+      expect(() => new AgentCoreSnapshotStorage({ memoryId: MEMORY_ID, region: 'eu-west-1' })).not.toThrow()
     })
 
-    it('createAgentCoreMemorySessionStorage returns a SessionStorage wrapping the snapshot storage', async () => {
-      const storage = createAgentCoreMemorySessionStorage({ memoryId: MEMORY_ID, client: fake.client() })
-      expect(storage.snapshot).toBeInstanceOf(AgentCoreMemorySnapshotStorage)
+    it('createAgentCoreSessionStorage returns a SessionStorage wrapping the snapshot storage', async () => {
+      const storage = createAgentCoreSessionStorage({ memoryId: MEMORY_ID, client: fake.client() })
+      expect(storage.snapshot).toBeInstanceOf(AgentCoreSnapshotStorage)
       await storage.snapshot.saveSnapshot({ location, snapshotId: 'latest', isLatest: true, snapshot: snapshot('x') })
       expect(await storage.snapshot.loadSnapshot({ location })).toEqual(snapshot('x'))
     })
@@ -360,9 +360,7 @@ describe('AgentCoreMemorySnapshotStorage', () => {
       const storage = makeStorage()
       await storage.saveSnapshot({ location, snapshotId: 'latest', isLatest: true, snapshot: snapshot('a') })
       fake.failNext('DeleteEventCommand', awsError('AccessDeniedException'))
-      await expect(storage.deleteSession({ sessionId: 'session-1' })).rejects.toThrow(
-        AgentCoreMemorySessionStorageError
-      )
+      await expect(storage.deleteSession({ sessionId: 'session-1' })).rejects.toThrow(AgentCoreSessionStorageError)
     })
   })
 
@@ -435,8 +433,8 @@ describe('AgentCoreMemorySnapshotStorage', () => {
         .saveSnapshot({ location, snapshotId: 'latest', isLatest: true, snapshot: snapshot('x') })
         .catch((e: unknown) => e)
 
-      expect(error).toBeInstanceOf(AgentCoreMemorySessionStorageError)
-      expect((error as Error).name).toBe('AgentCoreMemorySessionStorageError')
+      expect(error).toBeInstanceOf(AgentCoreSessionStorageError)
+      expect((error as Error).name).toBe('AgentCoreSessionStorageError')
       expect((error as Error).message).toMatch(/failed to save snapshot.*session-1.*AccessDeniedException: not allowed/)
       expect((error as Error).cause).toBe(cause)
     })
@@ -499,7 +497,7 @@ describe('AgentCoreMemorySnapshotStorage', () => {
     it('wraps a ListEvents failure on load', async () => {
       fake.failNext('ListEventsCommand', awsError('ThrottledException', 'slow down'))
       await expect(makeStorage().loadSnapshot({ location })).rejects.toThrow(
-        /AgentCoreMemorySnapshotStorage: failed to load snapshot .*ThrottledException: slow down/
+        /AgentCoreSnapshotStorage: failed to load snapshot .*ThrottledException: slow down/
       )
     })
 
@@ -523,7 +521,7 @@ describe('AgentCoreMemorySnapshotStorage', () => {
       await storage.saveSnapshot({ location, snapshotId: 'latest', isLatest: true, snapshot: snapshot('x') })
       fake.events[0]!.payload = [{ blob: '{"truncated":' }]
       const error = await storage.loadSnapshot({ location }).catch((e: unknown) => e)
-      expect(error).toBeInstanceOf(AgentCoreMemorySessionStorageError)
+      expect(error).toBeInstanceOf(AgentCoreSessionStorageError)
       expect((error as Error).message).toMatch(/stored snapshot is not valid JSON/)
       expect((error as Error).cause).toBeInstanceOf(SyntaxError)
     })
@@ -536,7 +534,7 @@ describe('AgentCoreMemorySnapshotStorage', () => {
 
   describe('with the Strands SessionManager', () => {
     it('persists an agent conversation and restores it into a fresh agent', async () => {
-      const storage = createAgentCoreMemorySessionStorage({
+      const storage = createAgentCoreSessionStorage({
         memoryId: MEMORY_ID,
         actorId: 'user-1',
         client: fake.client(),
@@ -552,7 +550,7 @@ describe('AgentCoreMemorySnapshotStorage', () => {
       await first.sessionManager!.saveSnapshot({ target: first, isLatest: true })
 
       // A new storage instance and agent, as after a cold start of the runtime.
-      const restoredStorage = createAgentCoreMemorySessionStorage({
+      const restoredStorage = createAgentCoreSessionStorage({
         memoryId: MEMORY_ID,
         actorId: 'user-1',
         client: fake.client(),

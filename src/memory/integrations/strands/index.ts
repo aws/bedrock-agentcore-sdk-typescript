@@ -2,9 +2,9 @@ export { AgentCoreMemoryStore } from './store.js'
 export { createAgentCoreMemoryStores, assertWritableTopology } from './factory.js'
 export { AgentCoreEventSender } from './sender.js'
 export {
-  AgentCoreMemorySnapshotStorage,
-  AgentCoreMemorySessionStorageError,
-  createAgentCoreMemorySessionStorage,
+  AgentCoreSnapshotStorage,
+  AgentCoreSessionStorageError,
+  createAgentCoreSessionStorage,
   DEFAULT_MAX_CHUNK_BYTES,
   DEFAULT_SESSION_ACTOR_ID,
   MAX_CHUNK_BYTES,
@@ -25,5 +25,5 @@ export type {
   AgentCoreExtractionConfig,
 } from './factory.js'
 export type { AgentCoreEventSenderConfig } from './sender.js'
-export type { AgentCoreMemorySessionStorageConfig } from './session-storage.js'
+export type { AgentCoreSessionStorageConfig } from './session-storage.js'
 export type { AgentCoreRole } from './format.js'

@@ -20,7 +20,7 @@ A single store, `AgentCoreMemoryStore`, that plugs into Strands' `MemoryManager`
 - **Cost control** — three independent levers (batching, cadence, flush) govern `createEvent` volume.
   See [Reducing write API calls](#reducing-write-api-calls).
 
-And a session storage, `createAgentCoreMemorySessionStorage`, that plugs into Strands' `SessionManager`
+And a session storage, `createAgentCoreSessionStorage`, that plugs into Strands' `SessionManager`
 so the agent's conversation survives runtime cold starts. See
 [Persisting the session across cold starts](#persisting-the-session-across-cold-starts).
 
@@ -86,17 +86,17 @@ See [`src/memory/integrations/strands/README.md`](../src/memory/integrations/str
 
 The runtime keeps a session's microVM for up to 15 idle minutes (8 hours at most). After that, the next
 invocation starts a fresh process and an in-memory agent has forgotten the conversation. Strands'
-`SessionManager` restores it from a pluggable `SnapshotStorage`; `createAgentCoreMemorySessionStorage`
+`SessionManager` restores it from a pluggable `SnapshotStorage`; `createAgentCoreSessionStorage`
 puts that storage in AgentCore Memory short-term events, next to (or instead of) the long-term store
 above.
 
 ```typescript
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
-import { createAgentCoreMemorySessionStorage } from 'bedrock-agentcore/memory/strands'
+import { createAgentCoreSessionStorage } from 'bedrock-agentcore/memory/strands'
 import { Agent, BedrockModel, SessionManager } from '@strands-agents/sdk'
 import { z } from 'zod'
 
-const storage = createAgentCoreMemorySessionStorage({
+const storage = createAgentCoreSessionStorage({
   memoryId: process.env.MEMORY_MYMEMORY_ID!,
   region: process.env.AWS_REGION,
 })
