@@ -11,6 +11,7 @@ import { CodeInterpreterTools } from '../src/tools/code-interpreter/integrations
 import { BrowserTools } from '../src/tools/browser/integrations/vercel-ai/index.js'
 
 const testRegion = process.env.AWS_REGION || 'us-west-2'
+const modelId = process.env.MODEL_ID || 'global.anthropic.claude-sonnet-5-5'
 
 describe('ToolLoopAgent with CodeInterpreter', () => {
   let codeInterpreter: CodeInterpreterTools
@@ -25,7 +26,7 @@ describe('ToolLoopAgent with CodeInterpreter', () => {
 
   it('executes code via generate()', async () => {
     const agent = new ToolLoopAgent({
-      model: bedrock(process.env.MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0'),
+      model: bedrock(modelId),
       instructions: 'You are a helpful assistant. Execute code when asked.',
       tools: { executeCode: codeInterpreter.executeCode },
     })
@@ -41,7 +42,7 @@ describe('ToolLoopAgent with CodeInterpreter', () => {
 
   it('handles file operations', async () => {
     const agent = new ToolLoopAgent({
-      model: bedrock(process.env.MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0'),
+      model: bedrock(modelId),
       instructions: 'You can work with files and execute code.',
       tools: codeInterpreter.tools,
     })
@@ -68,7 +69,7 @@ describe('ToolLoopAgent with Browser', () => {
 
   it('navigates and extracts content', async () => {
     const agent = new ToolLoopAgent({
-      model: bedrock(process.env.MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0'),
+      model: bedrock(modelId),
       instructions: 'Navigate to websites and extract content.',
       tools: browser.tools,
     })
@@ -97,7 +98,7 @@ describe('ToolLoopAgent with Combined Tools', () => {
 
   it('uses both tools together', async () => {
     const agent = new ToolLoopAgent({
-      model: bedrock(process.env.MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0'),
+      model: bedrock(modelId),
       instructions: 'You can browse the web and execute code.',
       tools: {
         ...browser.tools,
