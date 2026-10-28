@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { BrowserTools } from '../tools.js'
 
+// Options passed to a tool's execute(). AI SDK 7 adds a required `context`.
+const toolOptions = { toolCallId: 'test-call', messages: [], context: {} }
+
 // Mock PlaywrightBrowser
 const mockPlaywrightBrowser = {
   startSession: vi.fn(),
@@ -109,7 +112,7 @@ describe('BrowserTools', () => {
         {
           url: 'https://example.com',
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )) as { success: boolean; message: string }
 
       expect(result.success).toBe(true)
@@ -125,7 +128,7 @@ describe('BrowserTools', () => {
         {
           url: 'https://example.com',
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )) as { success: boolean; error: string }
 
       expect(result.success).toBe(false)
@@ -139,7 +142,7 @@ describe('BrowserTools', () => {
         {
           selector: 'button',
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )) as { success: boolean; message: string }
 
       expect(result.success).toBe(true)
@@ -158,7 +161,7 @@ describe('BrowserTools', () => {
           delay: 100,
           timeout: 5000,
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )) as { success: boolean; message: string }
 
       expect(result.success).toBe(true)
@@ -177,7 +180,7 @@ describe('BrowserTools', () => {
         {
           selector: 'h1',
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )) as { success: boolean; text: string }
 
       expect(result.success).toBe(true)
@@ -191,7 +194,7 @@ describe('BrowserTools', () => {
         {
           selector: '#main',
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )) as { success: boolean; html: string }
 
       expect(result.success).toBe(true)
@@ -206,7 +209,7 @@ describe('BrowserTools', () => {
           encoding: 'base64',
           type: 'png',
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )) as { success: boolean; screenshot: string }
 
       expect(result.success).toBe(true)
@@ -220,7 +223,7 @@ describe('BrowserTools', () => {
         {
           script: 'document.title',
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )) as { success: boolean; result: any }
 
       expect(result.success).toBe(true)
@@ -236,7 +239,7 @@ describe('BrowserTools', () => {
           waitUntil: undefined,
           timeout: undefined,
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )
 
       expect(mockPlaywrightBrowser.navigate).toHaveBeenCalledWith({
@@ -251,7 +254,7 @@ describe('BrowserTools', () => {
           waitUntil: 'load',
           timeout: 30000,
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )
 
       expect(mockPlaywrightBrowser.navigate).toHaveBeenCalledWith({
