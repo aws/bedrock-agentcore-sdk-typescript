@@ -29,7 +29,7 @@ Please read through this document before submitting any issues or pull requests.
    npm test
    npm run lint
    npm run format:check
-   npm run type-check
+   npm run type-check:all
    ```
 
 3. Install git hooks for automatic quality checks:
@@ -37,7 +37,7 @@ Please read through this document before submitting any issues or pull requests.
    npm run prepare
    ```
 
-This will set up pre-commit hooks that automatically run tests, linting, formatting checks, and type checking before each commit.
+This installs a pre-commit hook that runs `lint-staged`, which applies `eslint --fix` and `prettier --write` to staged files. It does not run tests or type-check; run `npm run check` (or `npm run ci`, which adds the build and integration tests) before opening a PR, because PR CI runs lint but not unit tests or type-check.
 
 ## Testing Instructions and Best Practices
 
@@ -47,7 +47,7 @@ This will set up pre-commit hooks that automatically run tests, linting, formatt
 # Run unit tests only (Node.js environment)
 npm test
 
-# Run tests with coverage (required: 80%+)
+# Run tests with coverage (fails below the thresholds in vitest.config.ts)
 npm run test:coverage
 
 # Run tests in watch mode during development
@@ -59,12 +59,12 @@ npm run test:integ
 
 ### Test Requirements
 
-- **80%+ Coverage**: All code should have at least 80% test coverage
+- **Coverage**: `npm run test:coverage` fails below 60% lines, functions and statements, or 50% branches
 - **Unit Tests**: Test individual functions in `src/**/__tests__/**` directories
-- **Integration Tests**: Test complete workflows in `examples/` directory
+- **Integration Tests**: Test complete workflows against live AgentCore in `tests_integ/`
 - **TSDoc Coverage**: All exported functions must have complete documentation
 
-For detailed testing patterns and examples, see [AGENTS.md - Testing Patterns](AGENTS.md#testing-patterns).
+For detailed testing patterns and examples, see [docs/TESTING.md](docs/TESTING.md).
 
 ### Documentation Updates
 
@@ -98,12 +98,12 @@ To send us a pull request, please:
 1. Fork the repository.
 2. Create a feature branch from `main`.
 3. Make your changes, ensuring code quality and test coverage.
-4. Quality checks will run automatically on commit via pre-commit hooks. You can also run them manually:
+4. Run the quality checks. The pre-commit hook only lints and formats staged files, so run the rest yourself:
    ```bash
-   npm test              # 80%+ test coverage required
-   npm run lint          # No linting errors allowed
-   npm run format:check  # Code must be properly formatted
-   npm run type-check    # TypeScript must compile without errors
+   npm run test:coverage  # Unit tests, must meet the coverage thresholds
+   npm run lint           # No linting errors allowed
+   npm run format:check   # Code must be properly formatted
+   npm run type-check:all # Source and tests must type-check
    ```
 5. Update relevant documentation files (see Documentation Updates section above).
 6. Commit to your fork using clear, conventional commit messages.
@@ -112,7 +112,7 @@ To send us a pull request, please:
 
 ### Pull Request Requirements
 
-- **All tests pass**: 80%+ test coverage maintained
+- **All tests pass**: coverage thresholds in `vitest.config.ts` maintained
 - **Code quality**: ESLint passes with no errors
 - **Documentation**: TSDoc comments for all exported functions
 - **Formatting**: Prettier formatting applied consistently
