@@ -17,138 +17,33 @@ This document provides guidance specifically for AI agents working on the AWS Be
 
 ```
 bedrock-agentcore-sdk-typescript/
-├── .github/                      # GitHub Actions workflows and templates
-│   ├── ISSUE_TEMPLATE/           # GitHub issue templates
-│   │   ├── bug_report.md         # Bug report template
-│   │   ├── custom.md             # Custom issue template
-│   │   └── feature_request.md    # Feature request template
-│   ├── workflows/                # CI/CD workflow definitions
-│   │   ├── integration-testing.yml  # Integration test workflow
-│   │   ├── pr-automerge.yml      # Auto-merge workflow for PRs
-│   │   ├── pr-validation.yml     # PR validation checks
-│   │   ├── release.yml           # Release automation workflow
-│   │   └── security-scanning.yml # Security scanning workflow
-│   ├── dependabot.yml            # Dependabot configuration
-│   └── labeler.yml               # Auto-labeling configuration
-│
-├── .husky/                       # Git hooks (pre-commit checks)
-│   └── pre-commit                # Pre-commit hook script
-│
-├── docs/                         # Documentation files
-│   ├── PR.md                     # Pull request guidelines and template
-│   └── TESTING.md                # Comprehensive testing guidelines
-│
-├── src/                          # Source code (all production code)
-│   ├── runtime/                  # Runtime server for hosting agents
-│   │   ├── __tests__/            # Unit tests for runtime
-│   │   ├── a2a/                  # A2A protocol server (serveA2A, agent cards, header allowlist)
-│   │   │   ├── __tests__/        # Unit tests for A2A support
-│   │   │   ├── agent-card.ts     # Agent card construction and URL rewriting
-│   │   │   ├── app.ts            # serveA2A / buildA2AApp implementation
-│   │   │   ├── headers.ts        # AgentCore A2A header extraction
-│   │   │   ├── index.ts          # A2A exports
-│   │   │   └── runtime-url.ts    # InvokeAgentRuntime URL construction
-│   │   ├── app.ts                # BedrockAgentCoreApp implementation
-│   │   ├── headers.ts            # Runtime header allowlist, shared by both protocol paths
-│   │   ├── index.ts              # Runtime exports
-│   │   └── types.ts              # Runtime type definitions
-│   └── tools/                    # Tool definitions and types
-│       ├── browser/              # Browser automation tool
-│       │   ├── __tests__/        # Unit tests for browser tool
-│       │   ├── integrations/     # Framework-specific integrations
-│       │   ├── client.ts         # Browser client implementation
-│       │   ├── index.ts          # Browser tool exports
-│       │   └── types.ts          # Browser tool type definitions
-│       └── code-interpreter/     # Code interpreter tool
-│           ├── __tests__/        # Unit tests for code interpreter
-│           ├── integrations/     # Framework-specific integrations
-│           ├── client.ts         # Code interpreter client implementation
-│           ├── index.ts          # Code interpreter exports
-│           └── types.ts          # Code interpreter type definitions
-│
-├── examples/                     # Example applications and usage demos
-│   ├── deep-research-ui/         # Next.js UI for deep research workflows
-│   │   ├── app/                  # Next.js app directory structure
-│   │   │   ├── api/              # API route handlers
-│   │   │   ├── deep-research/    # Deep research page components
-│   │   │   ├── globals.css       # Global CSS styles
-│   │   │   └── layout.tsx        # Root layout component
-│   │   ├── lib/                  # Utility libraries and helpers
-│   │   │   └── agents/           # Agent-related utilities
-│   │   ├── example_com_screenshot.png  # Example screenshot
-│   │   ├── hackernews_homepage.png     # HackerNews homepage screenshot
-│   │   ├── next-env.d.ts         # Next.js TypeScript declarations
-│   │   ├── next.config.ts        # Next.js configuration
-│   │   ├── package-lock.json     # UI dependency lock file
-│   │   ├── package.json          # UI dependencies and scripts
-│   │   ├── postcss.config.mjs    # PostCSS configuration
-│   │   ├── README.md             # UI setup and usage instructions
-│   │   ├── tailwind.config.ts    # Tailwind CSS configuration
-│   │   └── tsconfig.json         # TypeScript config for UI
-│   ├── agent-research-assistant.ts  # Research assistant example
-│   ├── agent-with-browser.ts     # Browser integration example
-│   ├── agent-with-code-interpreter.ts  # Code interpreter example
-│   ├── README.md                 # Examples overview and setup
-│   ├── setup.js                  # Example setup utilities
-│   └── streaming-examples.ts     # Streaming usage examples
-│
-├── scripts/                      # Build and utility scripts
-│   └── bump-version.ts           # Version bumping script
-│
-├── test-package/                 # Test package for verification
-│   ├── package-lock.json         # Test package dependency lock file
-│   ├── package.json              # Test package dependencies
-│   ├── README.md                 # Test package documentation
-│   └── verify.js                 # Verification script
-│
-├── tests_integ/                  # Integration tests
-│   ├── browser.test.ts           # Browser integration tests
-│   ├── code-interpreter.test.ts  # Code interpreter integration tests
-│   ├── runtime.test.ts           # Runtime server integration tests
-│   ├── setup.ts                  # Test setup utilities and helpers
-│   └── vercel-ai-agent.test.ts   # Vercel AI integration tests
-│
-├── .gitattributes                # Git attributes configuration
-├── .gitignore                    # Git ignore rules
-├── .node-version                 # Node.js version specification
-├── .prettierrc                   # Code formatting configuration
-├── AGENTS.md                     # Agent development guidance (legacy)
-├── AGENTS_1.md                   # This file (current agent guidance)
-├── AGENTS_1_OLD_DIRECTORY_STRUCTURE.md  # Previous directory structure backup
-├── CHANGELOG.md                  # Version history and changes
-├── CODE_OF_CONDUCT.md            # Community guidelines and conduct rules
-├── CONTRIBUTING.md               # Human contributor guidelines and setup
-├── eslint.config.js              # ESLint linting configuration
-├── LICENSE                       # License information (Apache 2.0)
-├── NOTICE                        # Legal notices and attributions
-├── package.json                  # Project configuration and dependencies
-├── package-lock.json             # Dependency lock file
-├── README.md                     # Project overview and usage guide
-├── SECURITY.md                   # Security policy and vulnerability reporting
-├── tsconfig.json                 # TypeScript compiler configuration
-└── vitest.config.ts              # Vitest testing framework configuration
+├── .github/workflows/            # PR validation, security scanning, integration tests, release
+├── .husky/pre-commit             # Runs lint-staged (eslint --fix, prettier --write on staged files)
+├── docs/                         # TESTING.md, PR.md, TROUBLESHOOTING.md, feature guides
+├── scripts/                      # bump-version, copy-dcv-sdk, API-doc extractor/renderer and their tests
+├── src/
+│   ├── index.ts                  # Package root entrypoint (namespace exports per module)
+│   ├── _utils/                   # Shared helpers: endpoints.ts (partition-aware endpoints), version.ts
+│   ├── identity/                 # IdentityClient, middleware, withAccessToken-style wrappers
+│   ├── memory/integrations/strands/  # AgentCore Memory store for Strands (experimental)
+│   ├── runtime/                  # BedrockAgentCoreApp (HTTP), RuntimeClient, request context
+│   │   ├── a2a/                  # A2A protocol server (optional peers: @a2a-js/sdk, express)
+│   │   └── shell/                # Interactive shell session over WebSocket
+│   └── tools/
+│       ├── browser/              # Browser client, live-view React component
+│       │   └── integrations/     # playwright, strands, vercel-ai
+│       ├── code-interpreter/     # Code interpreter client
+│       │   └── integrations/     # strands, vercel-ai
+│       └── web-search/           # WebSearchClient (Gateway MCP)
+├── test-package/                 # Imports the built package via `file:..` in plain Node ESM to check its exports
+├── tests_integ/                  # Integration tests against live AgentCore
+├── eslint.config.js              # Includes the local partition-safety lint rules
+├── vitest.config.ts              # Projects: unit-node, integ; coverage thresholds
+└── tsconfig.json / tsconfig.test.json
 ```
 
-### Directory Purposes
-
-- **`.github/`**: GitHub Actions workflows, issue templates, and CI/CD automation
-- **`.github/ISSUE_TEMPLATE/`**: Standardized templates for bug reports, feature requests, and custom issues
-- **`.github/workflows/`**: Automated workflows for testing, validation, releases, and security scanning
-- **`.husky/`**: Git hooks for pre-commit quality checks and validation
-- **`docs/`**: Comprehensive documentation for development processes and guidelines
-- **`src/`**: All production source code for the SDK
-- **`src/runtime/`**: HTTP server for hosting agents on AWS Bedrock AgentCore Runtime
-- **`src/runtime/a2a/`**: A2A protocol server implementing the AgentCore Runtime A2A container contract (optional peer deps: `@a2a-js/sdk`, `express`)
-- **`src/tools/`**: Tool definitions and implementations for browser automation and code interpretation
-- **`src/tools/browser/`**: Browser automation client with AWS Bedrock integration
-- **`src/tools/code-interpreter/`**: Code execution client with sandboxed environment support
-- **`examples/`**: Example applications and usage demonstrations for different use cases
-- **`examples/deep-research-ui/`**: Complete Next.js UI application showcasing deep research workflows
-- **`examples/deep-research-ui/app/`**: Next.js app router structure with API routes and page components
-- **`examples/deep-research-ui/lib/`**: Utility libraries and agent-related helper functions
-- **`scripts/`**: Build and utility scripts for development and release automation
-- **`test-package/`**: Standalone test package for SDK verification and validation
-- **`tests_integ/`**: Integration tests that validate public API and external service integrations
+Unit tests sit next to the code in `__tests__/` directories. Framework integrations live under
+`<module>/integrations/<framework>/`, matching the Python SDK layout.
 
 **IMPORTANT**: After making changes that affect the directory structure (adding new directories, moving files, or adding significant new files), you MUST update this directory structure section to reflect the current state of the repository.
 
@@ -176,17 +71,17 @@ The SDK follows a layered integration pattern:
 │           ▼                   ▼                   ▼             │
 │  ┌────────────────────────────────────────────────────────┐    │
 │  │         BASE CLIENT LAYER (Framework-Agnostic)         │    │
-│  │  • BrowserClient                                       │    │
-│  │  • CodeInterpreterClient                               │    │
-│  │  • MemoryClient (future)                               │    │
+│  │  • Browser, CodeInterpreter, WebSearchClient           │    │
+│  │  • RuntimeClient, IdentityClient                       │    │
+│  │  • AgentCoreMemoryStore (Strands)                      │    │
 │  └────────────────────┬───────────────────────────────────┘    │
 └───────────────────────┼────────────────────────────────────────┘
                         │ uses
                         │
 ┌───────────────────────▼────────────────────────────────────────┐
 │                    AWS SDK LAYER                                │
-│  • @aws-sdk/client-bedrock-agent-runtime                        │
 │  • @aws-sdk/client-bedrock-agentcore                            │
+│  • @aws-sdk/client-bedrock-agentcore-control                    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -195,7 +90,7 @@ The SDK follows a layered integration pattern:
 1. **Base clients are framework-agnostic**: Can be used directly or wrapped
 2. **Integrations translate**: Convert between framework types and AWS types
 3. **Clear separation**: Each framework gets its own subdirectory
-4. **Testability**: Mock at client layer, not AWS SDK layer
+4. **Testability**: Unit tests mock the AWS SDK client (`vi.mock('@aws-sdk/client-bedrock-agentcore')`), never the class under test. Don't change production code only to make a test easier to write
 
 ## Development Workflow for Agents
 
@@ -212,7 +107,7 @@ See [CONTRIBUTING.md - Development Environment](CONTRIBUTING.md#development-envi
 1. **Create feature branch**: `git checkout -b agent-tasks/{ISSUE_NUMBER}`
 2. **Implement changes** following the patterns below
 3. **Run quality checks** before committing (pre-commit hooks will run automatically)
-4. **Commit with conventional commits**: `feat:`, `fix:`, `refactor:`, `docs:`, etc.
+4. **Commit with conventional commits**: `feat:`, `fix:`, `refactor:`, `docs:`, etc. `pr-size-title.yml` checks the PR title the same way (optional scope, lowercase subject: `fix(runtime): keep shell output alive`), and a single-commit PR's commit message must match the title
 5. **Push to remote**: `git push origin agent-tasks/{ISSUE_NUMBER}`
 6. **Create pull request** following [PR.md](docs/PR.md) guidelines
 
@@ -230,14 +125,17 @@ See [PR.md](docs/PR.md) for the complete guidance and template.
 
 ### 4. Quality Gates
 
-Pre-commit hooks automatically run:
+The pre-commit hook runs only `lint-staged`: `eslint --fix` and `prettier --write` on staged files under
+`src/` and `tests_integ/`, and `prettier --write` on staged JSON and Markdown. It does not run tests or
+type-check.
 
-- Unit tests (via npm test)
-- Linting (via npm run lint)
-- Format checking (via npm run format:check)
-- Type checking (via npm run type-check)
+PR CI (`pr-validation.yml`) runs `npm run lint` and `npm run test:docs`. It does not run unit tests or
+type-check, so run them yourself before opening a PR:
 
-All checks must pass before commit is allowed.
+- `npm run ci`: lint, format check, `type-check:all` (source and tests), build, unit and integration tests
+- `npm run check`: lint, format (rewrites files), `type-check:all`, unit tests with coverage
+
+Use `type-check:all`, not `type-check`; only the former type-checks test files.
 
 ### 5. Testing Guidelines
 
@@ -247,7 +145,6 @@ When writing tests, you **MUST** follow the guidelines in [docs/TESTING.md](docs
 - Test batching strategy
 - Object assertion best practices
 - Test coverage requirements
-- Multi-environment testing (Node.js and browser)
 
 See [TESTING.md](docs/TESTING.md) for the complete testing reference.
 
@@ -255,7 +152,10 @@ See [TESTING.md](docs/TESTING.md) for the complete testing reference.
 
 ### Logging Style Guide
 
-The SDK uses a structured logging format consistent with the Python SDK for better log parsing and searchability.
+The SDK has no global logger. Library code must not write to `console` on normal paths, because callers
+cannot silence it: a module that needs to log takes an injected logger (the `logger` option of `serveA2A`,
+`configureMemoryLogging` in the Strands memory integration) and defaults to a console-backed one. Messages
+use a structured format consistent with the Python SDK for better log parsing and searchability.
 
 **Format**:
 
@@ -289,11 +189,11 @@ logger.warn(`field=<${value}> | statement one | statement two`)
 
 ```typescript
 // ✅ Good: Context fields with message
-logger.warn(`stop_reason=<${stopReason}>, fallback=<${fallback}> | unknown stop reason, converting to camelCase`)
-logger.warn(`event_type=<${eventType}> | unsupported bedrock event type`)
+logger.info(`agent=<${agentCard.name}>, host=<${host}>, port=<${port}> | a2a server listening`)
+logger.warn(`agent=<${agentCard.name}>, error=<${message}> | custom ping handler failed, falling back to Healthy`)
 
 // ✅ Good: Simple message without context fields
-logger.warn('cache points are not supported in openai system prompts, ignoring cache points')
+logger.warn('extraction is configured but the store is not writable, ignoring extraction')
 
 // ✅ Good: Multiple statements separated by pipes
 logger.warn(`request_id=<${id}> | processing request | starting validation`)
@@ -304,6 +204,22 @@ logger.warn(`stop_reason=${stopReason} | unknown stop reason`)
 // ❌ Bad: Using punctuation
 logger.warn(`event_type=<${eventType}> | Unsupported event type.`)
 ```
+
+### Partitions and Endpoints
+
+The SDK runs in every AWS partition (`aws`, `aws-cn`, `aws-us-gov`), and two local ESLint rules in
+`eslint.config.js` enforce it in `src/`:
+
+- `partition/no-hardcoded-arn-partition`: match ARNs with `arn:aws[a-z0-9-]*:`, never `arn:aws:`. This covers
+  regex literals and Zod schemas too; update the TSDoc that describes the format (`arn:{partition}:...`).
+- `partition/no-hardcoded-endpoint-tld`: never build a host with `.amazonaws.com`. Use
+  `getDataPlaneEndpoint(region)` or `getGatewayMcpEndpoint(gatewayId, region)` from `src/_utils/endpoints.ts`,
+  which derive the suffix from the region's partition and honor the `BEDROCK_AGENTCORE_*_ENDPOINT` overrides.
+
+Take a host from `new URL(endpoint).host`, not string stripping, so an override with a port or path still
+signs correctly. Pass any endpoint that comes from configuration or user input through
+`validateEndpointUrl()` before signing a request for it: it requires HTTPS and an AWS host, because the
+signed headers carry the caller's credentials.
 
 ### File Organization Pattern
 
@@ -782,44 +698,24 @@ private _getSession(sessionName: string): BrowserSessionInfo {
 
 #### Error Handling in Client Methods
 
-**Catch AWS SDK errors and translate to user-friendly messages**:
+Clients throw; they do not return error objects. Let AWS SDK errors propagate, or wrap them in a typed
+error (such as `WebSearchError`) that keeps the original as `cause`, and document what can be thrown with
+`@throws`. Validate input before anything is signed or sent, so a bad argument fails at the call site.
+
+Framework tool wrappers (`integrations/strands/`, `integrations/vercel-ai/`) are the exception: they catch
+and return `{ success: false, error: message }`, because the result goes back to a model, which can retry,
+rather than to code that can catch.
 
 ```typescript
-async navigate(params: NavigateParams): Promise<ActionResult> {
-  const session = this._getSession(params.sessionName)
-
+callback: async ({ selector, timeout }) => {
   try {
-    await this._dataPlaneClient.send(
-      new InvokeBrowserActionCommand({
-        sessionId: session.sessionId,
-        action: 'navigate',
-        parameters: {
-          url: params.url,
-          waitUntil: params.waitUntil || 'load',
-        },
-      })
-    )
-
-    return { success: true }
+    const params: { selector: string; timeout?: number } = { selector }
+    if (timeout !== undefined) params.timeout = timeout
+    await client.click(params)
+    return { success: true, message: `Clicked element: ${selector}` }
   } catch (error) {
-    // Translate AWS SDK errors to user-friendly messages
-    let errorMessage = 'Unknown error'
-
-    if (error instanceof Error) {
-      // Extract meaningful error message
-      if (error.name === 'ResourceNotFoundException') {
-        errorMessage = `Browser session not found: ${params.sessionName}`
-      } else if (error.name === 'TimeoutException') {
-        errorMessage = `Navigation to ${params.url} timed out`
-      } else {
-        errorMessage = error.message
-      }
-    }
-
-    return {
-      success: false,
-      error: errorMessage,
-    }
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return { success: false, error: message }
   }
 }
 ```
@@ -856,7 +752,11 @@ export class ValidationError extends Error {
 - Use meaningful variable and function names
 - Keep functions small and focused (single responsibility)
 - Use async/await for asynchronous operations
-- Handle errors explicitly
+- Handle errors explicitly, and keep `@throws` accurate: if validation surfaces a `ZodError`, document it
+- Reuse `src/_utils/` helpers before writing a new one; put a helper used by more than one module there
+- Write npm scripts as Node/`tsx` scripts, not shell one-liners, so they run on Windows
+- Update the TSDoc `@example`, README and `docs/` examples in the same PR when a public signature changes
+- Keep a feature and an unrelated fix in separate PRs
 
 ## Things NOT to Do
 
@@ -870,6 +770,8 @@ export class ValidationError extends Error {
 - Ignore linting errors
 - Skip type checking
 - Use implicit return types
+- Add a public method or export only so tests can reach it (use `vi.spyOn` or bracket access instead)
+- Hardcode `arn:aws:` or `.amazonaws.com` (see Partitions and Endpoints)
 
 ## Development Commands
 
@@ -878,15 +780,16 @@ For detailed command usage, see [CONTRIBUTING.md - Testing Instructions](CONTRIB
 Quick reference:
 
 ```bash
-npm test              # Run unit tests in Node.js
-npm run test:browser  # Run unit tests in browser (Chromium via Playwright)
-npm run test:all      # Run all tests in all environments
-npm run test:integ    # Run integration tests
-npm run test:coverage # Run tests with coverage report
-npm run lint          # Check code quality
-npm run format        # Auto-fix formatting
-npm run type-check    # Verify TypeScript types
-npm run build         # Compile TypeScript
+npm test               # Run unit tests (vitest project unit-node)
+npm run test:integ     # Run integration tests (needs AWS credentials)
+npm run test:all       # Run unit then integration tests
+npm run test:coverage  # Run unit tests with coverage thresholds
+npm run test:docs      # Run the API-doc generator tests in scripts/
+npm run lint           # ESLint over src and tests_integ
+npm run format         # Rewrite files with Prettier (format:check only checks)
+npm run type-check:all # Type-check source and tests
+npm run build          # Compile TypeScript and copy the DCV SDK
+npm run ci             # Everything CI-equivalent, including integration tests
 ```
 
 ## Browser Tool
@@ -942,8 +845,9 @@ For comprehensive troubleshooting guidance, see [docs/TROUBLESHOOTING.md](docs/T
 
 #### Code Comments
 
+- Comments explain WHY: a constraint, a trade-off, a protocol requirement. Don't restate what the code says; if the `??` chain shows the fallback order, a comment listing it only has to be kept in sync
+- Don't describe a function's callers or a file's purpose when the name already says it; both go stale as consumers change
 - NEVER add comments explaining that something is "improved", "better", "new", "enhanced", or referencing what it used to be
-- Comments should explain WHAT the code does or WHY it exists, not how it's better than something else
 - YOU MUST NEVER add comments about what used to be there or how something has changed.
 - YOU MUST NEVER refer to temporal context in comments (like "recently refactored" "moved") or code. Comments should be evergreen and describe the code as it is.
 - YOU MUST NEVER write overly verbose comments. Use concise language.
