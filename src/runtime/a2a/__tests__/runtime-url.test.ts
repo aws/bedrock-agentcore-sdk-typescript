@@ -29,18 +29,18 @@ describe('buildRuntimeUrl', () => {
 
   describe('when the data plane endpoint is overridden', () => {
     it('builds the URL against the override instead of the standard AWS host', () => {
-      vi.stubEnv('BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT', 'https://custom-endpoint.example.com')
+      vi.stubEnv('BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT', 'https://beta.bedrock-agentcore.us-west-2.amazonaws.com')
 
       expect(buildRuntimeUrl(RUNTIME_ARN)).toBe(
-        `https://custom-endpoint.example.com/runtimes/${ENCODED_ARN}/invocations/`
+        `https://beta.bedrock-agentcore.us-west-2.amazonaws.com/runtimes/${ENCODED_ARN}/invocations/`
       )
     })
 
     it('does not double the separator when the override ends with a slash', () => {
-      vi.stubEnv('BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT', 'https://custom-endpoint.example.com/')
+      vi.stubEnv('BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT', 'https://beta.bedrock-agentcore.us-west-2.amazonaws.com/')
 
       expect(buildRuntimeUrl(RUNTIME_ARN)).toBe(
-        `https://custom-endpoint.example.com/runtimes/${ENCODED_ARN}/invocations/`
+        `https://beta.bedrock-agentcore.us-west-2.amazonaws.com/runtimes/${ENCODED_ARN}/invocations/`
       )
     })
   })
