@@ -147,10 +147,19 @@ describe('getDataPlaneEndpoint', () => {
       const endpoint = getDataPlaneEndpoint('cn-northwest-1')
       expect(endpoint).toBe('https://bedrock-agentcore.cn-northwest-1.amazonaws.com.cn')
     })
+  })
 
-    it('preserves region case in endpoint', () => {
-      const endpoint = getDataPlaneEndpoint('US-WEST-2')
-      expect(endpoint).toBe('https://bedrock-agentcore.US-WEST-2.amazonaws.com')
+  describe('when the region is malformed', () => {
+    it.each(['user@example.com:443/#', 'us-east-1.example.com', 'us-east-1/path', 'US-WEST-2'])(
+      'rejects %j',
+      (region) => {
+        expect(() => getDataPlaneEndpoint(region)).toThrow(/Invalid region/)
+      }
+    )
+
+    it('rejects it even when the override is set, so a malformed region is not hidden', () => {
+      process.env[ENDPOINT_OVERRIDE_ENV] = 'https://override.test.com'
+      expect(() => getDataPlaneEndpoint('us-east-1.example.com')).toThrow(/Invalid region/)
     })
   })
 })
