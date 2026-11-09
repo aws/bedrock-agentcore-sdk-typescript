@@ -93,28 +93,33 @@ describe('getDataPlaneEndpoint', () => {
 
   describe('when environment variable override is set', () => {
     it('returns override endpoint instead of standard endpoint', () => {
-      process.env[ENDPOINT_OVERRIDE_ENV] = 'https://custom-endpoint.example.com'
+      process.env[ENDPOINT_OVERRIDE_ENV] = 'https://beta.bedrock-agentcore.us-west-2.amazonaws.com'
       const endpoint = getDataPlaneEndpoint('us-west-2')
-      expect(endpoint).toBe('https://custom-endpoint.example.com')
+      expect(endpoint).toBe('https://beta.bedrock-agentcore.us-west-2.amazonaws.com')
     })
 
     it('returns override endpoint for any region', () => {
-      process.env[ENDPOINT_OVERRIDE_ENV] = 'https://override.test.com'
-      expect(getDataPlaneEndpoint('us-east-1')).toBe('https://override.test.com')
-      expect(getDataPlaneEndpoint('eu-west-1')).toBe('https://override.test.com')
-      expect(getDataPlaneEndpoint('ap-southeast-1')).toBe('https://override.test.com')
+      process.env[ENDPOINT_OVERRIDE_ENV] = 'https://gamma.bedrock-agentcore.us-east-1.amazonaws.com'
+      expect(getDataPlaneEndpoint('us-east-1')).toBe('https://gamma.bedrock-agentcore.us-east-1.amazonaws.com')
+      expect(getDataPlaneEndpoint('eu-west-1')).toBe('https://gamma.bedrock-agentcore.us-east-1.amazonaws.com')
+      expect(getDataPlaneEndpoint('ap-southeast-1')).toBe('https://gamma.bedrock-agentcore.us-east-1.amazonaws.com')
     })
 
-    it('returns override endpoint with custom port', () => {
-      process.env[ENDPOINT_OVERRIDE_ENV] = 'https://localhost:8080'
-      const endpoint = getDataPlaneEndpoint('us-west-2')
-      expect(endpoint).toBe('https://localhost:8080')
+    it('returns override endpoint with port and path', () => {
+      process.env[ENDPOINT_OVERRIDE_ENV] = 'https://beta.bedrock-agentcore.us-west-2.amazonaws.com:8443/bedrock'
+      expect(getDataPlaneEndpoint('us-west-2')).toBe(
+        'https://beta.bedrock-agentcore.us-west-2.amazonaws.com:8443/bedrock'
+      )
     })
 
-    it('returns override endpoint with path', () => {
-      process.env[ENDPOINT_OVERRIDE_ENV] = 'https://api.example.com/bedrock'
-      const endpoint = getDataPlaneEndpoint('us-west-2')
-      expect(endpoint).toBe('https://api.example.com/bedrock')
+    it.each([
+      ['https://localhost:8080', /non-AWS host/],
+      ['https://api.example.com/bedrock', /non-AWS host/],
+      ['http://beta.bedrock-agentcore.us-west-2.amazonaws.com', /must use https/],
+      ['not a url', /Not a valid endpoint URL/],
+    ])('rejects override %j', (override, error) => {
+      process.env[ENDPOINT_OVERRIDE_ENV] = override
+      expect(() => getDataPlaneEndpoint('us-west-2')).toThrow(error)
     })
 
     it('falls back to standard endpoint when override is empty string', () => {
@@ -158,7 +163,7 @@ describe('getDataPlaneEndpoint', () => {
     )
 
     it('rejects it even when the override is set, so a malformed region is not hidden', () => {
-      process.env[ENDPOINT_OVERRIDE_ENV] = 'https://override.test.com'
+      process.env[ENDPOINT_OVERRIDE_ENV] = 'https://gamma.bedrock-agentcore.us-east-1.amazonaws.com'
       expect(() => getDataPlaneEndpoint('us-east-1.example.com')).toThrow(/Invalid region/)
     })
   })

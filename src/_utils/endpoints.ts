@@ -94,13 +94,14 @@ export function validateEndpointUrl(url: string): string {
  * Gets the data plane endpoint for the Bedrock AgentCore service.
  *
  * The endpoint can be overridden using the BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT
- * environment variable. An override is returned as given, while a URL built from the
- * region is checked to resolve to an AWS host.
+ * environment variable. Both an override and a URL built from the region are checked
+ * to be HTTPS and resolve to an AWS host.
  *
  * @param region - AWS region (e.g., 'us-west-2', 'us-east-1')
  * @returns Full HTTPS endpoint URL
  *
- * @throws Error if the region is empty or malformed.
+ * @throws Error if the region is empty or malformed, or the endpoint is not an HTTPS
+ * AWS URL.
  *
  * @example
  * ```typescript
@@ -111,18 +112,17 @@ export function validateEndpointUrl(url: string): string {
  * @example
  * With environment variable override:
  * ```typescript
- * process.env.BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT = 'https://custom-endpoint.example.com'
+ * process.env.BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT = 'https://beta.bedrock-agentcore.us-west-2.amazonaws.com'
  * const endpoint = getDataPlaneEndpoint('us-west-2')
- * // Returns: 'https://custom-endpoint.example.com'
+ * // Returns: 'https://beta.bedrock-agentcore.us-west-2.amazonaws.com'
  * ```
  */
 export function getDataPlaneEndpoint(region: string): string {
   validateRegion(region)
 
-  // Check for environment variable override
   const override = process.env[ENDPOINT_OVERRIDE_ENV]
   if (override) {
-    return override
+    return validateEndpointUrl(override)
   }
 
   return validateEndpointUrl(`https://bedrock-agentcore.${region}.${getDnsSuffix(region)}`)
