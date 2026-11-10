@@ -20,6 +20,10 @@ A single store, `AgentCoreMemoryStore`, that plugs into Strands' `MemoryManager`
 - **Cost control** — three independent levers (batching, cadence, flush) govern `createEvent` volume.
   See [Reducing write API calls](#reducing-write-api-calls).
 
+And a session storage, `createAgentCoreSessionStorage`, that plugs into Strands' `SessionManager`
+so the agent's conversation survives runtime cold starts. See
+[Persisting the session across cold starts](#persisting-the-session-across-cold-starts).
+
 ## The two-tier model (why writes aren't instantly searchable)
 
 AgentCore Memory is event-sourced with two tiers:
@@ -77,6 +81,68 @@ const agent = new Agent({ model, memoryManager: new MemoryManager({ stores: [sto
 
 See [`src/memory/integrations/strands/README.md`](../src/memory/integrations/strands/index.ts) for the read-target arms
 (`namespace` exact vs `namespacePath` subtree), `minScore`, the `extraction` switch, recall-only setup, and the full factory surface.
+
+## Persisting the session across cold starts
+
+The runtime keeps a session's microVM for up to 15 idle minutes (8 hours at most). After that, the next
+invocation starts a fresh process and an in-memory agent has forgotten the conversation. Strands'
+`SessionManager` restores it from a pluggable `SnapshotStorage`; `createAgentCoreSessionStorage`
+puts that storage in AgentCore Memory short-term events, next to (or instead of) the long-term store
+above.
+
+```typescript
+import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
+import { createAgentCoreSessionStorage } from 'bedrock-agentcore/memory/strands'
+import { Agent, BedrockModel, SessionManager } from '@strands-agents/sdk'
+import { z } from 'zod'
+
+const storage = createAgentCoreSessionStorage({
+  memoryId: process.env.MEMORY_MYMEMORY_ID!,
+  region: process.env.AWS_REGION,
+})
+
+// One agent per session, reused while the microVM lives. On a cold start the SessionManager restores
+// the latest snapshot from AgentCore Memory when the agent initializes.
+const agents = new Map<string, Agent>()
+
+function agentFor(sessionId: string): Agent {
+  let agent = agents.get(sessionId)
+  if (!agent) {
+    agent = new Agent({
+      model: new BedrockModel({ modelId: 'global.amazon.nova-2-lite-v1:0' }),
+      sessionManager: new SessionManager({ sessionId, storage }),
+    })
+    agents.set(sessionId, agent)
+  }
+  return agent
+}
+
+const app = new BedrockAgentCoreApp({
+  invocationHandler: {
+    requestSchema: z.object({ prompt: z.string() }),
+    process: async (request, context) => {
+      // The latest snapshot is saved after every invocation (saveLatestOn: 'invocation').
+      const result = await agentFor(context.sessionId).invoke(request.prompt)
+      return { text: result.toString() }
+    },
+  },
+})
+
+app.run()
+```
+
+- **One storage, many sessions.** The storage is stateless apart from its AWS client, so build it once
+  and share it; the `SessionManager` carries the `sessionId`.
+- **Session ids.** The Strands `sessionId` is the AgentCore `sessionId`, unchanged. Runtime session ids
+  are UUID-based and qualify; ids are validated (1–100 lowercase letters, digits, `-`, `_`), never
+  rewritten.
+- **Actor.** Events belong to the configured `actorId` (default `strands-agent`). For multi-user agents,
+  build one storage per actor (see [Who is the actor?](#who-is-the-actor-actorid)).
+- **Permissions.** The runtime role needs `bedrock-agentcore:CreateEvent`, `ListEvents`, and
+  `DeleteEvent` on the memory.
+
+Id mapping, the event layout, chunking of large snapshots, API-call counts, and quotas are documented in
+[`src/memory/integrations/strands/README.md`](../src/memory/integrations/strands/README.md#session-persistence-sessionmanager).
 
 ## Deploying with the AgentCore CLI / CDK
 
@@ -235,3 +301,8 @@ This module is **generally available**. It consumes the Strands memory `MemoryMa
   extraction is asynchronous, recall is verified by polling with a generous timeout, so a full run takes
   several minutes. Requires AWS credentials with `bedrock-agentcore-control:{Create,Get,Delete}Memory`,
   `bedrock-agentcore:{CreateEvent,RetrieveMemoryRecords}`, and (for the E2E case) `bedrock:InvokeModel*`.
+- **Session storage** unit tests (`src/memory/integrations/strands/__tests__/session-storage.test.ts`) run the
+  storage, and a real Strands `SessionManager` + `Agent`, against an in-memory AgentCore event fake that
+  enforces the service's payload, metadata, and `ListEvents` limits. Its integration tests
+  (`tests_integ/memory-session-storage.test.ts`) run only when `AGENTCORE_MEMORY_ID` names an existing
+  memory resource and need `bedrock-agentcore:{CreateEvent,ListEvents,DeleteEvent}`.

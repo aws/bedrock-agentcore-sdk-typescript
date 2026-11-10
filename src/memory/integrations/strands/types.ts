@@ -160,9 +160,17 @@ export function assertResolvedNamespace(resolved: string, template: string): voi
   }
 }
 
-export function assertNonEmpty(value: unknown, field: string): string {
+/**
+ * Throw unless `value` is a string with at least one non-whitespace character.
+ *
+ * @param value - The value to check
+ * @param field - Config field name used in the error message
+ * @param owner - Class or function name used as the error message prefix
+ * @returns The value, narrowed to `string`
+ */
+export function assertNonEmpty(value: unknown, field: string, owner = 'AgentCoreMemoryStore'): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`AgentCoreMemoryStore: ${field} must be a non-empty string`)
+    throw new Error(`${owner}: ${field} must be a non-empty string`)
   }
   return value
 }
