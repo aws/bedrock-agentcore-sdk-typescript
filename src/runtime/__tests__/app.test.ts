@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Readable } from 'stream'
 import { z } from 'zod'
+import fastifySse from '@fastify/sse'
+import fastifyWebsocket from '@fastify/websocket'
 import type { InvocationHandler, WebSocketHandler } from '../types.js'
 import { BedrockAgentCoreApp } from '../app.js'
 
@@ -23,14 +25,13 @@ vi.mock('fastify', () => {
   return { default: mockFastify }
 })
 
-// Mock @fastify/sse
 vi.mock('@fastify/sse', () => {
-  return vi.fn()
+  const plugin = vi.fn()
+  return { default: Object.assign(plugin, { default: plugin }) }
 })
 
-// Mock @fastify/websocket
 vi.mock('@fastify/websocket', () => {
-  return vi.fn()
+  return { default: vi.fn() }
 })
 
 describe('BedrockAgentCoreApp', () => {
@@ -242,6 +243,31 @@ describe('BedrockAgentCoreApp', () => {
 
       const wsCall = mockApp.get.mock.calls.find((call: any[]) => call[0] === '/ws')
       expect(wsCall).toBeUndefined()
+    })
+  })
+
+  describe('plugins setup', () => {
+    it('registers the SSE plugin', async () => {
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
+      const mockApp = app['_app'] as any
+
+      await app['_registerPlugins']()
+
+      expect(mockApp.register).toHaveBeenCalledWith(fastifySse.default)
+      expect(mockApp.register).not.toHaveBeenCalledWith(fastifyWebsocket)
+    })
+
+    it('registers the websocket plugin when websocket handler provided', async () => {
+      const handler: InvocationHandler = async (_request, _context) => 'test response'
+      const websocketHandler: WebSocketHandler = async (_socket, _context) => {}
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler }, websocketHandler })
+      const mockApp = app['_app'] as any
+
+      await app['_registerPlugins']()
+
+      expect(mockApp.register).toHaveBeenCalledWith(fastifySse.default)
+      expect(mockApp.register).toHaveBeenCalledWith(fastifyWebsocket)
     })
   })
 
