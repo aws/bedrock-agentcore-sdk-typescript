@@ -13,6 +13,7 @@ vi.mock('fastify', () => {
       register: vi.fn(async () => {}),
       ready: vi.fn(async () => {}),
       listen: vi.fn(async () => {}),
+      server: { address: vi.fn(() => ({ address: '0.0.0.0', family: 'IPv4', port: 8080 })) },
       addContentTypeParser: vi.fn(), // Add content type parser method
       log: {
         error: vi.fn(),
