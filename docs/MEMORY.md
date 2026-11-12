@@ -15,8 +15,9 @@ A single store, `AgentCoreMemoryStore`, that plugs into Strands' `MemoryManager`
 - **Recall** — the agent's `search_memory` tool (and optional passive injection) reads long-term
   memory via `retrieveMemoryRecords`.
 - **Write** — a turn's conversation messages are packed into a single role-tagged `createEvent` (one
-  API call per flush carrying many turns, not one call per message). AgentCore extracts and
-  consolidates them into long-term records **server-side** — no client-side LLM pass.
+  API call per flush carrying many turns, not one call per message). When long-term strategies are
+  configured, AgentCore extracts and consolidates them into long-term records **server-side** — no
+  client-side LLM pass.
 - **Cost control** — three independent levers (batching, cadence, flush) govern `createEvent` volume.
   See [Reducing write API calls](#reducing-write-api-calls).
 
@@ -74,6 +75,25 @@ const store = new AgentCoreMemoryStore({
 })
 const agent = new Agent({ model, memoryManager: new MemoryManager({ stores: [store] }) })
 ```
+
+### Short-term-only memory
+
+If the Memory resource has no long-term strategies, you can still persist conversation events without
+configuring any read namespaces — pass an empty `namespaces` array with extraction enabled:
+
+```typescript
+const stores = createAgentCoreMemoryStores({
+  memoryId: process.env.MEMORY_MYMEMORY_ID!,
+  actorId,
+  sessionId,
+  namespaces: [], // nothing to recall — short-term only
+  extraction: true,
+})
+```
+
+This builds a single write-only store: conversation turns are persisted with `createEvent`. With no
+long-term strategies configured on the Memory resource, no long-term records are extracted. This store
+does not retrieve long-term records; its `search()` always returns no results.
 
 See [`src/memory/integrations/strands/README.md`](../src/memory/integrations/strands/index.ts) for the read-target arms
 (`namespace` exact vs `namespacePath` subtree), `minScore`, the `extraction` switch, recall-only setup, and the full factory surface.

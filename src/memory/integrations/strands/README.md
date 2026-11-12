@@ -2,8 +2,9 @@
 
 `AgentCoreMemoryStore` makes [AgentCore Memory](https://docs.aws.amazon.com/bedrock-agentcore/) a
 first-class [Strands](https://strandsagents.com) `MemoryStore`: the agent recalls long-term memories
-through `search_memory`, and conversation turns are written to AgentCore (role-preserved) for
-server-side extraction into long-term records.
+through `search_memory`, and conversation turns are written to AgentCore (role-preserved). When the
+Memory resource has long-term strategies configured, AgentCore extracts them into long-term records
+server-side.
 
 This integration implements the Strands `MemoryManager` / `MemoryStore` extraction interface,
 consumed directly from `@strands-agents/sdk` (>= 1.5.0).
@@ -13,9 +14,9 @@ consumed directly from `@strands-agents/sdk` (>= 1.5.0).
 - **Recall** — `search()` maps to `retrieveMemoryRecords`. Per namespace (exact prefix) or across a
   subtree (`namespacePath`).
 - **Write** — `addMessages()` packs a turn's role-tagged messages into a single `createEvent` (one API
-  call carrying many turns, not one call per message). No client-side extractor and no LLM pass:
-  AgentCore extracts and consolidates server-side, and a multi-turn event extracts the same records as
-  the equivalent single-turn events would.
+  call carrying many turns, not one call per message). No client-side extractor and no LLM pass: when
+  long-term strategies are configured, AgentCore extracts and consolidates server-side, and a multi-turn
+  event extracts the same records as the equivalent single-turn events would.
 - **Cost control** — three independent levers (batching, cadence, flush) govern `createEvent` volume;
   see [Reducing write API calls](#reducing-write-api-calls).
 - **Topology** — `createAgentCoreMemoryStores(...)` returns the stores ready to spread into
@@ -65,8 +66,30 @@ const agent = new Agent({ model, memoryManager: new MemoryManager({ stores: [sto
 ```
 
 This mirrors how the framework's own `BedrockKnowledgeBaseStore` exposes a single store — a constructor,
-no factory. Reach for `createAgentCoreMemoryStores` only when you have multiple namespaces (it builds one
-shared client and enforces the single-writer topology).
+no factory. Reach for `createAgentCoreMemoryStores` when you have multiple namespaces (it builds one
+shared client and enforces the single-writer topology) or a short-term-only write-only setup (below).
+
+### Short-term only (no long-term strategies)
+
+When the Memory resource has no long-term strategies there is nothing to recall, but the conversation can
+still be persisted: `createEvent` is namespace-free. Pass an empty `namespaces` array with extraction
+enabled and the factory builds a single **write-only** store (its `search()` always returns no results).
+With no strategies configured, events stay in short-term memory — nothing is extracted server-side.
+
+```typescript
+const stores = createAgentCoreMemoryStores({
+  memoryId: 'mem-abc',
+  actorId: 'user-123',
+  sessionId: 'session-1',
+  namespaces: [], // nothing to recall — short-term only
+  extraction: true, // still write the conversation events
+})
+```
+
+The same shape works standalone: `new AgentCoreMemoryStore({ ...identity, writable: true, extraction: true })`
+with no `namespace`/`namespacePath` is a write-only store (it requires `writable: true`). To skip long-term
+extraction explicitly on a resource that _does_ have strategies, set `extractionMode: 'SKIP'` on the store
+config.
 
 ### Subtree reads
 

@@ -418,3 +418,52 @@ describe('AgentCoreMemoryStore validation', () => {
     expect(() => new AgentCoreMemoryStore(cfg({ overFetchFactor }))).toThrow(/overFetchFactor must be a number >= 1/)
   })
 })
+
+describe('AgentCoreMemoryStore - write-only (no read target)', () => {
+  const writeOnlyConfig = (send: SendFn): AgentCoreMemoryStoreConfig => ({
+    memoryId: 'mem-1',
+    actorId: 'actor-1',
+    sessionId: 'sess-1',
+    client: fakeClient(send),
+    writable: true,
+    extraction: true,
+  })
+
+  it('requires writable: true when no namespace/namespacePath is given', () => {
+    const send = vi.fn(async () => ({}))
+    expect(
+      () =>
+        new AgentCoreMemoryStore({
+          memoryId: 'mem-1',
+          actorId: 'actor-1',
+          sessionId: 'sess-1',
+          client: fakeClient(send),
+        })
+    ).toThrow(/write-only and requires writable: true/)
+  })
+
+  it('defaults the name to agentcore-stm', () => {
+    const store = new AgentCoreMemoryStore(writeOnlyConfig(vi.fn(async () => ({}))))
+    expect(store.name).toBe('agentcore-stm')
+  })
+
+  it('search returns [] without calling the API', async () => {
+    const send = vi.fn(async () => ({}))
+    const store = new AgentCoreMemoryStore(writeOnlyConfig(send))
+    await expect(store.search('q')).resolves.toEqual([])
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('addMessages writes a createEvent (namespace-free write path)', async () => {
+    const sent: CapturedCommand[] = []
+    const send = vi.fn(async (command: CapturedCommand) => {
+      sent.push(command)
+      return {}
+    })
+    const store = new AgentCoreMemoryStore(writeOnlyConfig(send))
+    await store.addMessages([userMsg('hello')])
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!.constructor.name).toBe('CreateEventCommand')
+    expect(sent[0]!.input).toMatchObject({ memoryId: 'mem-1', actorId: 'actor-1', sessionId: 'sess-1' })
+  })
+})

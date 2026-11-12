@@ -41,13 +41,18 @@ export const RESERVED_METADATA_PREFIX = '_'
  * flag to keep in sync with the path:
  * - `{ namespace }`: query one exact namespace prefix (one store per namespace).
  * - `{ namespacePath }`: query a parent path hierarchically, covering all child namespaces (subtree).
+ * - neither: a **write-only** store — `createEvent` is namespace-free, so a store with no read target
+ *   is the short-term-only write sink. It must set `writable: true` (enforced at construction) and its
+ *   `search()` always returns no results.
  *
- * Exactly one member is present; the `?: never` on the other arm makes passing both a compile error.
- * Both carry a template whose `{actorId}`/`{sessionId}` are substituted at construction.
+ * At most one member is present; the `?: never` on the other arm makes passing both a compile error.
+ * When a read target is present, its template's `{actorId}`/`{sessionId}` placeholders are substituted
+ * at construction.
  */
 export type AgentCoreReadTarget =
   | { readonly namespace: string; readonly namespacePath?: never }
   | { readonly namespacePath: string; readonly namespace?: never }
+  | { readonly namespace?: never; readonly namespacePath?: never }
 
 /**
  * Per-message metadata attached to each `createEvent`. Returns a JSON bag; the sender maps each value
@@ -101,15 +106,16 @@ export interface AgentCoreMemoryConfig {
 /**
  * Config for a single {@link AgentCoreMemoryStore}. One flat object: the {@link AgentCoreMemoryConfig}
  * identity (`memoryId`/`actorId`/`sessionId` required; client/credentials/tuning optional), the
- * {@link AgentCoreReadTarget} read-target union (`{ namespace }` exact, or `{ namespacePath }` subtree),
- * and the framework's store fields ({@link MemoryStoreConfig} contributes `description`/
- * `maxSearchResults`/`writable`/`extraction`). `writable` defaults to `false` (recall-only); set it
- * `true` to make this the write sink. `name` defaults to a slug of the namespace template when omitted.
+ * {@link AgentCoreReadTarget} read-target union (`{ namespace }` exact, `{ namespacePath }` subtree, or
+ * neither for a write-only store — which requires `writable: true`), and the framework's store fields
+ * ({@link MemoryStoreConfig} contributes `description`/`maxSearchResults`/`writable`/`extraction`).
+ * `writable` defaults to `false` (recall-only); set it `true` to make this the write sink. `name`
+ * defaults to a slug of the namespace template (or `agentcore-stm` for a write-only store) when omitted.
  */
 export type AgentCoreMemoryStoreConfig = Omit<MemoryStoreConfig, 'name'> &
   AgentCoreMemoryConfig &
   AgentCoreReadTarget & {
-    /** Store name; defaults to a slug of the namespace template (see {@link slugifyNamespace}) if omitted. */
+    /** Store name; defaults to a slug of the namespace template (see {@link slugifyNamespace}), or `agentcore-stm` for a write-only store. */
     readonly name?: string
     /** Optional client-side relevance floor; records scoring below it are dropped from results. */
     readonly minScore?: number

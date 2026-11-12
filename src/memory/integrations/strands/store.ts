@@ -28,8 +28,8 @@ import {
 import { AgentCoreEventSender } from './sender.js'
 import { logger } from './logger.js'
 
-/** Whether the store reads one exact namespace prefix or a parent subtree. */
-type ReadMode = 'exact' | 'subtree'
+/** Whether the store reads one exact namespace prefix, a parent subtree, or nothing (write-only). */
+type ReadMode = 'exact' | 'subtree' | 'none'
 
 /** Extract the text of a `MemoryContent` union member, if it is a text member. */
 function memoryContentText(content: MemoryRecordSummary['content']): string {
@@ -39,18 +39,23 @@ function memoryContentText(content: MemoryRecordSummary['content']): string {
   return ''
 }
 
-/** Read the {@link AgentCoreReadTarget} arm: subtree (`namespacePath`) vs exact (`namespace`). */
-function resolveReadTarget(storeConfig: AgentCoreMemoryStoreConfig): { readMode: ReadMode; template: string } {
+/** Read the {@link AgentCoreReadTarget} arm: subtree (`namespacePath`), exact (`namespace`), or none (write-only). */
+function resolveReadTarget(
+  storeConfig: AgentCoreMemoryStoreConfig
+): { readMode: 'exact' | 'subtree'; template: string } | undefined {
   if ('namespacePath' in storeConfig && storeConfig.namespacePath !== undefined) {
     return { readMode: 'subtree', template: storeConfig.namespacePath }
   }
-  return { readMode: 'exact', template: (storeConfig as { namespace?: string }).namespace as string }
+  if ('namespace' in storeConfig && storeConfig.namespace !== undefined) {
+    return { readMode: 'exact', template: storeConfig.namespace }
+  }
+  return undefined
 }
 
 /**
- * AgentCore Memory as a Strands `MemoryStore`. Identity and namespace are fixed at construction; only a
- * writable store carries `addMessages` + `extraction`. No `add()`: the conversation path is
- * role-preserving and a flat string would discard role.
+ * AgentCore Memory as a Strands `MemoryStore`. Identity and an optional read target are fixed at
+ * construction; only a writable store carries `addMessages` + `extraction`. No `add()`: the
+ * conversation path is role-preserving and a flat string would discard role.
  */
 export class AgentCoreMemoryStore implements MemoryStore {
   readonly name: string
@@ -63,7 +68,7 @@ export class AgentCoreMemoryStore implements MemoryStore {
   private readonly memoryId: string
   private readonly actorId: string
   private readonly sessionId: string
-  private readonly resolvedNamespace: string
+  private readonly resolvedNamespace?: string
   private readonly readMode: ReadMode
   private readonly minScore?: number
   private readonly overFetchFactor: number
@@ -72,21 +77,37 @@ export class AgentCoreMemoryStore implements MemoryStore {
   constructor(storeConfig: AgentCoreMemoryStoreConfig) {
     // The store config carries identity flat, so it *is* the AgentCoreMemoryConfig.
     const config: AgentCoreMemoryConfig = storeConfig
-    const { readMode, template } = resolveReadTarget(storeConfig)
+    const readTarget = resolveReadTarget(storeConfig)
 
     this.memoryId = assertNonEmpty(config.memoryId, 'memoryId')
     this.actorId = assertNonEmpty(config.actorId, 'actorId')
     this.sessionId = assertNonEmpty(config.sessionId, 'sessionId')
-    assertNonEmpty(template, readMode === 'subtree' ? 'namespacePath' : 'namespace')
-    this.resolvedNamespace = resolveNamespace(template, this.actorId, this.sessionId)
-    assertResolvedNamespace(this.resolvedNamespace, template)
-    this.readMode = readMode
+    if (readTarget !== undefined) {
+      assertNonEmpty(readTarget.template, readTarget.readMode === 'subtree' ? 'namespacePath' : 'namespace')
+      this.resolvedNamespace = resolveNamespace(readTarget.template, this.actorId, this.sessionId)
+      assertResolvedNamespace(this.resolvedNamespace, readTarget.template)
+      this.readMode = readTarget.readMode
+    } else {
+      // createEvent is namespace-free, so a store with no read target is a valid short-term-only write
+      // sink — but without writes it could do nothing at all, so require the explicit opt-in.
+      if (storeConfig.writable !== true) {
+        throw new Error(
+          'AgentCoreMemoryStore: a store without namespace/namespacePath is write-only and requires writable: true'
+        )
+      }
+      this.readMode = 'none'
+    }
 
     // Self-name from the template so a standalone `new AgentCoreMemoryStore(...)` always has a name.
     // Treat an empty/whitespace-only name as absent so the slug fallback engages (matches the trim
     // convention in assertNonEmpty) rather than producing a degenerate "" store name.
     const explicitName = storeConfig.name?.trim()
-    this.name = explicitName !== undefined && explicitName.length > 0 ? explicitName : slugifyNamespace(template)
+    this.name =
+      explicitName !== undefined && explicitName.length > 0
+        ? explicitName
+        : readTarget !== undefined
+          ? slugifyNamespace(readTarget.template)
+          : 'agentcore-stm'
     if (storeConfig.description !== undefined) this.description = storeConfig.description
     if (storeConfig.maxSearchResults !== undefined) {
       if (!Number.isInteger(storeConfig.maxSearchResults) || storeConfig.maxSearchResults < 1) {
@@ -145,6 +166,9 @@ export class AgentCoreMemoryStore implements MemoryStore {
   // --- READ ---
 
   async search(query: string, options?: SearchOptions): Promise<MemoryEntry[]> {
+    // Write-only store: no read target to query, so recall is always empty (no API call).
+    if (this.readMode === 'none') return []
+
     const want = options?.maxSearchResults ?? this.maxSearchResults ?? DEFAULT_MAX_SEARCH_RESULTS
     // Validate the effective value, not just the constructor field: a call-time `maxSearchResults`
     // (e.g. from the `search_memory` tool) of 0/negative/non-integer would otherwise reach topK and
@@ -162,8 +186,8 @@ export class AgentCoreMemoryStore implements MemoryStore {
       memoryId: this.memoryId,
       searchCriteria: { searchQuery: query, topK },
       ...(this.readMode === 'subtree'
-        ? { namespacePath: this.resolvedNamespace }
-        : { namespace: this.resolvedNamespace }),
+        ? { namespacePath: this.resolvedNamespace! }
+        : { namespace: this.resolvedNamespace! }),
     })
 
     // Errors propagate: MemoryManager.search wraps each store's search() in Promise.allSettled, so a
