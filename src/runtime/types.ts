@@ -25,8 +25,10 @@ export interface RequestContext {
   sessionId: string
 
   /**
-   * HTTP headers from the incoming request.
-   * Filtered to include only Authorization and Custom-* headers.
+   * Forwardable HTTP headers from the incoming request.
+   * The HTTP protocol path includes Authorization and Custom-* headers; the
+   * A2A protocol path includes everything permitted by the AgentCore runtime
+   * header allowlist (see `isForwardableHeader` in `runtime/a2a`).
    */
   headers: Record<string, string>
 

@@ -25,8 +25,8 @@ vi.mock('../shell/session.js', () => {
 })
 
 // Mock the credential provider
-vi.mock('@aws-sdk/credential-provider-node', () => ({
-  defaultProvider: vi.fn(() => vi.fn(async () => mockCredentials)),
+vi.mock('@aws-sdk/credential-providers', () => ({
+  fromNodeProviderChain: vi.fn(() => vi.fn(async () => mockCredentials)),
 }))
 
 // Mock crypto.randomUUID and randomBytes to return predictable values
@@ -207,9 +207,9 @@ describe('RuntimeClient', () => {
     })
 
     it('uses custom endpoint from environment variable', () => {
-      process.env.BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT = 'https://custom-endpoint.example.com'
+      process.env.BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT = 'https://beta.bedrock-agentcore.us-west-2.amazonaws.com'
       const url = (client as any)._buildWebSocketUrl(testArn)
-      expect(url).toContain('wss://custom-endpoint.example.com/runtimes/')
+      expect(url).toContain('wss://beta.bedrock-agentcore.us-west-2.amazonaws.com/runtimes/')
     })
   })
 

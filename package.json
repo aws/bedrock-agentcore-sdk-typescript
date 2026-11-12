@@ -1,6 +1,6 @@
 {
   "name": "bedrock-agentcore",
-  "version": "0.4.3",
+  "version": "0.4.7",
   "description": "TypeScript SDK for AWS Bedrock AgentCore",
   "main": "dist/src/index.js",
   "module": "dist/src/index.js",
@@ -46,6 +46,10 @@
       "import": "./dist/src/tools/code-interpreter/integrations/strands/index.js",
       "types": "./dist/src/tools/code-interpreter/integrations/strands/index.d.ts"
     },
+    "./web-search": {
+      "import": "./dist/src/tools/web-search/index.js",
+      "types": "./dist/src/tools/web-search/index.d.ts"
+    },
     "./memory/strands": {
       "import": "./dist/src/memory/integrations/strands/index.js",
       "types": "./dist/src/memory/integrations/strands/index.d.ts"
@@ -57,6 +61,10 @@
     "./runtime": {
       "import": "./dist/src/runtime/index.js",
       "types": "./dist/src/runtime/index.d.ts"
+    },
+    "./runtime/a2a": {
+      "import": "./dist/src/runtime/a2a/index.js",
+      "types": "./dist/src/runtime/a2a/index.d.ts"
     },
     "./identity": {
       "import": "./dist/src/identity/index.js",
@@ -97,9 +105,11 @@
   "author": "Amazon Web Services",
   "license": "Apache-2.0",
   "devDependencies": {
+    "@a2a-js/sdk": "^1.0.0",
     "@ai-sdk/amazon-bedrock": "^4.0.0-beta.67",
     "@aws-sdk/client-cognito-identity-provider": "^3.957.0",
     "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/client": "^2.3.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/sdk-trace-base": "^1.30.1",
@@ -119,6 +129,7 @@
     "ai": "^6.0.0-beta.114",
     "eslint": "^10.0.3",
     "eslint-plugin-tsdoc": "^0.5.0",
+    "express": "^5.2.1",
     "husky": "^9.1.7",
     "jsdom": "^29.0.0",
     "lint-staged": "^15.5.2",
@@ -160,24 +171,35 @@
     "@aws-sdk/credential-providers": "^3.996.0",
     "@aws-sdk/protocol-http": "^3.370.0",
     "@aws-sdk/signature-v4": "^3.370.0",
+    "@aws-sdk/types": "^3.973.0",
+    "@aws-sdk/util-endpoints": "^3.996.0",
     "@fastify/sse": "^0.4.0",
     "@fastify/websocket": "^11.0.1",
     "@smithy/protocol-http": "^5.3.5",
     "@smithy/signature-v4": "^5.3.5",
+    "@smithy/types": "^4.14.0",
     "@smithy/util-utf8": "^4.2.0",
     "@types/ws": "^8.18.1",
-    "fastify": "^5.7.1",
+    "fastify": "^5.12.7",
     "ws": "^8.18.3",
     "zod": "^4.1.13"
   },
   "peerDependencies": {
+    "@a2a-js/sdk": ">=1.0.0",
     "@strands-agents/sdk": ">=1.5.0",
     "ai": ">=6.0.0-beta",
+    "express": "^4.21.2 || ^5.1.0",
     "playwright": ">=1.56.0",
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0"
   },
   "peerDependenciesMeta": {
+    "@a2a-js/sdk": {
+      "optional": true
+    },
+    "express": {
+      "optional": true
+    },
     "ai": {
       "optional": true
     },

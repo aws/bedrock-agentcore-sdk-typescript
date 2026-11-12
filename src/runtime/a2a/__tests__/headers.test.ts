@@ -1,0 +1,68 @@
+import { describe, it, expect } from 'vitest'
+import { extractA2AContext } from '../headers.js'
+
+describe('extractA2AContext', () => {
+  it('extracts the AgentCore runtime headers into typed context fields', () => {
+    const context = extractA2AContext({
+      'x-amzn-bedrock-agentcore-runtime-session-id': 'sess-1',
+      'x-amzn-bedrock-agentcore-runtime-request-id': 'req-1',
+      workloadaccesstoken: 'token-1',
+      oauth2callbackurl: 'https://callback.example.com',
+      authorization: 'Bearer abc',
+      'x-amzn-bedrock-agentcore-runtime-custom-tenant': 'acme',
+      'content-type': 'application/json',
+      'x-amz-date': '20260728T000000Z',
+    })
+
+    expect(context).toEqual({
+      sessionId: 'sess-1',
+      requestId: 'req-1',
+      workloadAccessToken: 'token-1',
+      oauth2CallbackUrl: 'https://callback.example.com',
+      // The allowlist forwards everything not restricted — including the
+      // token/callback headers, matching the Python SDK's builder.
+      headers: {
+        authorization: 'Bearer abc',
+        workloadaccesstoken: 'token-1',
+        oauth2callbackurl: 'https://callback.example.com',
+        'x-amzn-bedrock-agentcore-runtime-custom-tenant': 'acme',
+      },
+    })
+  })
+
+  it('generates a request id when the header is absent', () => {
+    const context = extractA2AContext({})
+    expect(context.requestId).toMatch(/^[0-9a-f-]{36}$/)
+    expect(context.sessionId).toBe('')
+  })
+
+  it('joins repeated header values with a comma', () => {
+    const context = extractA2AContext({ 'x-custom-multi': ['a', 'b'] })
+    expect(context.headers['x-custom-multi']).toBe('a, b')
+  })
+
+  it('reads the workload access token from the identity WAT header', () => {
+    const context = extractA2AContext({ 'x-amz-bedrock-agentcore-identity-wat': 'wat-1' })
+
+    expect(context.workloadAccessToken).toBe('wat-1')
+  })
+
+  it('prefers the identity WAT header over WorkloadAccessToken when both are present', () => {
+    const context = extractA2AContext({
+      'x-amz-bedrock-agentcore-identity-wat': 'wat-identity',
+      workloadaccesstoken: 'wat-legacy',
+    })
+
+    expect(context.workloadAccessToken).toBe('wat-identity')
+  })
+
+  it('forwards the identity WAT header while still stripping other x-amz-* headers', () => {
+    const context = extractA2AContext({
+      'x-amz-bedrock-agentcore-identity-wat': 'wat-1',
+      'x-amz-date': '20260917T000000Z',
+      'x-amz-security-token': 'sigv4-token',
+    })
+
+    expect(context.headers).toEqual({ 'x-amz-bedrock-agentcore-identity-wat': 'wat-1' })
+  })
+})

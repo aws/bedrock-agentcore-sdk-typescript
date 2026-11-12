@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-11-10
+
+### Other Changes
+
+- fix(endpoints): validate region in getDataPlaneEndpoint (#320) (377c557)
+
+## [0.4.6] - 2026-10-19
+
+### Other Changes
+
+- fix(ci): restore integration tests and resolve production audit findings (#292) (7ff273f)
+- fix(runtime): keep shell output alive through failed reconnect (#291) (ebaf379)
+- fix(runtime): update shell session wire protocol (#249) (85126a0)
+
+## [0.4.5] - 2026-09-28
+
+### Fixed
+
+- fix: declare every package imported by shipped sources (#269) (e996dd2)
+- fix: add package root entrypoint (#186) (81b03f8)
+
+### Other Changes
+
+- feat(endpoints): support AWS China (aws-cn) partition (#272) (98bfbd3)
+- feat(runtime): add A2A protocol support (#229) (abafc2a)
+
+## [0.4.4] - 2026-09-11
+
+### Other Changes
+
+- feat(tools): add WebSearchClient for AgentCore Web Search (#257) (ddaee27)
+- Bump agentcore-devx-devtools reusable workflow pin (#259) (fd772b1)
+- chore(deps): bump fast-uri from 3.1.5 to 3.1.7 (#256) (da22b46)
+- ci: use dedicated release runners (#250) (26cdfc0)
+- fix(ci): remove interpolated context value in script (#248) (6053efe)
+- fix(ci): simplify pre-commit hook to leverage lint-staged. (#245) (9a7c7ff)
+
 ## [0.4.3] - 2026-08-06
 
 ### Other Changes

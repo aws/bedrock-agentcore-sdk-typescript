@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Browser } from '../client.js'
 import type { SessionConfiguration } from '../types.js'
 
@@ -188,8 +188,24 @@ vi.mock('@smithy/signature-v4', () => ({
 }))
 
 describe('Browser', () => {
+  // Browser now honours BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT, so clear it for
+  // deterministic host assertions (restored afterwards) — an exported override
+  // would otherwise break the CN host cases in integ shells.
+  const DP_ENDPOINT_ENV = 'BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT'
+  let savedDpEndpoint: string | undefined
+
   beforeEach(() => {
     mockSessionState.clear()
+    savedDpEndpoint = process.env[DP_ENDPOINT_ENV]
+    delete process.env[DP_ENDPOINT_ENV]
+  })
+
+  afterEach(() => {
+    if (savedDpEndpoint !== undefined) {
+      process.env[DP_ENDPOINT_ENV] = savedDpEndpoint
+    } else {
+      delete process.env[DP_ENDPOINT_ENV]
+    }
   })
 
   describe('constructor', () => {
@@ -547,6 +563,14 @@ describe('Browser', () => {
       expect(wsConnection.url).toContain(session.sessionId)
       expect(wsConnection.url).toContain(client.identifier)
     })
+
+    it('uses the China DNS suffix for cn-north-1', async () => {
+      const cnClient = new Browser({ region: 'cn-north-1' })
+      await cnClient.startSession()
+      const wsConnection = await cnClient.generateWebSocketUrl()
+
+      expect(wsConnection.url).toContain('bedrock-agentcore.cn-north-1.amazonaws.com.cn')
+    })
   })
 
   describe('generateLiveViewUrl', () => {
@@ -593,6 +617,14 @@ describe('Browser', () => {
 
       expect(url).toContain('X-Amz-Expires')
       expect(url).not.toContain('/automation')
+    })
+
+    it('uses the China DNS suffix for cn-north-1', async () => {
+      const cnClient = new Browser({ region: 'cn-north-1' })
+      await cnClient.startSession()
+      const url = await cnClient.generateLiveViewUrl()
+
+      expect(url).toContain('bedrock-agentcore.cn-north-1.amazonaws.com.cn')
     })
   })
 

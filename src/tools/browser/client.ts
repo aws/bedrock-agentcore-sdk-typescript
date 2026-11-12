@@ -27,6 +27,7 @@ import type {
   BrowserSessionStreams,
 } from './types.js'
 import { DEFAULT_IDENTIFIER, DEFAULT_SESSION_NAME, DEFAULT_TIMEOUT, DEFAULT_REGION } from './types.js'
+import { getDataPlaneEndpoint } from '../../_utils/endpoints.js'
 
 /**
  * Base client for AWS Bedrock AgentCore Browser service.
@@ -382,7 +383,7 @@ export class Browser {
       throw new Error('No active session. Call startSession() first.')
     }
 
-    const host = `bedrock-agentcore.${this.region}.amazonaws.com`
+    const host = new URL(getDataPlaneEndpoint(this.region)).host
     const path = `/browser-streams/${this.identifier}/sessions/${this._session.sessionId}/live-view`
 
     const credentialsProvider = this._credentialsProvider ?? fromNodeProviderChain()
@@ -426,7 +427,7 @@ export class Browser {
     }
 
     // Construct WebSocket URL
-    const host = `bedrock-agentcore.${this.region}.amazonaws.com`
+    const host = new URL(getDataPlaneEndpoint(this.region)).host
     const path = `/browser-streams/${this.identifier}/sessions/${this._session.sessionId}/automation`
     const wsUrl = `wss://${host}${path}`
 

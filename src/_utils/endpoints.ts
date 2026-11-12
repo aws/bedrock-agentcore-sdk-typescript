@@ -1,6 +1,22 @@
 /**
  * Utility functions for constructing AWS service endpoints.
  */
+import { partition } from '@aws-sdk/util-endpoints'
+
+/**
+ * Resolves the partition DNS suffix for an AWS region.
+ *
+ * Derived from the AWS SDK's static partition data rather than a hardcoded table,
+ * so `amazonaws.com` (aws), `amazonaws.com.cn` (aws-cn), and GovCloud/other
+ * partitions are all handled without further changes. Unknown regions fall back to
+ * the commercial `amazonaws.com` suffix.
+ *
+ * @param region - AWS region (e.g. 'us-west-2', 'cn-north-1')
+ * @returns The partition DNS suffix (e.g. 'amazonaws.com', 'amazonaws.com.cn')
+ */
+function getDnsSuffix(region: string): string {
+  return partition(region).dnsSuffix
+}
 
 /**
  * Environment variable for overriding the data plane endpoint.
@@ -8,13 +24,84 @@
 const ENDPOINT_OVERRIDE_ENV = 'BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT'
 
 /**
+ * Environment variable for overriding the gateway MCP endpoint.
+ */
+const GATEWAY_ENDPOINT_OVERRIDE_ENV = 'BEDROCK_AGENTCORE_GATEWAY_ENDPOINT'
+
+/**
+ * A gateway identifier becomes the first DNS label of the endpoint host, so it is
+ * restricted to what a label allows. This rejects an ARN, which is the mistake
+ * this validation exists to catch.
+ */
+const GATEWAY_ID_PATTERN = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/
+
+/**
+ * Region names are lowercase alphanumerics and hyphens, such as `us-east-1`.
+ * Validated because it is interpolated into a hostname.
+ */
+const REGION_PATTERN = /^[a-z0-9-]+$/
+
+/**
+ * Host suffixes an AWS endpoint can have.
+ */
+const AWS_DOMAINS = ['.amazonaws.com', '.amazonaws.com.cn', '.api.aws']
+
+function validateRegion(region: string): void {
+  if (!region || region.trim() === '') {
+    throw new Error('Region cannot be empty')
+  }
+
+  if (!REGION_PATTERN.test(region)) {
+    throw new Error(`Invalid region: '${region}'. Expected a region such as 'us-east-1'.`)
+  }
+}
+
+/**
+ * Checks that an endpoint URL is HTTPS and resolves to an AWS host.
+ *
+ * Requests to these endpoints are signed with the caller's credentials, so the signed
+ * headers carry an access key id and a session token. Over plain HTTP those go out in
+ * the clear, and to a non-AWS host they go to whoever asked for them, so an endpoint
+ * that came from configuration or user input gets checked before anything is signed
+ * for it. This also catches URL manipulation that slips past the gateway identifier
+ * and region patterns.
+ *
+ * @param url - The endpoint URL to check
+ * @returns The URL, unchanged
+ *
+ * @throws Error if the URL cannot be parsed, is not HTTPS, or its host is not an AWS
+ * host.
+ */
+export function validateEndpointUrl(url: string): string {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    throw new Error(`Not a valid endpoint URL: '${url}'`)
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`Endpoint must use https, got '${parsed.protocol}//' in '${url}'`)
+  }
+
+  if (!AWS_DOMAINS.some((domain) => parsed.hostname.endsWith(domain))) {
+    throw new Error(`Endpoint resolves to a non-AWS host: '${parsed.hostname}'`)
+  }
+  return url
+}
+
+/**
  * Gets the data plane endpoint for the Bedrock AgentCore service.
  *
  * The endpoint can be overridden using the BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT
- * environment variable. Otherwise, it follows the standard AWS endpoint pattern.
+ * environment variable. Both an override and a URL built from the region are checked
+ * to be HTTPS and resolve to an AWS host.
  *
  * @param region - AWS region (e.g., 'us-west-2', 'us-east-1')
  * @returns Full HTTPS endpoint URL
+ *
+ * @throws Error if the region is empty or malformed, or the endpoint is not an HTTPS
+ * AWS URL.
  *
  * @example
  * ```typescript
@@ -25,23 +112,59 @@ const ENDPOINT_OVERRIDE_ENV = 'BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT'
  * @example
  * With environment variable override:
  * ```typescript
- * process.env.BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT = 'https://custom-endpoint.example.com'
+ * process.env.BEDROCK_AGENTCORE_DATA_PLANE_ENDPOINT = 'https://beta.bedrock-agentcore.us-west-2.amazonaws.com'
  * const endpoint = getDataPlaneEndpoint('us-west-2')
- * // Returns: 'https://custom-endpoint.example.com'
+ * // Returns: 'https://beta.bedrock-agentcore.us-west-2.amazonaws.com'
  * ```
  */
 export function getDataPlaneEndpoint(region: string): string {
-  // Validate region is not empty
-  if (!region || region.trim() === '') {
-    throw new Error('Region cannot be empty')
+  validateRegion(region)
+
+  const override = process.env[ENDPOINT_OVERRIDE_ENV]
+  if (override) {
+    return validateEndpointUrl(override)
   }
 
+  return validateEndpointUrl(`https://bedrock-agentcore.${region}.${getDnsSuffix(region)}`)
+}
+
+/**
+ * Builds the streamable HTTP MCP endpoint for an AgentCore Gateway.
+ *
+ * This is the URL an MCP client posts to, and the URL a SigV4 signature for a
+ * gateway call is computed over.
+ *
+ * The endpoint can be overridden using the BEDROCK_AGENTCORE_GATEWAY_ENDPOINT
+ * environment variable. An override is returned as given, so a local MCP mock can be
+ * pointed at, while a URL built from arguments is checked to resolve to an AWS host.
+ *
+ * @param gatewayId - Gateway identifier, not an ARN (e.g. 'my-gateway-abc123')
+ * @param region - AWS region the gateway lives in (e.g. 'us-east-1')
+ * @returns Full HTTPS endpoint URL, including the /mcp path
+ *
+ * @throws Error if the gateway identifier is not a valid DNS label, or if the
+ * region is empty or malformed.
+ *
+ * @example
+ * ```typescript
+ * const endpoint = getGatewayMcpEndpoint('my-gateway-abc123', 'us-east-1')
+ * // Returns: 'https://my-gateway-abc123.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp'
+ * ```
+ */
+export function getGatewayMcpEndpoint(gatewayId: string, region: string): string {
+  if (!gatewayId || !GATEWAY_ID_PATTERN.test(gatewayId)) {
+    throw new Error(
+      `Invalid gateway identifier: '${gatewayId}'. Expected a gateway ID such as 'my-gateway-abc123', not an ARN or URL.`
+    )
+  }
+
+  validateRegion(region)
+
   // Check for environment variable override
-  const override = process.env[ENDPOINT_OVERRIDE_ENV]
+  const override = process.env[GATEWAY_ENDPOINT_OVERRIDE_ENV]
   if (override) {
     return override
   }
 
-  // Return standard AWS endpoint pattern
-  return `https://bedrock-agentcore.${region}.amazonaws.com`
+  return validateEndpointUrl(`https://${gatewayId}.gateway.bedrock-agentcore.${region}.${getDnsSuffix(region)}/mcp`)
 }
