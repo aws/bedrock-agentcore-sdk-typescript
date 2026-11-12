@@ -396,6 +396,7 @@ type WriteFileEntry =
        * File content as UTF-8 text.
        */
       content: string
+      blob?: never
     }
   | {
       /**
@@ -406,6 +407,7 @@ type WriteFileEntry =
        * File content as raw binary.
        */
       blob: Uint8Array
+      content?: never
     }
 
 /**
@@ -544,13 +546,15 @@ export const ReadFilesParamsSchema = z.object({
 })
 
 const writeFileEntrySchema = z.union([
-  z.strictObject({
+  z.object({
     path: z.string().min(1, 'File path cannot be empty'),
     content: z.string(),
+    blob: z.never().optional(),
   }),
-  z.strictObject({
+  z.object({
     path: z.string().min(1, 'File path cannot be empty'),
     blob: z.instanceof(Uint8Array),
+    content: z.never().optional(),
   }),
 ])
 

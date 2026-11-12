@@ -412,7 +412,7 @@ export class CodeInterpreter {
         name: 'writeFiles',
         arguments: {
           content: params.files.map((f) =>
-            'blob' in f ? { path: f.path, blob: f.blob } : { path: f.path, text: f.content }
+            f.blob !== undefined ? { path: f.path, blob: f.blob } : { path: f.path, text: f.content }
           ),
         },
       })
