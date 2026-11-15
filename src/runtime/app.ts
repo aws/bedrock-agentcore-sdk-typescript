@@ -55,10 +55,10 @@ const fastifyWebsocket = require('@fastify/websocket')
  * app.run()
  * ```
  */
-export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unknown>> {
+export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unknown>, TResult = unknown> {
   private readonly _app: FastifyInstance
   private readonly _config: BedrockAgentCoreAppConfig
-  private readonly _handler: { process: InvocationHandler<z.infer<TSchema>>; requestSchema?: TSchema }
+  private readonly _handler: { process: InvocationHandler<z.infer<TSchema>, TResult>; requestSchema?: TSchema }
   private _websocketHandler: WebSocketHandler | undefined
   private readonly _activeTasksMap: Map<number, AsyncTaskInfo> = new Map()
   private _taskCounter: number = 0
@@ -72,7 +72,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
    *
    * @param params - Configuration including handler and optional settings
    */
-  constructor(params: BedrockAgentCoreAppParams<TSchema>) {
+  constructor(params: BedrockAgentCoreAppParams<TSchema, TResult>) {
     if (
       !params ||
       typeof params !== 'object' ||

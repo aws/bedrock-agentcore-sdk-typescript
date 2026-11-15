@@ -123,6 +123,8 @@ export default [
         AbortSignal: 'readonly',
         Response: 'readonly',
         RequestInit: 'readonly',
+        ReadableStream: 'readonly',
+        TextDecoder: 'readonly',
       },
     },
     plugins: {
