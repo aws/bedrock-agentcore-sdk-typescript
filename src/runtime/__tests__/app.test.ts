@@ -605,12 +605,14 @@ describe('BedrockAgentCoreApp', () => {
       const mockReply = {
         raw: { headersSent: false },
         status: vi.fn().mockReturnThis(),
+        type: vi.fn().mockReturnThis(),
         send: vi.fn(),
       }
 
       await invocationHandler(mockReq, mockReply)
 
       expect(mockReply.status).toHaveBeenCalledWith(500)
+      expect(mockReply.type).toHaveBeenCalledWith('application/json')
       expect(mockReply.send).toHaveBeenCalledWith({ error: 'Immediate failure' })
     })
 
@@ -798,12 +800,13 @@ describe('BedrockAgentCoreApp', () => {
         body: { tmessage: 'hello' },
         headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
       }
-      const mockReply = { send: vi.fn(), status: vi.fn().mockReturnThis() }
+      const mockReply = { send: vi.fn(), status: vi.fn().mockReturnThis(), type: vi.fn().mockReturnThis() }
 
       await invocationHandler(mockReq, mockReply)
 
       expect(mockHandler).not.toHaveBeenCalled()
       expect(mockReply.status).toHaveBeenCalledWith(400)
+      expect(mockReply.type).toHaveBeenCalledWith('application/json')
       expect(mockReply.send).toHaveBeenCalledWith({
         error: 'Invalid request body format',
         details: expect.any(Array),
@@ -826,12 +829,13 @@ describe('BedrockAgentCoreApp', () => {
         },
         headers: { 'x-amzn-bedrock-agentcore-runtime-session-id': 'session-123' },
       }
-      const mockReply = { send: vi.fn(), status: vi.fn().mockReturnThis() }
+      const mockReply = { send: vi.fn(), status: vi.fn().mockReturnThis(), type: vi.fn().mockReturnThis() }
 
       await invocationHandler(mockReq, mockReply)
 
       expect(mockHandler).not.toHaveBeenCalled()
       expect(mockReply.status).toHaveBeenCalledWith(400)
+      expect(mockReply.type).toHaveBeenCalledWith('application/json')
       expect(mockReply.send).toHaveBeenCalledWith({
         error: 'Invalid request body format',
         details: expect.any(Array),

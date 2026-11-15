@@ -62,6 +62,10 @@
       "import": "./dist/src/runtime/index.js",
       "types": "./dist/src/runtime/index.d.ts"
     },
+    "./runtime/testing": {
+      "import": "./dist/src/runtime/testing.js",
+      "types": "./dist/src/runtime/testing.d.ts"
+    },
     "./runtime/a2a": {
       "import": "./dist/src/runtime/a2a/index.js",
       "types": "./dist/src/runtime/a2a/index.d.ts"
