@@ -4,6 +4,8 @@
 
 export { BedrockAgentCoreApp } from './app.js'
 export { RuntimeClient } from './client.js'
+export { createInvokeClient } from './invoke-client.js'
+export type { InvokeClient, InvokeClientConfig, InvokeOptions, InvokeInput, InvokeEvent } from './invoke-client.js'
 export type {
   BedrockAgentCoreAppConfig,
   ContentTypeParserConfig,

@@ -70,10 +70,10 @@ export interface RequestContext {
  * @param context - Additional context including sessionId and headers
  * @returns Response data (any serializable type) or async generator for streaming
  */
-export type InvocationHandler<TRequest = unknown> = (
-  request: TRequest,
-  context: RequestContext
-) => Promise<unknown> | unknown | AsyncGenerator<SSESource, void, unknown>
+export type InvocationHandler<
+  TRequest = unknown,
+  TResult = Promise<unknown> | unknown | AsyncGenerator<SSESource, void, unknown>,
+> = (request: TRequest, context: RequestContext) => TResult
 
 /**
  * WebSocket handler function type for processing WebSocket connections.
@@ -239,7 +239,7 @@ export interface BedrockAgentCoreAppConfig {
 /**
  * Parameters for BedrockAgentCoreApp constructor.
  */
-export interface BedrockAgentCoreAppParams<TSchema extends z.ZodSchema = z.ZodSchema<unknown>> {
+export interface BedrockAgentCoreAppParams<TSchema extends z.ZodSchema = z.ZodSchema<unknown>, TResult = unknown> {
   /**
    * Invocation handler configuration with validation and typing.
    */
@@ -247,7 +247,7 @@ export interface BedrockAgentCoreAppParams<TSchema extends z.ZodSchema = z.ZodSc
     /**
      * The function to process invocation requests.
      */
-    process: InvocationHandler<z.infer<TSchema>>
+    process: InvocationHandler<z.infer<TSchema>, TResult>
     /**
      * Optional Zod schema for request validation and TypeScript typing.
      * When provided, validates request.body before passing to handler.

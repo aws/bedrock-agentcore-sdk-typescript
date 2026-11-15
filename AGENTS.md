@@ -51,6 +51,7 @@ bedrock-agentcore-sdk-typescript/
 │   │   ├── app.ts                # BedrockAgentCoreApp implementation
 │   │   ├── headers.ts            # Runtime header allowlist, shared by both protocol paths
 │   │   ├── index.ts              # Runtime exports
+│   │   ├── invoke-client.ts      # Typed InvokeAgentRuntime client inferred from an app type
 │   │   └── types.ts              # Runtime type definitions
 │   └── tools/                    # Tool definitions and types
 │       ├── browser/              # Browser automation tool
