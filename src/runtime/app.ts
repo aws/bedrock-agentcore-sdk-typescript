@@ -66,6 +66,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
   private _forcedPingStatus?: HealthStatus
   private _lastStatusUpdateTime: number = Date.now()
   private _lastKnownStatus?: HealthStatus
+  private _ready?: Promise<FastifyInstance>
 
   /**
    * Creates a new BedrockAgentCoreApp instance.
@@ -107,13 +108,8 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
     const PORT = options?.port ?? 8080
     const HOST = options?.host ?? '0.0.0.0'
 
-    // Wait for Fastify to be ready (all plugins registered), setup routes, and start the server
-    Promise.resolve(this._registerPlugins())
-      .then(() => {
-        this._setupContentTypeParsers()
-        this._setupRoutes()
-        return this._app.listen({ port: PORT, host: HOST })
-      })
+    this._prepare()
+      .then((app) => app.listen({ port: PORT, host: HOST }))
       .then(() => {
         this._app.log.info(`Server listening on port ${PORT}`)
       })
@@ -235,6 +231,22 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
   }
 
   /**
+   * Registers plugins, parsers, and routes once and resolves with the ready Fastify instance.
+   *
+   * @returns The ready Fastify instance
+   */
+  private _prepare(): Promise<FastifyInstance> {
+    this._ready ??= (async (): Promise<FastifyInstance> => {
+      await this._registerPlugins()
+      this._setupContentTypeParsers()
+      this._setupRoutes()
+      await this._app.ready()
+      return this._app
+    })()
+    return this._ready
+  }
+
+  /**
    * Sets up HTTP routes for the server.
    */
   private _setupRoutes(): void {
@@ -337,7 +349,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
 
       // Validate sessionId
       if (!context.sessionId) {
-        await reply.status(400).send({
+        await reply.status(400).type('application/json').send({
           error: 'Missing sessionId. Provide via x-amzn-bedrock-agentcore-runtime-session-id header or request body.',
         })
         return
@@ -350,7 +362,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
           handlerRequest = await this._handler.requestSchema.parseAsync(request.body)
         } catch (error) {
           if (error instanceof z.ZodError) {
-            await reply.status(400).send({
+            await reply.status(400).type('application/json').send({
               error: 'Invalid request body format',
               details: error.issues,
             })
@@ -417,7 +429,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
           this._app.log.error(error, 'Error after response headers sent')
         }
       } else {
-        await reply.status(500).send({
+        await reply.status(500).type('application/json').send({
           error: errorMessage,
         })
       }
