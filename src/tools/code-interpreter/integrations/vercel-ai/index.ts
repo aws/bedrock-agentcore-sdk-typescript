@@ -24,3 +24,6 @@
  */
 
 export { CodeInterpreterTools } from './tools.js'
+export { createExecuteCodeTool } from './execute-code-tool.js'
+export { createExecuteCommandTool } from './execute-command-tool.js'
+export { createFileOperationsTool } from './file-operations-tool.js'
