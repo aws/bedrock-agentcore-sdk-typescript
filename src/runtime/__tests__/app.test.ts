@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Readable } from 'stream'
 import { z } from 'zod'
+import { LogController } from 'fastify'
 import type { InvocationHandler, WebSocketHandler } from '../types.js'
 import { BedrockAgentCoreApp } from '../app.js'
 
 // Mock fastify module
-vi.mock('fastify', () => {
+vi.mock('fastify', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fastify')>()
   const mockFastify = vi.fn(() => {
     return {
       get: vi.fn(),
@@ -20,7 +22,7 @@ vi.mock('fastify', () => {
       },
     }
   })
-  return { default: mockFastify }
+  return { default: mockFastify, LogController: actual.LogController }
 })
 
 // Mock @fastify/sse
@@ -84,7 +86,7 @@ describe('BedrockAgentCoreApp', () => {
       new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       expect(Fastify).toHaveBeenCalledWith({
         logger: true,
-        disableRequestLogging: expect.any(Function),
+        logController: expect.any(LogController),
       })
     })
 
@@ -98,7 +100,7 @@ describe('BedrockAgentCoreApp', () => {
       })
       expect(Fastify).toHaveBeenCalledWith({
         logger: { level: 'debug' },
-        disableRequestLogging: expect.any(Function),
+        logController: expect.any(LogController),
       })
     })
 
@@ -112,7 +114,7 @@ describe('BedrockAgentCoreApp', () => {
       })
       expect(Fastify).toHaveBeenCalledWith({
         logger: false,
-        disableRequestLogging: expect.any(Function),
+        logController: expect.any(LogController),
       })
     })
 
@@ -126,7 +128,7 @@ describe('BedrockAgentCoreApp', () => {
       })
       expect(Fastify).toHaveBeenCalledWith({
         logger: { level: 'info' },
-        disableRequestLogging: expect.any(Function),
+        logController: expect.any(LogController),
       })
     })
 
