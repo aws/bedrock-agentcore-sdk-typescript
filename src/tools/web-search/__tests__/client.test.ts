@@ -207,6 +207,23 @@ describe('WebSearchClient construction', () => {
   })
 })
 
+describe('integration source', () => {
+  it('reaches the gateway when set on the client rather than the backend', async () => {
+    const { fetchImpl, requests } = mcpFetch({ toolsCall: { content: [{ type: 'text', text: '{"results":[]}' }] } })
+    const client = new WebSearchClient({
+      region: REGION,
+      gatewayId: GATEWAY_ID,
+      credentialsProvider: CREDENTIALS,
+      targetName: 'amazon-web-search',
+      integrationSource: 'crewai',
+      fetchImpl,
+    })
+    await client.search('q')
+
+    expect(requests[0]!.headers['user-agent']).toContain('(integration_source=crewai)')
+  })
+})
+
 describe('search argument shaping', () => {
   let backend: StubBackend
   let client: WebSearchClient
@@ -396,6 +413,34 @@ describe('GatewayMcpBackend over MCP', () => {
 
     expect(urls[0]).toBe(endpoint)
     expect(initialize.headers.authorization).toBe(expected.headers['authorization'])
+  })
+
+  it('identifies itself in the User-Agent on every request', async () => {
+    const { fetchImpl, requests } = mcpFetch()
+    await backendFor({ fetchImpl }).search({ query: 'q' })
+
+    for (const request of requests) {
+      expect(request.headers['user-agent']).toContain(`bedrock-agentcore/${SDK_VERSION}`)
+      expect(request.headers['user-agent']).not.toContain('integration_source')
+    }
+  })
+
+  it('names the calling framework in the User-Agent when told which one', async () => {
+    const { fetchImpl, requests } = mcpFetch()
+    await backendFor({ fetchImpl, integrationSource: 'langchain' }).search({ query: 'q' })
+
+    expect(requests[0]!.headers['user-agent']).toContain('(integration_source=langchain)')
+  })
+
+  it('leaves the User-Agent out of the signature, since SigV4 forbids signing it', async () => {
+    // Proxies and runtimes rewrite User-Agent freely, so signing it would make the
+    // request fail in transit rather than identify it.
+    const { fetchImpl, requests } = mcpFetch()
+    await backendFor({ fetchImpl, integrationSource: 'langchain' }).search({ query: 'q' })
+
+    const signedHeaders = /SignedHeaders=([^,]+)/.exec(requests[0]!.headers.authorization ?? '')?.[1] ?? ''
+    expect(signedHeaders).not.toContain('user-agent')
+    expect(requests[0]!.headers['user-agent']).toBeDefined()
   })
 
   it('reports the SDK version to the gateway, not the protocol version', async () => {
