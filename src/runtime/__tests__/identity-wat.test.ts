@@ -7,7 +7,7 @@ async function createApp(handler: (request: unknown, context: RequestContext) =>
   const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
   await app['_registerPlugins']()
   app['_setupContentTypeParsers']()
-  app['_setupRoutes']()
+  app['_setupMainRoutes'](8080)
   await app['_app'].ready()
   return app
 }

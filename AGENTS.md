@@ -50,8 +50,10 @@ bedrock-agentcore-sdk-typescript/
 │   │   │   └── runtime-url.ts    # InvokeAgentRuntime URL construction
 │   │   ├── app.ts                # BedrockAgentCoreApp implementation
 │   │   ├── headers.ts            # Runtime header allowlist, shared by both protocol paths
+│   │   ├── hooks.ts              # Lifecycle hook validation, route conflict checks, Mutex
 │   │   ├── index.ts              # Runtime exports
-│   │   └── types.ts              # Runtime type definitions
+│   │   ├── types.ts              # Runtime type definitions
+│   │   └── warmup.ts             # Build warmup hook route
 │   └── tools/                    # Tool definitions and types
 │       ├── browser/              # Browser automation tool
 │       │   ├── __tests__/        # Unit tests for browser tool
@@ -105,6 +107,7 @@ bedrock-agentcore-sdk-typescript/
 │   ├── browser.test.ts           # Browser integration tests
 │   ├── code-interpreter.test.ts  # Code interpreter integration tests
 │   ├── runtime.test.ts           # Runtime server integration tests
+│   ├── runtime-warmup.test.ts    # Build warmup hook integration tests (real ports)
 │   ├── setup.ts                  # Test setup utilities and helpers
 │   └── vercel-ai-agent.test.ts   # Vercel AI integration tests
 │
