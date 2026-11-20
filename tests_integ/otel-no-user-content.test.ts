@@ -80,7 +80,7 @@ describe('OTEL spans must not contain user content', () => {
       app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       fastify = (app as any)._app
       await (app as any)._registerPlugins()
-      ;(app as any)._setupRoutes()
+      ;(app as any)._setupMainRoutes(8080)
       await fastify.ready()
     })
 
@@ -114,7 +114,7 @@ describe('OTEL spans must not contain user content', () => {
       app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       fastify = (app as any)._app
       await (app as any)._registerPlugins()
-      ;(app as any)._setupRoutes()
+      ;(app as any)._setupMainRoutes(8080)
       await fastify.ready()
     })
 
@@ -157,7 +157,7 @@ describe('OTEL spans must not contain user content', () => {
       })
       fastify = (app as any)._app
       await (app as any)._registerPlugins()
-      ;(app as any)._setupRoutes()
+      ;(app as any)._setupMainRoutes(8080)
       await fastify.listen({ port: 0, host: '127.0.0.1' })
     })
 

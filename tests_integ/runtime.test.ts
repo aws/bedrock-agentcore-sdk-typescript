@@ -35,7 +35,7 @@ describe('BedrockAgentCoreApp Integration', () => {
     app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
     fastify = (app as any)._app
     await (app as any)._registerPlugins()
-    ;(app as any)._setupRoutes()
+    ;(app as any)._setupMainRoutes(8080)
     await fastify.ready()
   })
 
@@ -83,7 +83,7 @@ describe('BedrockAgentCoreApp Integration', () => {
 
       // Setup routes
       await testApp['_registerPlugins']()
-      testApp['_setupRoutes']()
+      testApp['_setupMainRoutes'](8080)
       await testApp['_app'].ready()
 
       const response = await testApp['_app'].inject({
@@ -106,7 +106,7 @@ describe('BedrockAgentCoreApp Integration', () => {
 
       // Setup routes
       await testApp['_registerPlugins']()
-      testApp['_setupRoutes']()
+      testApp['_setupMainRoutes'](8080)
       await testApp['_app'].ready()
 
       const response = await testApp['_app'].inject({
@@ -170,7 +170,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       }
       const testApp = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       await (testApp as any)._registerPlugins()
-      ;(testApp as any)._setupRoutes()
+      ;(testApp as any)._setupMainRoutes(8080)
       await (testApp as any)._app.ready()
 
       await request((testApp as any)._app.server)
@@ -190,7 +190,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       }
       const testApp = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       await (testApp as any)._registerPlugins()
-      ;(testApp as any)._setupRoutes()
+      ;(testApp as any)._setupMainRoutes(8080)
       await (testApp as any)._app.ready()
 
       await request((testApp as any)._app.server)
@@ -210,7 +210,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       }
       const testApp = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       await (testApp as any)._registerPlugins()
-      ;(testApp as any)._setupRoutes()
+      ;(testApp as any)._setupMainRoutes(8080)
       await (testApp as any)._app.ready()
 
       await request((testApp as any)._app.server)
@@ -230,7 +230,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       }
       const testApp = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       await (testApp as any)._registerPlugins()
-      ;(testApp as any)._setupRoutes()
+      ;(testApp as any)._setupMainRoutes(8080)
       await (testApp as any)._app.ready()
 
       await request((testApp as any)._app.server)
@@ -255,7 +255,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         const errorApp = new BedrockAgentCoreApp({ invocationHandler: { process: errorHandler } })
         errorFastify = (errorApp as any)._app
         await (errorApp as any)._registerPlugins()
-        ;(errorApp as any)._setupRoutes()
+        ;(errorApp as any)._setupMainRoutes(8080)
         await errorFastify.ready()
       })
 
@@ -293,7 +293,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         const streamApp = new BedrockAgentCoreApp({ invocationHandler: { process: streamHandler } })
         streamFastify = (streamApp as any)._app
         await (streamApp as any)._registerPlugins()
-        ;(streamApp as any)._setupRoutes()
+        ;(streamApp as any)._setupMainRoutes(8080)
         await streamFastify.ready()
       })
 
@@ -321,7 +321,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         const stringApp = new BedrockAgentCoreApp({ invocationHandler: { process: stringHandler } })
         const stringFastify = (stringApp as any)._app
         await (stringApp as any)._registerPlugins()
-        ;(stringApp as any)._setupRoutes()
+        ;(stringApp as any)._setupMainRoutes(8080)
         await stringFastify.ready()
 
         await request(stringFastify.server)
@@ -346,7 +346,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         const bufferApp = new BedrockAgentCoreApp({ invocationHandler: { process: bufferHandler } })
         const bufferFastify = (bufferApp as any)._app
         await (bufferApp as any)._registerPlugins()
-        ;(bufferApp as any)._setupRoutes()
+        ;(bufferApp as any)._setupMainRoutes(8080)
         await bufferFastify.ready()
 
         await request(bufferFastify.server)
@@ -379,7 +379,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         const readableApp = new BedrockAgentCoreApp({ invocationHandler: { process: readableHandler } })
         const readableFastify = (readableApp as any)._app
         await (readableApp as any)._registerPlugins()
-        ;(readableApp as any)._setupRoutes()
+        ;(readableApp as any)._setupMainRoutes(8080)
         await readableFastify.ready()
 
         await request(readableFastify.server)
@@ -408,7 +408,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         const asyncApp = new BedrockAgentCoreApp({ invocationHandler: { process: asyncIterableHandler } })
         const asyncFastify = (asyncApp as any)._app
         await (asyncApp as any)._registerPlugins()
-        ;(asyncApp as any)._setupRoutes()
+        ;(asyncApp as any)._setupMainRoutes(8080)
         await asyncFastify.ready()
 
         await request(asyncFastify.server)
@@ -438,7 +438,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         const contextApp = new BedrockAgentCoreApp({ invocationHandler: { process: contextHandler } })
         const contextFastify = (contextApp as any)._app
         await (contextApp as any)._registerPlugins()
-        ;(contextApp as any)._setupRoutes()
+        ;(contextApp as any)._setupMainRoutes(8080)
         await contextFastify.ready()
 
         const res = await request(contextFastify.server)
@@ -470,7 +470,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         const noDataApp = new BedrockAgentCoreApp({ invocationHandler: { process: noDataHandler } })
         const noDataFastify = (noDataApp as any)._app
         await (noDataApp as any)._registerPlugins()
-        ;(noDataApp as any)._setupRoutes()
+        ;(noDataApp as any)._setupMainRoutes(8080)
         await noDataFastify.ready()
 
         await request(noDataFastify.server)
@@ -503,7 +503,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         const mixedApp = new BedrockAgentCoreApp({ invocationHandler: { process: mixedHandler } })
         const mixedFastify = (mixedApp as any)._app
         await (mixedApp as any)._registerPlugins()
-        ;(mixedApp as any)._setupRoutes()
+        ;(mixedApp as any)._setupMainRoutes(8080)
         await mixedFastify.ready()
 
         await request(mixedFastify.server)
@@ -533,7 +533,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         const errorApp = new BedrockAgentCoreApp({ invocationHandler: { process: errorHandler } })
         const errorFastify = (errorApp as any)._app
         await (errorApp as any)._registerPlugins()
-        ;(errorApp as any)._setupRoutes()
+        ;(errorApp as any)._setupMainRoutes(8080)
         await errorFastify.ready()
 
         // First request — handler throws mid-stream
@@ -574,7 +574,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         const throwApp = new BedrockAgentCoreApp({ invocationHandler: { process: throwHandler } })
         const throwFastify = (throwApp as any)._app
         await (throwApp as any)._registerPlugins()
-        ;(throwApp as any)._setupRoutes()
+        ;(throwApp as any)._setupMainRoutes(8080)
         await throwFastify.ready()
 
         await request(throwFastify.server)
@@ -597,7 +597,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         const nullApp = new BedrockAgentCoreApp({ invocationHandler: { process: nullHandler } })
         const nullFastify = (nullApp as any)._app
         await (nullApp as any)._registerPlugins()
-        ;(nullApp as any)._setupRoutes()
+        ;(nullApp as any)._setupMainRoutes(8080)
         await nullFastify.ready()
 
         await request(nullFastify.server)
@@ -630,7 +630,7 @@ describe('BedrockAgentCoreApp Integration', () => {
         const primitiveApp = new BedrockAgentCoreApp({ invocationHandler: { process: primitiveHandler } })
         const primitiveFastify = (primitiveApp as any)._app
         await (primitiveApp as any)._registerPlugins()
-        ;(primitiveApp as any)._setupRoutes()
+        ;(primitiveApp as any)._setupMainRoutes(8080)
         await primitiveFastify.ready()
 
         await request(primitiveFastify.server)
@@ -687,7 +687,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       // Get the underlying Fastify server and start it manually
       const fastify = (wsApp as any)._app
       await (wsApp as any)._registerPlugins()
-      ;(wsApp as any)._setupRoutes()
+      ;(wsApp as any)._setupMainRoutes(8080)
       await fastify.ready()
       await fastify.listen({ port: 0, host: '127.0.0.1' })
       server = fastify.server
@@ -785,7 +785,7 @@ describe('BedrockAgentCoreApp Integration', () => {
 
         const errorFastify = (errorApp as any)._app
         await (errorApp as any)._registerPlugins()
-        ;(errorApp as any)._setupRoutes()
+        ;(errorApp as any)._setupMainRoutes(8080)
         await errorFastify.ready()
         await errorFastify.listen({ port: 0, host: '127.0.0.1' })
         errorServer = errorFastify.server
@@ -936,7 +936,7 @@ describe('BedrockAgentCoreApp Integration', () => {
       fastify = (app as any)._app
       await (app as any)._registerPlugins()
       ;(app as any)._setupContentTypeParsers()
-      ;(app as any)._setupRoutes()
+      ;(app as any)._setupMainRoutes(8080)
       await fastify.ready()
     })
 
@@ -1263,7 +1263,7 @@ Bob Johnson,35,Chicago`
       testApp = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       testFastify = (testApp as any)._app
       await (testApp as any)._registerPlugins()
-      ;(testApp as any)._setupRoutes()
+      ;(testApp as any)._setupMainRoutes(8080)
       await testFastify.ready()
     })
 
@@ -1369,7 +1369,7 @@ Bob Johnson,35,Chicago`
       concurrentApp = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       concurrentFastify = (concurrentApp as any)._app
       await (concurrentApp as any)._registerPlugins()
-      ;(concurrentApp as any)._setupRoutes()
+      ;(concurrentApp as any)._setupMainRoutes(8080)
       await concurrentFastify.ready()
     })
 
@@ -1408,7 +1408,7 @@ Bob Johnson,35,Chicago`
       const wsTestApp = new BedrockAgentCoreApp({ invocationHandler: { process: wsHandler }, websocketHandler })
       const wsFastify = (wsTestApp as any)._app
       await (wsTestApp as any)._registerPlugins()
-      ;(wsTestApp as any)._setupRoutes()
+      ;(wsTestApp as any)._setupMainRoutes(8080)
       await wsFastify.ready()
       await wsFastify.listen({ port: 0, host: '127.0.0.1' })
       const wsServer = wsFastify.server
@@ -1471,7 +1471,7 @@ Bob Johnson,35,Chicago`
       })
       const mixedFastify = (mixedApp as any)._app
       await (mixedApp as any)._registerPlugins()
-      ;(mixedApp as any)._setupRoutes()
+      ;(mixedApp as any)._setupMainRoutes(8080)
       await mixedFastify.ready()
       await mixedFastify.listen({ port: 0, host: '127.0.0.1' })
       const mixedServer = mixedFastify.server

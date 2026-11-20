@@ -268,7 +268,52 @@ export interface BedrockAgentCoreAppParams<TSchema extends z.ZodSchema = z.ZodSc
    * Custom ping handler to determine health status.
    */
   pingHandler?: () => HealthStatus | Promise<HealthStatus>
+  /**
+   * Build warmup hook to serve, matching `hooksConfiguration.build.warmup.action.httpPost` on the runtime.
+   * Omit it to add no warmup route.
+   * @see https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-lifecycle-hooks.html
+   */
+  warmupHook?: WarmupHookConfig
 }
+
+/**
+ * Where the app serves a lifecycle hook, matching the hook's `action.httpPost` in the runtime's `hooksConfiguration`.
+ * The app serves the hook as `POST` on `path`.
+ * @see https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-lifecycle-hooks.html
+ */
+export interface HookConfig {
+  /**
+   * Path of the hook route; must equal `httpPost.path`: 1-32 characters, `^/[A-Za-z0-9._~/-]*$`, canonical form.
+   */
+  path: string
+
+  /**
+   * Port of the hook route (8000-12000); must equal `httpPost.port`. Omit both to use the app's serving port.
+   */
+  port?: number
+}
+
+/**
+ * Build warmup hook configuration: where to serve the hook and the handler for each warmup type.
+ */
+export interface WarmupHookConfig extends HookConfig {
+  /**
+   * Handler per warmup type; a type without a handler is answered with 200 and `result: 'skipped'`.
+   */
+  handlers: Partial<Record<WarmupType, WarmupHandler>>
+}
+
+/**
+ * Build warmup call type, sent by AgentCore Runtime in the `x-amzn-bedrock-agentcore-runtime-warmup-type` header.
+ * AgentCore Runtime calls the hook with `memory` first, then `disk`.
+ */
+export type WarmupType = 'memory' | 'disk'
+
+/**
+ * Build warmup handler. It must be async and must not block the event loop, so the server keeps answering `/ping`.
+ * The hook responds 200 after the returned promise resolves, and 500 if it rejects.
+ */
+export type WarmupHandler = () => Promise<void>
 
 /**
  * Health status values for the /ping endpoint.
