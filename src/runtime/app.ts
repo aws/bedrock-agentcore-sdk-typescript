@@ -27,7 +27,7 @@ import type {
   HealthStatus,
 } from './types.js'
 import { runWithContext } from './context.js'
-import { IDENTITY_WAT_HEADER } from './constants.js'
+import { HOOK_HOST, IDENTITY_WAT_HEADER } from './constants.js'
 import { assertNoRouteConflict, validateHookConfig } from './hooks.js'
 import type { HookRoute, RouteId } from './hooks.js'
 import { warmupHookRoute } from './warmup.js'
@@ -131,7 +131,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
       .then(async () => {
         this._setupContentTypeParsers()
         this._setupMainRoutes(PORT)
-        await this._startHookServers(HOST, PORT)
+        await this._startHookServers(PORT)
         return this._app.listen({ port: PORT, host: HOST })
       })
       .then(() => {
@@ -331,12 +331,12 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
   }
 
   /**
-   * Starts one server per hook port other than the serving port, and closes each one when the main server closes.
+   * Starts one server per hook port other than the serving port, on loopback, and closes each one when the main
+   * server closes.
    *
-   * @param host - Host to listen on
    * @param servingPort - Port the main server listens on; its hooks are registered by `_setupMainRoutes`
    */
-  private async _startHookServers(host: string, servingPort: number): Promise<void> {
+  private async _startHookServers(servingPort: number): Promise<void> {
     for (const [port, hooks] of this._hookPortRoutes) {
       if (port === servingPort) {
         continue
@@ -348,7 +348,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
       for (const hook of hooks) {
         server.route({ method: hook.method, url: hook.path, handler: hook.handler })
       }
-      await server.listen({ port, host })
+      await server.listen({ port, host: HOOK_HOST })
       this._app.addHook('onClose', async () => {
         await server.close()
       })

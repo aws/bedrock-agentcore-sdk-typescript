@@ -301,6 +301,16 @@ describe('BedrockAgentCoreApp', () => {
       ).toThrow('warmupHook POST /invocations conflicts with a route already served on its port; pick another path')
     })
 
+    it('throws in the constructor for a misspelled handler key', () => {
+      expect(
+        () =>
+          new BedrockAgentCoreApp({
+            invocationHandler: { process: handler },
+            warmupHook: { path: '/warmup', handlers: { memroy: memory } as any },
+          })
+      ).toThrow('warmupHook.handlers has an unknown key "memroy"; expected memory or disk')
+    })
+
     it('throws in the constructor for an invalid path', () => {
       expect(
         () =>
@@ -318,17 +328,17 @@ describe('BedrockAgentCoreApp', () => {
       })
       const mockApp = app['_app'] as any
 
-      app.run({ port: 8080, host: '127.0.0.1' })
+      app.run({ port: 8080, host: '0.0.0.0' })
 
       await vi.waitFor(() => {
-        expect(mockApp.listen).toHaveBeenCalledWith({ port: 8080, host: '127.0.0.1' })
+        expect(mockApp.listen).toHaveBeenCalledWith({ port: 8080, host: '0.0.0.0' })
       })
       expect(Fastify).toHaveBeenCalledTimes(2)
       expect(Fastify).toHaveBeenLastCalledWith({ loggerInstance: mockApp.log, disableRequestLogging: false })
       const hookServer = Fastify.mock.results[1].value
       expect(routeCall(hookServer, '/warmup')).toBeDefined()
       expect(routeCall(mockApp, '/warmup')).toBeUndefined()
-      expect(hookServer.listen).toHaveBeenCalledWith({ port: 9000, host: '127.0.0.1' })
+      expect(hookServer.listen).toHaveBeenCalledWith({ port: 9000, host: '127.0.0.1' }) // loopback, whatever the serving host
       expect(hookServer.listen.mock.invocationCallOrder[0]).toBeLessThan(mockApp.listen.mock.invocationCallOrder[0])
 
       // The hook server closes with the main server

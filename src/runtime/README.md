@@ -338,15 +338,18 @@ const app = new BedrockAgentCoreApp({
 })
 ```
 
-| Request (`POST` on `warmupHook.path`)                                                                    | Response                                                                          |
-| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `x-amzn-bedrock-agentcore-runtime-warmup-type` is `memory` or `disk` (trimmed, any case), with a handler | Runs the handler, then `200 {"status": "ok", "type": ..., "result": "completed"}` |
-| A type without a handler                                                                                 | `200 {"status": "ok", "type": ..., "result": "skipped"}`                          |
-| The handler rejects                                                                                      | `500 {"error": ..., "type": ...}`                                                 |
-| Missing or invalid header                                                                                | `400`                                                                             |
+| Request (`POST` on `warmupHook.path`)                                                                    | Response                                                                                                                         |
+| -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `x-amzn-bedrock-agentcore-runtime-warmup-type` is `memory` or `disk` (trimmed, any case), with a handler | Runs the handler, then `200 {"status": "ok", "type": ..., "result": "completed"}`                                                |
+| `memory` or `disk` without a handler                                                                     | `200 {"status": "ok", "type": ..., "result": "skipped"}`                                                                         |
+| Any other value (an unknown type)                                                                        | `200 {"status": "ok", "type": <trimmed, lower-cased value>, "result": "skipped"}`, so a type added later doesn't fail the create |
+| The handler rejects, or returns an iterator                                                              | `500 {"error": ..., "type": ...}`                                                                                                |
+| Missing or empty header                                                                                  | `400`                                                                                                                            |
 
 - The hook's calls never overlap; a second call waits for the first to finish.
 - Handlers must be async and must not block the event loop, so `/ping` keeps answering.
+- Generator functions (`function*`, `async function*`) are rejected when the app is constructed, because their body would never run.
+- `handlers` accepts only the keys `memory` and `disk`, each a function; anything else throws when the app is constructed. `handlers: {}` is allowed and skips every type.
 - With `port` set to a port other than the serving port, `app.run()` starts a separate listener for the hook in the same process before the serving port, and closes it when the app closes.
 - An invalid `path` or `port`, or a route that's already served on the hook's port, throws.
 

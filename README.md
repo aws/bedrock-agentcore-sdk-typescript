@@ -115,7 +115,7 @@ const app = new BedrockAgentCoreApp({
 app.run()
 ```
 
-The hook responds 200 after the handler resolves; a type without a handler also gets 200. A rejected handler returns 500, which fails the create or update. The two calls share a 120-second limit. Configure the hook on the runtime:
+The hook responds 200 after the handler resolves; a type without a handler, or a type the SDK doesn't know, also gets 200 (`skipped`). Only a missing or empty warmup type header gets 400. A rejected handler returns 500, which fails the create or update. The two calls share a 120-second limit. Configure the hook on the runtime:
 
 ```typescript
 await client.send(
@@ -128,8 +128,9 @@ await client.send(
 ```
 
 - `warmupHook.path` must equal `httpPost.path`, and `warmupHook.port` must equal `httpPost.port`. Omit both ports to serve the hook on the app's serving port (`app.run({ port })`, default 8080).
-- A hook on another port (for example `httpPost.port: 9000` and `warmupHook.port: 9000`) gets its own listener in the same process. `app.run()` starts it before the serving port.
-- Handlers must be async and must not block the event loop: the server answers `/ping` only while a handler awaits. Run CPU-heavy work in a worker thread or child process.
+- A hook on another port (for example `httpPost.port: 9000` and `warmupHook.port: 9000`) gets its own listener on `127.0.0.1` in the same process. `app.run()` starts it before the serving port.
+- Handlers must be async and must not block the event loop: the server answers `/ping` only while a handler awaits. Run CPU-heavy work in a worker thread or child process. Generator functions are rejected when the app is constructed, because their body would never run.
+- `handlers` may only have the keys `memory` and `disk`, each a function. Any other key (such as a typo like `memroy`) or a non-function value throws when the app is constructed. An empty `handlers` object is fine: every call is answered `skipped`.
 - The path (1–32 characters from `A-Z a-z 0-9 . _ ~ / -`, starting with `/`, in canonical form) and the port (8000–12000) are validated when the app is constructed. A hook route that's already served on its port, such as `POST /invocations`, throws.
 - Serve the hook from one process. The memory call reaches one process, so with several worker processes (for example Node's `cluster` module) only one of them is warmed.
 
