@@ -99,13 +99,17 @@ describe.sequential('Build warmup hook on its own port', () => {
     }
   })
 
-  it('skips disk without a handler and rejects an invalid type', async () => {
+  it('skips disk without a handler and an unknown type, and rejects an empty type', async () => {
     const disk = await warmup(hookUrl, 'disk')
     expect(disk.status).toBe(200)
     expect(await disk.json()).toEqual({ status: 'ok', type: 'disk', result: 'skipped' })
 
-    const invalid = await warmup(hookUrl, 'cpu')
-    expect(invalid.status).toBe(400)
+    const unknown = await warmup(hookUrl, 'CPU')
+    expect(unknown.status).toBe(200)
+    expect(await unknown.json()).toEqual({ status: 'ok', type: 'cpu', result: 'skipped' })
+
+    const empty = await warmup(hookUrl, ' ')
+    expect(empty.status).toBe(400)
   })
 
   it('does not serve the hook on the serving port', async () => {

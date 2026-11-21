@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { BedrockAgentCoreApp } from '../app.js'
 import { WARMUP_TYPE_HEADER } from '../constants.js'
-import { parseWarmupType, warmupHookRoute } from '../warmup.js'
+import { isWarmupType, normalizeWarmupTypeHeader, warmupHookRoute } from '../warmup.js'
+import type { WarmupHandler } from '../types.js'
 import type { WarmupHookConfig } from '../types.js'
 
 function createReply(): { status: ReturnType<typeof vi.fn>; send: ReturnType<typeof vi.fn> } {
@@ -81,15 +82,123 @@ describe('warmupHookRoute', () => {
     expect(reply.send).toHaveBeenCalledWith({ status: 'ok', type: 'memory', result: 'completed' })
   })
 
-  it.each([undefined, '', 'cpu', 'memory, disk'])('returns 400 for header %j', async (header) => {
+  it.each([undefined, '', '   '])('returns 400 for header %j', async (header) => {
     const memory = vi.fn(async () => {})
     const reply = await call({ path: '/warmup', handlers: { memory } }, header)
 
     expect(reply.status).toHaveBeenCalledWith(400)
-    expect(reply.send).toHaveBeenCalledWith({
-      error: `${WARMUP_TYPE_HEADER} must be 'memory' or 'disk', got ${JSON.stringify(header ?? '')}`,
-    })
+    expect(reply.send).toHaveBeenCalledWith({ error: `${WARMUP_TYPE_HEADER} header is missing or empty` })
     expect(memory).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['cpu', 'cpu'],
+    ['memory,disk', 'memory,disk'],
+    [' GPU ', 'gpu'],
+  ])('skips unknown type %j as %j', async (header, type) => {
+    const memory = vi.fn(async () => {})
+    const disk = vi.fn(async () => {})
+    const request = createRequest(header) as any
+    const reply = createReply()
+
+    await warmupHookRoute({ path: '/warmup', handlers: { memory, disk } }).handler(request, reply as any)
+
+    expect(reply.status).not.toHaveBeenCalled()
+    expect(reply.send).toHaveBeenCalledWith({ status: 'ok', type, result: 'skipped' })
+    expect(request.log.info).toHaveBeenCalledWith(`Warmup (${type}): unknown type, nothing to do`)
+    expect(memory).not.toHaveBeenCalled()
+    expect(disk).not.toHaveBeenCalled()
+  })
+
+  describe('handlers validation', () => {
+    const build = (handlers: unknown): unknown =>
+      warmupHookRoute({ path: '/warmup', handlers: handlers as WarmupHookConfig['handlers'] })
+
+    it('rejects an unknown key', () => {
+      expect(() => build({ memroy: async () => {} })).toThrow(
+        'warmupHook.handlers has an unknown key "memroy"; expected memory or disk'
+      )
+    })
+
+    it('rejects a value that is not a function', () => {
+      expect(() => build({ memory: 'load' })).toThrow('warmupHook.handlers.memory must be a function')
+      expect(() => build({ disk: undefined })).toThrow('warmupHook.handlers.disk must be a function')
+    })
+
+    it.each([undefined, null, 'memory', ['memory']])('rejects handlers %j that are not an object', (handlers) => {
+      expect(() => build(handlers)).toThrow('warmupHook.handlers must be an object')
+    })
+
+    it('checks keys before the generator check', () => {
+      expect(() =>
+        build({
+          disk: function* () {
+            yield
+          },
+          memroy: async () => {},
+        })
+      ).toThrow('warmupHook.handlers has an unknown key "memroy"')
+    })
+
+    it('allows an empty object, which skips every type', async () => {
+      for (const type of ['memory', 'disk']) {
+        const reply = await call({ path: '/warmup', handlers: {} }, type)
+        expect(reply.send).toHaveBeenCalledWith({ status: 'ok', type, result: 'skipped' })
+      }
+    })
+  })
+
+  it.each([
+    [
+      'function*',
+      function* () {
+        yield
+      },
+    ],
+    [
+      'async function*',
+      async function* () {
+        yield
+      },
+    ],
+  ])('throws at construction for a %s handler', (_kind, generator) => {
+    for (const type of ['memory', 'disk'] as const) {
+      expect(() =>
+        warmupHookRoute({ path: '/warmup', handlers: { [type]: generator as unknown as WarmupHandler } })
+      ).toThrow(`warmupHook.handlers.${type} is a generator function: its body would never run; remove the yield`)
+    }
+  })
+
+  it.each(['sync', 'async'])('returns 500 for a handler that returns a %s generator', async (kind) => {
+    let bodyRan = false
+    function* gen(): Generator<void> {
+      bodyRan = true
+      yield
+    }
+    async function* asyncGen(): AsyncGenerator<void> {
+      bodyRan = true
+      yield
+    }
+    const memory = (kind === 'sync' ? () => gen() : () => asyncGen()) as unknown as WarmupHandler
+    const request = createRequest('memory') as any
+    const reply = createReply()
+
+    await warmupHookRoute({ path: '/warmup', handlers: { memory } }).handler(request, reply as any)
+
+    expect(reply.status).toHaveBeenCalledWith(500)
+    expect(reply.send).toHaveBeenCalledWith({
+      error: 'warmup handler returned an iterator; its body would never run',
+      type: 'memory',
+    })
+    expect(request.log.error).toHaveBeenCalledOnce()
+    expect(bodyRan).toBe(false)
+  })
+
+  it('completes for a handler that resolves to a non-iterator value', async () => {
+    const memory = (async () => 'done') as unknown as WarmupHandler
+    const reply = await call({ path: '/warmup', handlers: { memory } }, 'memory')
+
+    expect(reply.send).toHaveBeenCalledWith({ status: 'ok', type: 'memory', result: 'completed' })
   })
 
   it('returns 500 when the handler rejects with an Error', async () => {
@@ -193,12 +302,13 @@ describe('warmup route on a real Fastify server', () => {
   })
 })
 
-describe('parseWarmupType', () => {
-  it('parses the warmup types and rejects anything else', () => {
-    expect(parseWarmupType('memory')).toBe('memory')
-    expect(parseWarmupType(' DISK ')).toBe('disk')
-    expect(parseWarmupType(undefined)).toBeUndefined()
-    expect(parseWarmupType(['memory', 'disk'])).toBeUndefined()
-    expect(parseWarmupType('memoryx')).toBeUndefined()
+describe('normalizeWarmupTypeHeader and isWarmupType', () => {
+  it('trims and lower-cases the header and recognizes the warmup types', () => {
+    expect(normalizeWarmupTypeHeader(' DISK ')).toBe('disk')
+    expect(normalizeWarmupTypeHeader(undefined)).toBe('')
+    expect(normalizeWarmupTypeHeader(['Memory', 'disk'])).toBe('memory, disk')
+    expect(isWarmupType('memory')).toBe(true)
+    expect(isWarmupType('disk')).toBe(true)
+    expect(isWarmupType('memoryx')).toBe(false)
   })
 })
