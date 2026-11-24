@@ -283,7 +283,7 @@ export interface HookConfig {
   /** Path of the hook route: 1-32 characters, `^/[A-Za-z0-9._~/-]*$`, canonical form. */
   path: string
 
-  /** Port of the hook route (8000-12000), served on 127.0.0.1 by a separate listener. Omit it to use the serving port. */
+  /** Port of the hook route (8000-12000), served by a separate listener on the serving host. Omit it to use the serving port. */
   port?: number
 }
 

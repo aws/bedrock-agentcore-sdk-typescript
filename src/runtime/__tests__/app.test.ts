@@ -338,7 +338,7 @@ describe('BedrockAgentCoreApp', () => {
       const hookServer = Fastify.mock.results[1].value
       expect(routeCall(hookServer, '/warmup')).toBeDefined()
       expect(routeCall(mockApp, '/warmup')).toBeUndefined()
-      expect(hookServer.listen).toHaveBeenCalledWith({ port: 9000, host: '127.0.0.1' }) // loopback, whatever the serving host
+      expect(hookServer.listen).toHaveBeenCalledWith({ port: 9000, host: '0.0.0.0' }) // the serving host, so a container's published port reaches it
       expect(hookServer.listen.mock.invocationCallOrder[0]).toBeLessThan(mockApp.listen.mock.invocationCallOrder[0])
 
       // The hook server closes with the main server
