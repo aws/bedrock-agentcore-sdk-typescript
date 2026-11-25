@@ -50,7 +50,8 @@ export interface CreateAgentCoreMemoryStoresInput {
   /**
    * Read namespaces — one store is built per entry, each reading its own exact namespace prefix. To read a
    * whole subtree instead, that is a single store: construct it directly with
-   * `new AgentCoreMemoryStore({ ...identity, namespacePath })`.
+   * `new AgentCoreMemoryStore({ ...identity, namespacePath })`. An **empty array** with extraction enabled
+   * builds a single write-only store — the short-term-only shape: durable conversation events, no recall.
    */
   namespaces: AgentCoreNamespaceConfig[]
 
@@ -112,12 +113,12 @@ export function assertWritableTopology(stores: readonly AgentCoreMemoryStore[], 
       `AgentCore memory: at most one store may be writable, but ${writers.length} are ` +
         `(${writers.map((s) => `"${s.name}"`).join(', ')}). createEvent is namespace-free, so multiple ` +
         'writable stores would write duplicate events to the same (memoryId, actorId, sessionId) stream. ' +
-        'Mark exactly one namespace writable.'
+        'Mark exactly one store writable.'
     )
   }
   if (expectExtraction && writers.length === 0) {
     throw new Error(
-      'AgentCore memory: extraction is enabled but no store is writable. Mark one namespace ' +
+      'AgentCore memory: extraction is enabled but no store is writable. Mark one store ' +
         '`writable: true` (or omit extraction for recall-only).'
     )
   }
@@ -128,14 +129,30 @@ export function assertWritableTopology(stores: readonly AgentCoreMemoryStore[], 
  * `MemoryManagerConfig.stores`. Called once per `(actorId, sessionId)` by a multi-actor server.
  */
 export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresInput): AgentCoreMemoryStore[] {
-  if (!Array.isArray(input.namespaces) || input.namespaces.length === 0) {
-    throw new Error('createAgentCoreMemoryStores: at least one namespace is required')
+  if (!Array.isArray(input.namespaces)) {
+    throw new Error('createAgentCoreMemoryStores: namespaces must be an array')
   }
-  input.namespaces.forEach((ns, i) => {
-    if (ns === null || typeof ns !== 'object' || typeof ns.namespace !== 'string' || ns.namespace.trim().length === 0) {
-      throw new Error(`createAgentCoreMemoryStores: namespaces[${i}].namespace must be a non-empty string`)
-    }
-  })
+  const writeEnabled = input.extraction !== undefined && input.extraction !== false
+  const noNamespaces = input.namespaces.length === 0
+
+  if (noNamespaces && !writeEnabled) {
+    throw new Error(
+      'createAgentCoreMemoryStores: namespaces is empty and extraction is disabled — nothing to read or write. ' +
+        'Add namespaces for recall, or enable extraction for a short-term-only writer.'
+    )
+  }
+  if (!noNamespaces) {
+    input.namespaces.forEach((ns, i) => {
+      if (
+        ns === null ||
+        typeof ns !== 'object' ||
+        typeof ns.namespace !== 'string' ||
+        ns.namespace.trim().length === 0
+      ) {
+        throw new Error(`createAgentCoreMemoryStores: namespaces[${i}].namespace must be a non-empty string`)
+      }
+    })
+  }
 
   // Validated here too, not only in the sender: a recall-only set never builds a sender.
   if (
@@ -150,7 +167,6 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
   // `true` passes through (the MemoryManager applies its own default cadence); only a custom
   // cadence/filter builds an ExtractionConfig. `!Array.isArray` stops a stray array (typeof === 'object')
   // being duck-typed as a config.
-  const writeEnabled = input.extraction !== undefined && input.extraction !== false
   const extractionObj: AgentCoreExtractionConfig =
     typeof input.extraction === 'object' && !Array.isArray(input.extraction) ? input.extraction : {}
   const hasCustomConfig = extractionObj.cadence !== undefined || extractionObj.filter !== undefined
@@ -178,6 +194,12 @@ export function createAgentCoreMemoryStores(input: CreateAgentCoreMemoryStoresIn
     ...(input.metadataProvider !== undefined && { metadataProvider: input.metadataProvider }),
     ...(input.maxTurnsPerEvent !== undefined && { maxTurnsPerEvent: input.maxTurnsPerEvent }),
     client,
+  }
+
+  // Short-term-only: createEvent is namespace-free, so no read namespaces still leaves a valid write
+  // sink — one write-only store persists the conversation events.
+  if (noNamespaces) {
+    return [new AgentCoreMemoryStore({ ...config, writable: true, ...(extraction !== undefined && { extraction }) })]
   }
 
   // The default writer skips namespaces that explicitly opted out (`writable: false`) rather than
