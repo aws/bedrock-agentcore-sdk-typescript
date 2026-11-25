@@ -27,11 +27,21 @@ import type {
   HealthStatus,
 } from './types.js'
 import { runWithContext } from './context.js'
-import { IDENTITY_WAT_HEADER } from './constants.js'
+import { HOOK_HOST, IDENTITY_WAT_HEADER } from './constants.js'
+import { assertNoRouteConflict, validateHookConfig } from './hooks.js'
+import type { HookRoute, RouteId } from './hooks.js'
+import { warmupHookRoute } from './warmup.js'
 
 const require = createRequire(import.meta.url)
 const fastifySse = require('@fastify/sse')
 const fastifyWebsocket = require('@fastify/websocket')
+
+/**
+ * A built-in route of the app, with the call that registers it on the main server.
+ */
+interface MainRoute extends RouteId {
+  register: () => void
+}
 
 /**
  * Fastify-based HTTP server for hosting agents on AWS Bedrock AgentCore Runtime.
@@ -66,6 +76,8 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
   private _forcedPingStatus?: HealthStatus
   private _lastStatusUpdateTime: number = Date.now()
   private _lastKnownStatus?: HealthStatus
+  private readonly _mainHooks: HookRoute[] = []
+  private readonly _hookPortRoutes: Map<number, HookRoute[]> = new Map()
 
   /**
    * Creates a new BedrockAgentCoreApp instance.
@@ -96,10 +108,17 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
       logger: loggerConfig,
       disableRequestLogging: this._config.logging?.disableRequestLogging ?? ((req): boolean => req.url === '/ping'),
     })
+
+    if (params.warmupHook !== undefined) {
+      validateHookConfig(params.warmupHook, 'warmupHook')
+      this._addHookRoute(warmupHookRoute(params.warmupHook))
+    }
   }
 
   /**
    * Starts the Fastify server.
+   *
+   * Hooks configured on another port get their own listener in this process, started before the serving port.
    *
    * @param options - Optional server options. Supports `port` (defaults to 8080) and `host` (defaults to '0.0.0.0').
    */
@@ -109,9 +128,10 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
 
     // Wait for Fastify to be ready (all plugins registered), setup routes, and start the server
     Promise.resolve(this._registerPlugins())
-      .then(() => {
+      .then(async () => {
         this._setupContentTypeParsers()
-        this._setupRoutes()
+        this._setupMainRoutes(PORT)
+        await this._startHookServers(PORT)
         return this._app.listen({ port: PORT, host: HOST })
       })
       .then(() => {
@@ -235,18 +255,104 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
   }
 
   /**
-   * Sets up HTTP routes for the server.
+   * Registers routes on the main server: the built-in routes, then the hooks served on the serving port.
+   * It doesn't listen; hooks on other ports are served by `_startHookServers`.
+   *
+   * @param servingPort - Port the main server listens on
+   * @throws Error if a hook configured with the serving port conflicts with a route on the main server
    */
-  private _setupRoutes(): void {
-    // Health check endpoint
-    this._app.get('/ping', this._handlePing.bind(this))
+  private _setupMainRoutes(servingPort: number): void {
+    const mainRoutes = this._mainRoutes()
+    const servingPortHooks = this._hookPortRoutes.get(servingPort) ?? []
+    for (const hook of servingPortHooks) {
+      assertNoRouteConflict([...mainRoutes, ...this._mainHooks], hook, hook.name)
+    }
 
-    // Invocation endpoint
-    this._app.post('/invocations', { sse: true }, this._handleInvocation.bind(this))
+    mainRoutes.forEach((route) => route.register())
+    for (const hook of [...this._mainHooks, ...servingPortHooks]) {
+      this._app.route({ method: hook.method, url: hook.path, handler: hook.handler })
+    }
+  }
+
+  /**
+   * Lists the built-in routes of the main server, used both to register them and to check hooks for conflicts.
+   *
+   * @returns The built-in routes
+   */
+  private _mainRoutes(): MainRoute[] {
+    const routes: MainRoute[] = [
+      // Health check endpoint
+      {
+        method: 'GET',
+        path: '/ping',
+        register: (): void => {
+          this._app.get('/ping', this._handlePing.bind(this))
+        },
+      },
+      // Invocation endpoint
+      {
+        method: 'POST',
+        path: '/invocations',
+        register: (): void => {
+          this._app.post('/invocations', { sse: true }, this._handleInvocation.bind(this))
+        },
+      },
+    ]
 
     // WebSocket endpoint (only if handler exists)
     if (this._websocketHandler) {
-      this._app.get('/ws', { websocket: true }, this._handleWebSocket.bind(this))
+      routes.push({
+        method: 'GET',
+        path: '/ws',
+        register: (): void => {
+          this._app.get('/ws', { websocket: true }, this._handleWebSocket.bind(this))
+        },
+      })
+    }
+    return routes
+  }
+
+  /**
+   * Stores a hook by port, after checking it against the routes already served on that port.
+   * A hook without a port is served on the main server.
+   *
+   * @param hook - Hook to add
+   * @throws Error if the hook's method and path are already served on its port
+   */
+  private _addHookRoute(hook: HookRoute): void {
+    if (hook.port === undefined) {
+      assertNoRouteConflict([...this._mainRoutes(), ...this._mainHooks], hook, hook.name)
+      this._mainHooks.push(hook)
+      return
+    }
+    const samePort = this._hookPortRoutes.get(hook.port) ?? []
+    assertNoRouteConflict(samePort, hook, hook.name)
+    this._hookPortRoutes.set(hook.port, [...samePort, hook])
+  }
+
+  /**
+   * Starts one server per hook port other than the serving port, on loopback, and closes each one when the main
+   * server closes.
+   *
+   * @param servingPort - Port the main server listens on; its hooks are registered by `_setupMainRoutes`
+   */
+  private async _startHookServers(servingPort: number): Promise<void> {
+    for (const [port, hooks] of this._hookPortRoutes) {
+      if (port === servingPort) {
+        continue
+      }
+      const server = Fastify({
+        loggerInstance: this._app.log,
+        disableRequestLogging: this._config.logging?.disableRequestLogging ?? false,
+      })
+      for (const hook of hooks) {
+        server.route({ method: hook.method, url: hook.path, handler: hook.handler })
+      }
+      await server.listen({ port, host: HOOK_HOST })
+      this._app.addHook('onClose', async () => {
+        await server.close()
+      })
+      this._app.log.info(`Hook server listening on port ${port}: ${hooks.map((hook) => hook.name).join(', ')}`)
     }
   }
 
