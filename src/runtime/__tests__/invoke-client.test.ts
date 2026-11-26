@@ -66,7 +66,8 @@ function mockResponse(contentType: string, chunks: string[], onCancel?: () => vo
 
 async function serve(app: BedrockAgentCoreApp<z.ZodSchema, unknown>, payload: unknown) {
   await app['_registerPlugins']()
-  app['_setupRoutes']()
+  app['_setupContentTypeParsers']()
+  app['_setupMainRoutes'](8080)
   const response = await app['_app'].inject({
     method: 'POST',
     url: '/invocations',
