@@ -21,6 +21,10 @@ export type {
   GenerateWsConnectionOAuthParams,
   WebSocketConnection,
   ParsedRuntimeArn,
+  HookConfig,
+  WarmupType,
+  WarmupHandler,
+  WarmupHookConfig,
 } from './types.js'
 export { DEFAULT_PRESIGNED_URL_TIMEOUT, MAX_PRESIGNED_URL_TIMEOUT, DEFAULT_REGION, RuntimeArnSchema } from './types.js'
 

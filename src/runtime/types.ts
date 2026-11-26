@@ -268,7 +268,49 @@ export interface BedrockAgentCoreAppParams<TSchema extends z.ZodSchema = z.ZodSc
    * Custom ping handler to determine health status.
    */
   pingHandler?: () => HealthStatus | Promise<HealthStatus>
+  /**
+   * Build warmup hook to serve. Omit it to add no warmup route.
+   * @see https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-lifecycle-hooks.html
+   */
+  warmupHook?: WarmupHookConfig
 }
+
+/**
+ * Where the app serves a lifecycle hook, as `POST` on `path`.
+ * @see https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-lifecycle-hooks.html
+ */
+export interface HookConfig {
+  /** Path of the hook route: 1-32 characters, `^/[A-Za-z0-9._~/-]*$`, canonical form. */
+  path: string
+
+  /** Port of the hook route (8000-12000), served on 127.0.0.1 by a separate listener. Omit it to use the serving port. */
+  port?: number
+}
+
+/**
+ * Build warmup hook configuration: where to serve the hook and the handler for each warmup type.
+ */
+export interface WarmupHookConfig extends HookConfig {
+  /**
+   * Handler per warmup type (only `memory` and `disk` keys, each a function); a type without one gets 200 `skipped`.
+   */
+  handlers: Partial<Record<WarmupType, WarmupHandler>>
+}
+
+/**
+ * Build warmup call type, sent by AgentCore Runtime in the `x-amzn-bedrock-agentcore-runtime-warmup-type` header.
+ * AgentCore Runtime calls the hook with `memory` first, then `disk`. Any other non-empty header value is answered
+ * 200 `skipped`, with the trimmed, lower-cased value as the response `type`.
+ */
+export type WarmupType = 'memory' | 'disk'
+
+/**
+ * Build warmup handler. It must be async and must not block the event loop, so the server keeps answering `/ping`.
+ * The hook responds 200 after the returned promise resolves, and 500 if it rejects. Generator functions are
+ * rejected when the app is constructed, and a handler that returns an iterator gets 500, because the body would
+ * never run.
+ */
+export type WarmupHandler = () => Promise<void>
 
 /**
  * Health status values for the /ping endpoint.
