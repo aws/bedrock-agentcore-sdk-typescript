@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { BedrockAgentCoreApp } from '../app.js'
 import { createTestClient } from '../testing.js'
@@ -191,6 +191,50 @@ describe('createTestClient', () => {
       const ping = await client.ping()
 
       expect(ping.status).toBe('HealthyBusy')
+    })
+  })
+
+  describe('with run()', () => {
+    function createHookApp(port: number): BedrockAgentCoreApp {
+      return new BedrockAgentCoreApp({
+        invocationHandler: { process: async () => 'ok' },
+        warmupHook: { path: '/warmup', port, handlers: {} },
+        config: { logging: { enabled: false } },
+      })
+    }
+
+    it('fails run() on another port when a hook sits on it', async () => {
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
+      try {
+        const app = createHookApp(9000)
+        await createTestClient(app).ping()
+        const errorSpy = vi.spyOn(app['_app'].log, 'error')
+
+        app.run({ port: 9000 })
+
+        await vi.waitFor(() => {
+          expect(exitSpy).toHaveBeenCalledWith(1)
+        })
+        expect(errorSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ message: "Routes were set up for port 8080, so hooks can't be moved to port 9000" })
+        )
+      } finally {
+        exitSpy.mockRestore()
+      }
+    })
+
+    it('reuses the setup for the same port', async () => {
+      const app = createHookApp(8080)
+      await createTestClient(app).ping()
+
+      await expect(app['_prepare'](8080)).resolves.toBe(app['_app'])
+    })
+
+    it('reuses the setup for another port when no hook is affected', async () => {
+      const app = createApp({ process: async () => 'ok' })
+      await createTestClient(app).ping()
+
+      await expect(app['_prepare'](9000)).resolves.toBe(app['_app'])
     })
   })
 })

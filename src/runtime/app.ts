@@ -80,6 +80,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
   private readonly _hookPortRoutes: Map<number, HookRoute[]> = new Map()
   private readonly _hookServers: FastifyInstance[] = []
   private _prepared?: Promise<FastifyInstance>
+  private _preparedPort?: number
 
   /**
    * Creates a new BedrockAgentCoreApp instance.
@@ -259,8 +260,19 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
    *
    * @param servingPort - Port the main server listens on, used to pick which hooks it serves
    * @returns The Fastify instance with all routes registered
+   * @throws Error if called again with another port while a hook is configured on either port
    */
   private _prepare(servingPort: number = 8080): Promise<FastifyInstance> {
+    if (
+      this._preparedPort !== undefined &&
+      this._preparedPort !== servingPort &&
+      [this._preparedPort, servingPort].some((port) => this._hookPortRoutes.has(port))
+    ) {
+      return Promise.reject(
+        new Error(`Routes were set up for port ${this._preparedPort}, so hooks can't be moved to port ${servingPort}`)
+      )
+    }
+    this._preparedPort ??= servingPort
     this._prepared ??= (async (): Promise<FastifyInstance> => {
       await this._registerPlugins()
       this._setupContentTypeParsers()
