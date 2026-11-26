@@ -1,5 +1,4 @@
 import { Buffer } from 'buffer'
-import { createRequire } from 'module'
 import { randomUUID } from 'crypto'
 import { Readable } from 'stream'
 import Fastify from 'fastify'
@@ -12,9 +11,8 @@ import type {
   FastifyBodyParser,
   FastifyContentTypeParser,
 } from 'fastify'
-// Import SSE types to ensure module augmentation is applied
-import type { SSESource } from '@fastify/sse'
-import type { WebSocket } from '@fastify/websocket'
+import fastifySse, { type SSESource } from '@fastify/sse'
+import fastifyWebsocket, { type WebSocket } from '@fastify/websocket'
 import type {
   BedrockAgentCoreAppParams,
   BedrockAgentCoreAppConfig,
@@ -31,10 +29,6 @@ import { HOOK_HOST, IDENTITY_WAT_HEADER } from './constants.js'
 import { assertNoRouteConflict, validateHookConfig } from './hooks.js'
 import type { HookRoute, RouteId } from './hooks.js'
 import { warmupHookRoute } from './warmup.js'
-
-const require = createRequire(import.meta.url)
-const fastifySse = require('@fastify/sse')
-const fastifyWebsocket = require('@fastify/websocket')
 
 /**
  * A built-in route of the app, with the call that registers it on the main server.
@@ -382,7 +376,8 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
    * Registers Fastify plugins.
    */
   private async _registerPlugins(): Promise<void> {
-    await this._app.register(fastifySse)
+    // @fastify/sse types its CommonJS export as an ES default, so NodeNext needs .default
+    await this._app.register(fastifySse.default)
     if (this._websocketHandler) {
       await this._app.register(fastifyWebsocket)
     }
