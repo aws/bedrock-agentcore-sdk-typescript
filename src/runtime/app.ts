@@ -78,6 +78,9 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
   private _lastKnownStatus?: HealthStatus
   private readonly _mainHooks: HookRoute[] = []
   private readonly _hookPortRoutes: Map<number, HookRoute[]> = new Map()
+  private readonly _hookServers: FastifyInstance[] = []
+  private _prepared?: Promise<FastifyInstance>
+  private _preparedPort?: number
 
   /**
    * Creates a new BedrockAgentCoreApp instance.
@@ -126,13 +129,10 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
     const PORT = options?.port ?? 8080
     const HOST = options?.host ?? '0.0.0.0'
 
-    // Wait for Fastify to be ready (all plugins registered), setup routes, and start the server
-    Promise.resolve(this._registerPlugins())
-      .then(async () => {
-        this._setupContentTypeParsers()
-        this._setupMainRoutes(PORT)
+    this._prepare(PORT)
+      .then(async (app) => {
         await this._startHookServers(PORT)
-        return this._app.listen({ port: PORT, host: HOST })
+        return app.listen({ port: PORT, host: HOST })
       })
       .then(() => {
         this._app.log.info(`Server listening on port ${PORT}`)
@@ -255,6 +255,37 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
   }
 
   /**
+   * Registers plugins, parsers, and main routes once and resolves with the Fastify instance.
+   * It doesn't listen or start hook servers; `run()` does both after it, and closing the app closes them.
+   *
+   * @param servingPort - Port the main server listens on, used to pick which hooks it serves
+   * @returns The Fastify instance with all routes registered
+   * @throws Error if called again with another port while a hook is configured on either port
+   */
+  private _prepare(servingPort: number = 8080): Promise<FastifyInstance> {
+    if (
+      this._preparedPort !== undefined &&
+      this._preparedPort !== servingPort &&
+      [this._preparedPort, servingPort].some((port) => this._hookPortRoutes.has(port))
+    ) {
+      return Promise.reject(
+        new Error(`Routes were set up for port ${this._preparedPort}, so hooks can't be moved to port ${servingPort}`)
+      )
+    }
+    this._preparedPort ??= servingPort
+    this._prepared ??= (async (): Promise<FastifyInstance> => {
+      await this._registerPlugins()
+      this._setupContentTypeParsers()
+      this._setupMainRoutes(servingPort)
+      this._app.addHook('onClose', async () => {
+        await Promise.all(this._hookServers.map((server) => server.close()))
+      })
+      return this._app
+    })()
+    return this._prepared
+  }
+
+  /**
    * Registers routes on the main server: the built-in routes, then the hooks served on the serving port.
    * It doesn't listen; hooks on other ports are served by `_startHookServers`.
    *
@@ -349,9 +380,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
         server.route({ method: hook.method, url: hook.path, handler: hook.handler })
       }
       await server.listen({ port, host: HOOK_HOST })
-      this._app.addHook('onClose', async () => {
-        await server.close()
-      })
+      this._hookServers.push(server)
       this._app.log.info(`Hook server listening on port ${port}: ${hooks.map((hook) => hook.name).join(', ')}`)
     }
   }
@@ -443,7 +472,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
 
       // Validate sessionId
       if (!context.sessionId) {
-        await reply.status(400).send({
+        await reply.status(400).type('application/json').send({
           error: 'Missing sessionId. Provide via x-amzn-bedrock-agentcore-runtime-session-id header or request body.',
         })
         return
@@ -456,7 +485,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
           handlerRequest = await this._handler.requestSchema.parseAsync(request.body)
         } catch (error) {
           if (error instanceof z.ZodError) {
-            await reply.status(400).send({
+            await reply.status(400).type('application/json').send({
               error: 'Invalid request body format',
               details: error.issues,
             })
@@ -523,7 +552,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
           this._app.log.error(error, 'Error after response headers sent')
         }
       } else {
-        await reply.status(500).send({
+        await reply.status(500).type('application/json').send({
           error: errorMessage,
         })
       }

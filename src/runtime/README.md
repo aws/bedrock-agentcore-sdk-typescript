@@ -518,6 +518,29 @@ When deploying to AWS Bedrock AgentCore Runtime:
 
 This package handles all these requirements automatically.
 
+## Testing
+
+`createTestClient` drives an app in process, without binding a port:
+
+```typescript
+import { createTestClient } from 'bedrock-agentcore/runtime/testing'
+
+const client = createTestClient(app)
+
+const result = await client.invoke({ prompt: 'hi' }, { sessionId: 'test-session' })
+result.status // 200
+result.body // the JSON response of a non streaming handler
+result.events // [{ event: 'message', data: { text: 'you said hi' } }] for a streaming handler
+
+const invalid = await client.invoke({ wrong: true })
+invalid.status // 400 when the body fails `requestSchema`
+
+const ping = await client.ping()
+ping.status // 'Healthy'
+```
+
+`invoke` sends the session ID (a random UUID when omitted), request ID, and any extra `headers` the runtime would send. A handler that throws returns a 500 with `{ error }`, and a stream that throws ends with an `error` event.
+
 ## Examples
 
 ### Simple Echo Handler

@@ -2,27 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { BedrockAgentCoreApp } from '../app.js'
 import { withWAT } from '../../identity/wrappers.js'
 import type { RequestContext } from '../types.js'
+import { createTestClient } from '../testing.js'
 
-async function createApp(handler: (request: unknown, context: RequestContext) => Promise<unknown>) {
+async function invoke(
+  handler: (request: unknown, context: RequestContext) => Promise<unknown>,
+  headers: Record<string, string>
+): Promise<Record<string, unknown>> {
   const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
-  await app['_registerPlugins']()
-  app['_setupContentTypeParsers']()
-  app['_setupMainRoutes'](8080)
-  await app['_app'].ready()
-  return app
-}
-
-function post(app: BedrockAgentCoreApp, headers: Record<string, string>) {
-  return app['_app'].inject({
-    method: 'POST',
-    url: '/invocations',
-    headers: {
-      'content-type': 'application/json',
-      'x-amzn-bedrock-agentcore-runtime-session-id': 'session-1',
-      ...headers,
-    },
-    payload: {},
-  })
+  const { body } = await createTestClient(app).invoke({}, { sessionId: 'session-1', headers })
+  return body as Record<string, unknown>
 }
 
 describe('Identity WAT propagation', () => {
@@ -57,15 +45,12 @@ describe('Identity WAT propagation', () => {
       injectedWat = wat
     })
 
-    const app = await createApp(async (_request, context) => {
+    const body = await invoke(async (_request, context) => {
       if (context.workloadAccessToken) {
         await captureToken()
       }
       return { contextWat: context.workloadAccessToken, injectedWat }
-    })
-
-    const resp = await post(app, headers)
-    const body = JSON.parse(resp.body)
+    }, headers)
 
     expect(body.contextWat).toBe(expectedWat)
     if (expectedWat) {
@@ -76,17 +61,14 @@ describe('Identity WAT propagation', () => {
   it('withWAT throws when no WAT in context', async () => {
     const captureToken = withWAT(async (wat: string) => wat)
 
-    const app = await createApp(async () => {
+    const body = await invoke(async () => {
       try {
         await captureToken()
         return { error: null }
       } catch (e) {
         return { error: (e as Error).message }
       }
-    })
-
-    const resp = await post(app, {})
-    const body = JSON.parse(resp.body)
+    }, {})
 
     expect(body.error).toMatch(/no workload access token in context/i)
   })
