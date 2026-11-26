@@ -78,6 +78,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
   private _lastKnownStatus?: HealthStatus
   private readonly _mainHooks: HookRoute[] = []
   private readonly _hookPortRoutes: Map<number, HookRoute[]> = new Map()
+  private readonly _hookServers: FastifyInstance[] = []
   private _prepared?: Promise<FastifyInstance>
 
   /**
@@ -254,7 +255,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
 
   /**
    * Registers plugins, parsers, and main routes once and resolves with the Fastify instance.
-   * It doesn't listen or start hook servers; `run()` does both after it.
+   * It doesn't listen or start hook servers; `run()` does both after it, and closing the app closes them.
    *
    * @param servingPort - Port the main server listens on, used to pick which hooks it serves
    * @returns The Fastify instance with all routes registered
@@ -264,6 +265,9 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
       await this._registerPlugins()
       this._setupContentTypeParsers()
       this._setupMainRoutes(servingPort)
+      this._app.addHook('onClose', async () => {
+        await Promise.all(this._hookServers.map((server) => server.close()))
+      })
       return this._app
     })()
     return this._prepared
@@ -364,9 +368,7 @@ export class BedrockAgentCoreApp<TSchema extends z.ZodSchema = z.ZodSchema<unkno
         server.route({ method: hook.method, url: hook.path, handler: hook.handler })
       }
       await server.listen({ port, host: HOOK_HOST })
-      this._app.addHook('onClose', async () => {
-        await server.close()
-      })
+      this._hookServers.push(server)
       this._app.log.info(`Hook server listening on port ${port}: ${hooks.map((hook) => hook.name).join(', ')}`)
     }
   }
