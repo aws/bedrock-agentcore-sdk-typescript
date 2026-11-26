@@ -10,6 +10,9 @@ vi.mock('fastify', () => {
     return {
       get: vi.fn(),
       post: vi.fn(),
+      route: vi.fn(),
+      addHook: vi.fn(),
+      close: vi.fn(async () => {}),
       register: vi.fn(async () => {}),
       ready: vi.fn(async () => {}),
       listen: vi.fn(async () => {}),
@@ -207,7 +210,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       expect(mockApp.get).toHaveBeenCalledWith('/ping', expect.any(Function))
     })
@@ -217,7 +220,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       expect(mockApp.post).toHaveBeenCalledWith('/invocations', { sse: true }, expect.any(Function))
     })
@@ -228,7 +231,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler }, websocketHandler })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       expect(mockApp.get).toHaveBeenCalledWith('/ws', { websocket: true }, expect.any(Function))
     })
@@ -238,10 +241,178 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const wsCall = mockApp.get.mock.calls.find((call: any[]) => call[0] === '/ws')
       expect(wsCall).toBeUndefined()
+    })
+  })
+
+  describe('warmup hook', () => {
+    const handler: InvocationHandler = async (_request, _context) => 'test response'
+    const memory = async (): Promise<void> => {}
+
+    const routeCall = (server: any, url: string): any[] | undefined =>
+      server.route.mock.calls.find((call: any[]) => call[0].url === url)
+
+    it('registers no hook route without warmupHook', () => {
+      const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
+      const mockApp = app['_app'] as any
+
+      app['_setupMainRoutes'](8080)
+
+      expect(mockApp.route).not.toHaveBeenCalled()
+    })
+
+    it('registers a hook without a port on the main server', () => {
+      const app = new BedrockAgentCoreApp({
+        invocationHandler: { process: handler },
+        warmupHook: { path: '/warmup', handlers: { memory } },
+      })
+      const mockApp = app['_app'] as any
+
+      app['_setupMainRoutes'](8080)
+
+      expect(mockApp.route).toHaveBeenCalledWith({ method: 'POST', url: '/warmup', handler: expect.any(Function) })
+      expect(mockApp.get).toHaveBeenCalledWith('/ping', expect.any(Function))
+    })
+
+    it('allows POST /ping and POST /ws', () => {
+      const websocketHandler: WebSocketHandler = async (_socket, _context) => {}
+      for (const path of ['/ping', '/ws']) {
+        expect(
+          () =>
+            new BedrockAgentCoreApp({
+              invocationHandler: { process: handler },
+              websocketHandler,
+              warmupHook: { path, handlers: {} },
+            })
+        ).not.toThrow()
+      }
+    })
+
+    it('throws in the constructor for a POST /invocations hook', () => {
+      expect(
+        () =>
+          new BedrockAgentCoreApp({
+            invocationHandler: { process: handler },
+            warmupHook: { path: '/invocations', handlers: {} },
+          })
+      ).toThrow('warmupHook POST /invocations conflicts with a route already served on its port; pick another path')
+    })
+
+    it('throws in the constructor for a misspelled handler key', () => {
+      expect(
+        () =>
+          new BedrockAgentCoreApp({
+            invocationHandler: { process: handler },
+            warmupHook: { path: '/warmup', handlers: { memroy: memory } as any },
+          })
+      ).toThrow('warmupHook.handlers has an unknown key "memroy"; expected memory or disk')
+    })
+
+    it('throws in the constructor for an invalid path', () => {
+      expect(
+        () =>
+          new BedrockAgentCoreApp({
+            invocationHandler: { process: handler },
+            warmupHook: { path: 'warmup', handlers: {} },
+          })
+      ).toThrow("warmupHook.path must start with '/'")
+    })
+
+    it('starts a separate server for a hook port, before the main server listens', async () => {
+      const app = new BedrockAgentCoreApp({
+        invocationHandler: { process: handler },
+        warmupHook: { path: '/warmup', port: 9000, handlers: { memory } },
+      })
+      const mockApp = app['_app'] as any
+
+      app.run({ port: 8080, host: '0.0.0.0' })
+
+      await vi.waitFor(() => {
+        expect(mockApp.listen).toHaveBeenCalledWith({ port: 8080, host: '0.0.0.0' })
+      })
+      expect(Fastify).toHaveBeenCalledTimes(2)
+      expect(Fastify).toHaveBeenLastCalledWith({ loggerInstance: mockApp.log, disableRequestLogging: false })
+      const hookServer = Fastify.mock.results[1].value
+      expect(routeCall(hookServer, '/warmup')).toBeDefined()
+      expect(routeCall(mockApp, '/warmup')).toBeUndefined()
+      expect(hookServer.listen).toHaveBeenCalledWith({ port: 9000, host: '127.0.0.1' }) // loopback, whatever the serving host
+      expect(hookServer.listen.mock.invocationCallOrder[0]).toBeLessThan(mockApp.listen.mock.invocationCallOrder[0])
+
+      // The hook server closes with the main server
+      expect(mockApp.addHook).toHaveBeenCalledWith('onClose', expect.any(Function))
+      await mockApp.addHook.mock.calls[0][1]()
+      expect(hookServer.close).toHaveBeenCalledOnce()
+    })
+
+    it('registers a hook on the main server when its port is the serving port', async () => {
+      const app = new BedrockAgentCoreApp({
+        invocationHandler: { process: handler },
+        warmupHook: { path: '/warmup', port: 8080, handlers: { memory } },
+      })
+      const mockApp = app['_app'] as any
+
+      app.run()
+
+      await vi.waitFor(() => {
+        expect(mockApp.listen).toHaveBeenCalledWith({ port: 8080, host: '0.0.0.0' })
+      })
+      expect(routeCall(mockApp, '/warmup')).toBeDefined()
+      expect(Fastify).toHaveBeenCalledOnce()
+    })
+
+    it('fails in run() for a hook on the serving port that conflicts with a main route', async () => {
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
+      try {
+        const app = new BedrockAgentCoreApp({
+          invocationHandler: { process: handler },
+          warmupHook: { path: '/invocations', port: 9090, handlers: {} },
+        })
+        const mockApp = app['_app'] as any
+
+        app.run({ port: 9090 })
+
+        await vi.waitFor(() => {
+          expect(exitSpy).toHaveBeenCalledWith(1)
+        })
+        expect(mockApp.log.error).toHaveBeenCalledWith(
+          expect.objectContaining({
+            message:
+              'warmupHook POST /invocations conflicts with a route already served on its port; pick another path',
+          })
+        )
+        expect(mockApp.listen).not.toHaveBeenCalled()
+      } finally {
+        exitSpy.mockRestore()
+      }
+    })
+
+    it('exits without listening on the main port when the hook port is in use', async () => {
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
+      try {
+        const app = new BedrockAgentCoreApp({
+          invocationHandler: { process: handler },
+          warmupHook: { path: '/warmup', port: 9000, handlers: { memory } },
+        })
+        const mockApp = app['_app'] as any
+        const inUse = Object.assign(new Error('listen EADDRINUSE: address already in use 0.0.0.0:9000'), {
+          code: 'EADDRINUSE',
+        })
+        const createServer = Fastify.getMockImplementation()
+        Fastify.mockImplementationOnce(() => ({ ...createServer(), listen: vi.fn(async () => Promise.reject(inUse)) }))
+
+        app.run()
+
+        await vi.waitFor(() => {
+          expect(exitSpy).toHaveBeenCalledWith(1)
+        })
+        expect(mockApp.log.error).toHaveBeenCalledWith(inUse)
+        expect(mockApp.listen).not.toHaveBeenCalled()
+      } finally {
+        exitSpy.mockRestore()
+      }
     })
   })
 
@@ -251,7 +422,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const getCall = mockApp.get.mock.calls.find((call: any[]) => call[0] === '/ping')
       const pingHandler = getCall[1]
@@ -271,7 +442,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -308,7 +479,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -326,7 +497,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -352,7 +523,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -378,7 +549,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -409,7 +580,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -446,7 +617,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -495,7 +666,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -544,7 +715,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -592,7 +763,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -621,7 +792,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -651,7 +822,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -681,7 +852,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -711,7 +882,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -742,7 +913,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler, requestSchema } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -770,7 +941,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler, requestSchema } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -792,7 +963,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler, requestSchema } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -819,7 +990,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler, requestSchema } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -850,7 +1021,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: handler }, websocketHandler })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const wsCall = mockApp.get.mock.calls.find((call: any[]) => call[0] === '/ws')
       const wsHandler = wsCall[2]
@@ -1037,7 +1208,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -1062,7 +1233,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -1085,7 +1256,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -1111,7 +1282,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -1131,7 +1302,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -1159,7 +1330,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -1187,7 +1358,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -1215,7 +1386,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -1251,7 +1422,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -1302,7 +1473,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
@@ -1333,7 +1504,7 @@ describe('BedrockAgentCoreApp', () => {
       const app = new BedrockAgentCoreApp({ invocationHandler: { process: mockHandler } })
       const mockApp = app['_app'] as any
 
-      app['_setupRoutes']()
+      app['_setupMainRoutes'](8080)
 
       const postCall = mockApp.post.mock.calls.find((call: any[]) => call[0] === '/invocations')
       const invocationHandler = postCall[2]
