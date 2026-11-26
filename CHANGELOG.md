@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-25
+
+### Other Changes
+
+- feat(runtime): add build warmup lifecycle hook to BedrockAgentCoreApp (#332) (9370be9)
+- ci: bump open-PR digest workflow pin to list every open PR (#331) (c4fd55d)
+
+## [0.4.7] - 2026-11-10
+
+### Other Changes
+
+- fix(endpoints): validate region in getDataPlaneEndpoint (#320) (377c557)
+
 ## [0.4.6] - 2026-10-19
 
 ### Other Changes
