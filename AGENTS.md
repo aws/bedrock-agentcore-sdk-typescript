@@ -52,6 +52,7 @@ bedrock-agentcore-sdk-typescript/
 │   │   ├── headers.ts            # Runtime header allowlist, shared by both protocol paths
 │   │   ├── hooks.ts              # Lifecycle hook validation, route conflict checks, Mutex
 │   │   ├── index.ts              # Runtime exports
+│   │   ├── invoke-client.ts      # Typed InvokeAgentRuntime client inferred from an app type
 │   │   ├── types.ts              # Runtime type definitions
 │   │   └── warmup.ts             # Build warmup hook route
 │   └── tools/                    # Tool definitions and types

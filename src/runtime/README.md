@@ -132,6 +132,28 @@ The server automatically:
 - Sends `event: error` if the stream throws an error
 - Stops streaming if the client disconnects
 
+## Typed Invoke Client
+
+`createInvokeClient` calls a deployed app through `InvokeAgentRuntimeCommand`, with the request typed from the app's `requestSchema` and the events typed from what `process` returns or yields. Import the app type with `import type` so no server code reaches the caller:
+
+```typescript
+// agent/app.ts
+export const app = new BedrockAgentCoreApp({ invocationHandler: { requestSchema, process } })
+export type App = typeof app
+
+// caller
+import { createInvokeClient } from 'bedrock-agentcore/runtime'
+import type { App } from '../agent/app'
+
+const agent = createInvokeClient<App>({ agentRuntimeArn })
+
+for await (const event of agent.invoke({ prompt: 'hi' }, { sessionId })) {
+  // event is typed from what process yields
+}
+```
+
+A yielded `{ event, data }` arrives as `{ event, data }`, a yielded `{ data }` arrives as its `data`, and any other value arrives as itself. An app that does not stream yields its single response once. An SSE `error` event is thrown as an `Error`. Apps without a `requestSchema` take `unknown` input.
+
 ## Configuration
 
 Optional configuration can be passed in the config parameter:
