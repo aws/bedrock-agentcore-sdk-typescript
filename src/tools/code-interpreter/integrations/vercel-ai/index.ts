@@ -2,7 +2,7 @@
  * Vercel AI SDK integrations for AWS Bedrock AgentCore CodeInterpreter.
  *
  * This module provides a unified CodeInterpreterTools class that simplifies
- * integration with Vercel AI SDK v6 ToolLoopAgent.
+ * integration with the Vercel AI SDK ToolLoopAgent.
  *
  * @example
  * ```typescript

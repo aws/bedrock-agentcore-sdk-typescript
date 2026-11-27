@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { CodeInterpreterTools } from '../tools.js'
 
+// Options passed to a tool's execute(). AI SDK 7 adds a required `context`.
+const toolOptions = { toolCallId: 'test-call', messages: [], context: {} }
+
 // Mock CodeInterpreter
 const mockCodeInterpreter = {
   startSession: vi.fn(),
@@ -108,7 +111,7 @@ describe('CodeInterpreterTools', () => {
           language: 'python',
           code: 'print("Hello World")',
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )
 
       expect(result).toBe('Hello World')
@@ -126,7 +129,7 @@ describe('CodeInterpreterTools', () => {
           language: 'javascript',
           code: 'console.log(42)',
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )
 
       expect(result).toBe('42')
@@ -145,7 +148,7 @@ describe('CodeInterpreterTools', () => {
             language: 'python',
             code: 'invalid syntax',
           },
-          { toolCallId: 'test-call', messages: [] }
+          toolOptions
         )
       ).rejects.toThrow('Execution failed')
     })
@@ -159,7 +162,7 @@ describe('CodeInterpreterTools', () => {
         {
           command: 'ls',
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )
 
       expect(result).toBe('file.txt\n')
@@ -176,7 +179,7 @@ describe('CodeInterpreterTools', () => {
           {
             command: 'invalid-command',
           },
-          { toolCallId: 'test-call', messages: [] }
+          toolOptions
         )
       ).rejects.toThrow('Command not found')
     })
@@ -192,7 +195,7 @@ describe('CodeInterpreterTools', () => {
           paths: ['test.txt'],
           path: '.',
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )
 
       expect(result).toBe('file contents')
@@ -210,7 +213,7 @@ describe('CodeInterpreterTools', () => {
           files: [{ path: 'test.txt', content: 'Hello' }],
           path: '.',
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )
 
       expect(result).toBe('files written')
@@ -227,7 +230,7 @@ describe('CodeInterpreterTools', () => {
           operation: 'list',
           path: '/',
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )
 
       expect(result).toBe('file list')
@@ -245,7 +248,7 @@ describe('CodeInterpreterTools', () => {
           paths: ['test.txt'],
           path: '.',
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )
 
       expect(result).toBe('files removed')
@@ -261,7 +264,7 @@ describe('CodeInterpreterTools', () => {
           files: [],
           path: '.',
         },
-        { toolCallId: 'test-call', messages: [] }
+        toolOptions
       )
 
       expect(result).toContain('error')
@@ -277,7 +280,7 @@ describe('CodeInterpreterTools', () => {
             paths: ['missing.txt'],
             path: '.',
           },
-          { toolCallId: 'test-call', messages: [] }
+          toolOptions
         )
       ).rejects.toThrow('File not found')
     })
